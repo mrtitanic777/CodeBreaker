@@ -18,4 +18,8 @@ image_writer::Written write_banked(const Description& d, const Loaded& program, 
 image_writer::Written write_cart6502(const Description& d, const Loaded& program, const std::vector<std::string>& head, std::string_view file_name,
                                      const std::filesystem::path& folder);
 
+// The `segmented` shape (console_segmented.cpp).
+image_writer::Written write_segmented(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
+                                      std::string_view file_name, const std::filesystem::path& folder);
+
 }  // namespace cb::source::console_writer

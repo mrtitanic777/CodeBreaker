@@ -5,7 +5,6 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/console_writer.hpp"
-#include "source/lynx_writer.hpp"
 #include "source/pce_writer.hpp"
 #include "source/snes_writer.hpp"
 #include "source/genesis_writer.hpp"
@@ -83,8 +82,7 @@ CB_TEST("source.writers.homebrew.m6502_family", [] {
     rebuild("atari2600-pipes/pipe2600.bin", 2, a2600);
     rebuild("atari5200/culomin5200.a52", 1, console("atari5200"));
     // (the Lynx's BS93 objects need no boot ROM; its cartridges, which do, are rebuilt by engine/lynx_homebrew_test on the one emulator)
-    const auto lynx = [](const std::filesystem::path& f, const std::filesystem::path& d) { return lynx_writer::reconstruct(f, d); };
-    for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o"}) rebuild(std::string("lynx/") + name, 0, lynx);
+    for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o"}) rebuild(std::string("lynx/") + name, 0, console("lynx"));
     const auto pce = [](const std::filesystem::path& f, const std::filesystem::path& d) { return pce_writer::reconstruct(f, d); };
     rebuild("pce/dshadoff-pce-mouse-test/pce_mouse.pce", 1, pce);
     for (const char* name : {"BALL", "SAMPLE1"}) rebuild(std::string("pce/langel-pce-dev-kit/") + name + ".PCE", 1, pce);

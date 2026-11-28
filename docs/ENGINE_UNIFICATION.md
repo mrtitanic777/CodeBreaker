@@ -186,3 +186,5 @@ tests only what it changes.
 - 2026-11-27: item 7 started (docs/SOURCE_WRITER.md): one console writer (source/console_writer) and one file per platform
   (config/platforms/<name>.json). On it: ZX Spectrum, MSX, ColecoVision, Amstrad CPC (`z80-block`), Game Boy, Master System (`banked`),
   Atari 2600, 5200 and 7800 (`cart6502`); written source byte-identical on their tests, goldens and homebrew samples. Next: the Lynx, the NES, the PC Engine and the SNES, then `vectored`, then `executable`.
+- 2026-11-28: item 7: the NES and the Atari Lynx on the `segmented` shape (ca65 segments placed by ld65); the source and the linker
+  configuration byte-identical to the old writers' on every Lynx sample and the NES test programs. Next: the PC Engine and the SNES.

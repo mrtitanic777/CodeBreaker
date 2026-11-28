@@ -1,14 +1,14 @@
-// Tests of the NES writer over a small program of its own: one 16 KB PRG bank with a reset, an NMI and an IRQ handler, a subroutine, a
+// Tests of the NES on the console writer (config/platforms/nes.json, the segmented shape) over a small program of its own: one 16 KB PRG bank with a reset, an NMI and an IRQ handler, a subroutine, a
 // loop, an indexed read of a table, and the PPU's registers named. The program is machine code, written out byte by byte here, and
 // the writer is held to what it is for: the source it writes, built again, is the cartridge it came from.
-
-#include "source/nes_writer.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 
-namespace cb::source::nes_writer {
+namespace cb::source::console_writer::nes_test {
 namespace {
 
 // reset at $C000: SEI, LDA #0, STA $2000 (PPUCTRL); loop: JSR sub; JMP loop
@@ -41,6 +41,12 @@ Bytes chr_bank() {
     return chr;
 }
 
+// The cartridge written to `folder` as `name` and its source written beside it.
+image_writer::Written written(const Bytes& image, std::string_view name, const std::filesystem::path& folder) {
+    fs::write_file(folder / std::string(name), image);
+    return reconstruct("nes", folder / std::string(name), folder);
+}
+
 std::vector<std::string> lines_of(const std::filesystem::path& p) {
     std::vector<std::string> out;
     const std::string content = fs::read_text(p);   // (the lines are views into it)
@@ -48,10 +54,10 @@ std::vector<std::string> lines_of(const std::filesystem::path& p) {
     return out;
 }
 
-CB_TEST("source.nes_writer.the_program_comes_back_as_source_that_builds_the_same_rom", [] {
-    fs::ScopedTempDir dir("cb_nes");
+CB_TEST("source.console_writer.nes.the_program_comes_back_as_source_that_builds_the_same_rom", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
     const Bytes image = ines(prg_bank(), chr_bank());
-    const image_writer::Written r = write(formats::nes::parse(image), "demo.nes", dir.path());
+    const image_writer::Written r = written(image, "demo.nes", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0xC000, "reset"}, {0xC00C, "sub_C00C"}, {0xC015, "nmi"}, {0xC016, "irq"}}));
@@ -116,18 +122,18 @@ CB_TEST("source.nes_writer.the_program_comes_back_as_source_that_builds_the_same
                 "SEGMENTS {\n    HEADER: load = HEADER, type = ro;\n    BANK0: load = PRG0, type = ro;\n    CHARS: load = CHR, type = ro;\n}\n");
 });
 
-CB_TEST("source.nes_writer.writing_twice_gives_the_same_source", [] {
-    fs::ScopedTempDir dir("cb_nes");
-    const formats::nes::Rom rom = formats::nes::parse(ines(prg_bank(), chr_bank()));
-    const image_writer::Written a = write(rom, "demo.nes", dir.path() / "a");
-    const image_writer::Written b = write(rom, "demo.nes", dir.path() / "b");
+CB_TEST("source.console_writer.nes.writing_twice_gives_the_same_source", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
+    const Bytes image = ines(prg_bank(), chr_bank());
+    const image_writer::Written a = written(image, "demo.nes", dir.path() / "a");
+    const image_writer::Written b = written(image, "demo.nes", dir.path() / "b");
     CB_CHECK(fs::read_file(a.source) == fs::read_file(b.source));
 });
 
-CB_TEST("source.nes_writer.a_cartridge_without_chr_or_with_a_trainer", [] {
-    fs::ScopedTempDir dir("cb_nes");
+CB_TEST("source.console_writer.nes.a_cartridge_without_chr_or_with_a_trainer", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
     const Bytes image = ines(prg_bank(), Bytes{}, 0, true);
-    const image_writer::Written r = write(formats::nes::parse(image), "plain.nes", dir.path());
+    const image_writer::Written r = written(image, "plain.nes", dir.path());
     CB_CHECK(r.same);
     CB_CHECK(!std::filesystem::exists(dir.path() / "plain.chr"));   // no CHR: no file, no segment
     const std::string source = fs::read_text(r.source);
@@ -140,10 +146,14 @@ CB_TEST("source.nes_writer.a_cartridge_without_chr_or_with_a_trainer", [] {
     CB_CHECK(fs::read_file(*r.built) == image);
 });
 
-CB_TEST("source.nes_writer.banks_of_a_cartridge", [] {
-    const auto shape = [](const Bytes& prg, std::uint8_t mapper) {
+CB_TEST("source.console_writer.nes.banks_of_a_cartridge", [] {
+    const auto shape = [](const Bytes& prg, std::uint8_t mapper) {   // (the PRG's segments as the loader cuts them: name, address, PRG offset, size)
         std::string out;
-        for (const Bank& b : banks(formats::nes::parse(ines(prg, Bytes{}, mapper)))) out += std::format("{} ${:04X} +{:X} {:X};", b.segment, b.base, b.offset, b.size);
+        fs::ScopedTempDir dir("cb_nes_banks");
+        fs::write_file(dir.path() / "g.nes", ines(prg, Bytes{}, mapper));
+        for (const Piece& p : load("nes", dir.path() / "g.nes").segments.pieces) {
+            if (p.code) out += std::format("{} ${:04X} +{:X} {:X};", p.segment, p.address, p.offset - 16, p.size);
+        }
         return out;
     };
     CB_CHECK_EQ(shape(Bytes(0x4000, 0), 0), "BANK0 $C000 +0 4000;");                      // 16 KB sits at the top
@@ -153,13 +163,13 @@ CB_TEST("source.nes_writer.banks_of_a_cartridge", [] {
     CB_CHECK_EQ(shape(Bytes(0x10000, 0), 0), "BANK0 $8000 +0 10000;");                    // (a board with no mapper cannot hold 64 KB, but a file may say so)
 });
 
-CB_TEST("source.nes_writer.a_banked_cartridge_is_written_one_segment_a_bank", [] {
-    fs::ScopedTempDir dir("cb_nes");
+CB_TEST("source.console_writer.nes.a_banked_cartridge_is_written_one_segment_a_bank", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
     Bytes prg(0x4000 * 3, 0xEE);
     const Bytes last = prg_bank();   // the fixed bank at $C000 holds the program
     prg.insert(prg.end(), last.begin(), last.end());
     const Bytes image = ines(prg, Bytes{}, 1);
-    const image_writer::Written r = write(formats::nes::parse(image), "banked.nes", dir.path());
+    const image_writer::Written r = written(image, "banked.nes", dir.path());
     CB_CHECK(r.same);
     const std::string source = fs::read_text(r.source);
     for (const char* bank : {"BANK0", "BANK1", "BANK2", "BANK3"}) CB_CHECK(source.find(std::format(".segment \"{}\"", bank)) != std::string::npos);
@@ -170,28 +180,29 @@ CB_TEST("source.nes_writer.a_banked_cartridge_is_written_one_segment_a_bank", []
     CB_CHECK(config.find("PRG1: start = $8000, size = $4000") != std::string::npos);
 });
 
-CB_TEST("source.nes_writer.a_file_that_is_not_a_cartridge_is_refused", [] {
-    fs::ScopedTempDir dir("cb_nes");
+CB_TEST("source.console_writer.nes.a_file_that_is_not_a_cartridge_is_refused", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
     fs::write_file(dir.path() / "junk.nes", Bytes(64, 0x41));
-    CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "junk.nes", dir.path() / "out"));
-    CB_CHECK_THROWS_AS(IoError, reconstruct(dir.path() / "missing.nes", dir.path() / "out"));
+    CB_CHECK_THROWS_AS(FormatError, reconstruct("nes", dir.path() / "junk.nes", dir.path() / "out"));
+    CB_CHECK_THROWS_AS(IoError, reconstruct("nes", dir.path() / "missing.nes", dir.path() / "out"));
 });
 
-CB_TEST("source.nes_writer.reconstruct_reads_the_file_and_names_the_output_for_it", [] {
-    fs::ScopedTempDir dir("cb_nes");
+CB_TEST("source.console_writer.nes.reconstruct_reads_the_file_and_names_the_output_for_it", [] {
+    fs::ScopedTempDir dir("cb_nes_cw");
     fs::write_file(dir.path() / "Game One.nes", ines(prg_bank(), chr_bank()));
-    const image_writer::Written r = reconstruct(dir.path() / "Game One.nes", dir.path() / "out");
+    const image_writer::Written r = reconstruct("nes", dir.path() / "Game One.nes", dir.path() / "out");
     CB_CHECK(r.same);
     CB_CHECK(r.source == dir.path() / "out" / "Game One.s");
     CB_CHECK(std::filesystem::exists(dir.path() / "out" / "Game One.cfg"));
 });
 
-CB_TEST("source.nes_writer.the_registers_are_the_documented_ones", [] {
-    CB_CHECK_EQ(hardware().size(), 30u);
-    CB_CHECK_EQ(hardware().at(0x2007), "PPUDATA");
-    CB_CHECK_EQ(hardware().at(0x4014), "OAMDMA");
-    CB_CHECK_EQ(hardware().at(0x4017), "JOY2");
+CB_TEST("source.console_writer.nes.the_registers_are_the_documented_ones", [] {
+    const image_writer::Names hardware = knowledge::standard().hardware_names("nes", describe("nes").segmented.registers);   // (config/knowledge/nes/registers.json)
+    CB_CHECK_EQ(hardware.size(), 30u);
+    CB_CHECK_EQ(hardware.at(0x2007), "PPUDATA");
+    CB_CHECK_EQ(hardware.at(0x4014), "OAMDMA");
+    CB_CHECK_EQ(hardware.at(0x4017), "JOY2");
 });
 
 }  // namespace
-}  // namespace cb::source::nes_writer
+}  // namespace cb::source::console_writer::nes_test

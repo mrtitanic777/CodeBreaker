@@ -4,7 +4,6 @@
 #include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
 #include "platforms/ps1.hpp"
-#include "platforms/nes.hpp"
 
 #include "core/testing.hpp"
 
@@ -39,7 +38,7 @@ void check_machine(const Platform& p, Id id, const char* name, const char* title
 }  // namespace
 
 CB_TEST("platforms.nes.descriptor", [] {
-    const Platform p = nes();
+    const Platform p = described("nes");
     check_machine(p, Id::Machine, "nes", "NES", "6502", "iNES (.nes)");
     CB_CHECK_EQ(p.cpu.language, "6502:LE:16:NES:default");
     CB_CHECK_EQ(*p.cpu.bits, 8u);
@@ -117,7 +116,7 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
         return p;
     };
     Registry registry;
-    registry.add(taking(nes(), ".nes"));
+    registry.add(taking(described("nes"), ".nes"));
     registry.add(taking(described("sms"), ".sms"));
     registry.add(taking(described("gb"), ".gb"));
     registry.add(taking(genesis(), ".md"));

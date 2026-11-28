@@ -32,7 +32,7 @@
 #include "engine/lane_kit.hpp"
 #include "formats/nes.hpp"
 #include "source/isa.hpp"
-#include "source/nes_writer.hpp"
+#include "source/console_writer.hpp"
 
 namespace dc = cb::decompile::decompiler;
 namespace dsc = cb::decompile::describe;
@@ -252,7 +252,7 @@ CB_TEST("engine.nes_demo.the_source_rebuilds_the_cartridge", [] {
     cb::fs::ScopedTempDir dir("cb-nes-demo");
     const stdfs::path cartridge = dir.path() / "demo.nes";
     cb::fs::write_file(cartridge, nd_cartridge_bytes(dir.path()));
-    const cb::source::image_writer::Written r = cb::source::nes_writer::reconstruct(cartridge, dir.path() / "src");
+    const cb::source::image_writer::Written r = cb::source::console_writer::reconstruct("nes", cartridge, dir.path() / "src");
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     const std::string text = cb::fs::read_text(r.source);

@@ -22,7 +22,6 @@
 #include "formats/zx.hpp"
 #include "platforms/gba.hpp"
 #include "platforms/genesis.hpp"
-#include "platforms/nes.hpp"
 #include "platforms/package.hpp"
 #include "platforms/ps1.hpp"
 
@@ -68,7 +67,7 @@ namespace cb::engine {
 void register_nes_lane() {
     register_lane({
         .name = "nes",
-        .platform = platforms::nes,
+        .platform = [] { return platforms::described("nes"); },
         .probe = [](const std::filesystem::path& p) { return formats::nes::probe(p); },
         .program_extensions = {".nes"},
     });

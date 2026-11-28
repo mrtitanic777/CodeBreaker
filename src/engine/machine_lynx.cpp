@@ -14,9 +14,9 @@
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
-#include "platforms/lynx.hpp"
 #include "formats/lynx.hpp"
-#include "source/lynx_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 namespace cb::engine {
 
@@ -97,10 +97,13 @@ vl::Effects lynx_effects(const stdfs::path& path, std::uint32_t entry, const vl:
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::lynx_writer::reconstruct(module, out, [](formats::lynx::Program& p) {
+    formats::lynx::Program p = formats::lynx::read(module);
+    if (p.kind == formats::lynx::Kind::Cartridge) {   // (what the cartridge loads, found by playing its boot ROM)
         const emulate::lynx::Boot boot = engine::lynx_boot::boot(p);
         p.set_loaded(boot.segments, boot.entries);
-    });
+    }
+    namespace cw = source::console_writer;
+    const source::image_writer::Written w = cw::write(cw::describe("lynx"), cw::load_lynx(p), module.filename().string(), out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -130,7 +133,7 @@ vl::ImageLaneSpec lynx_lane_spec() {
 void register_lynx_lane() {
     register_lane({
         .name = "lynx",
-        .platform = platforms::lynx,
+        .platform = [] { return platforms::described("lynx"); },
         .probe = [](const stdfs::path& p) { return formats::lynx::probe(p); },
         .make_spec = lynx_lane_spec,
     });

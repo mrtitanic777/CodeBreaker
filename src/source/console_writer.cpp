@@ -77,6 +77,30 @@ CartShape cart_of(const nlohmann::ordered_json& j) {
     return c;
 }
 
+Segmented segmented_of(const nlohmann::ordered_json& j) {
+    Segmented s;
+    s.cpu = text_of(j, "cpu");
+    s.assembler = text_of(j, "assembler");
+    if (j.contains("source")) s.source = text_of(j, "source");
+    s.built = text_of(j, "built");
+    s.prologue = texts_of(j, "prologue");
+    s.whole = j.value("whole", false);
+    s.registers = text_of(j, "registers");
+    s.data_floor = number_of(j, "data_floor", 0);
+    if (const auto tail = j.find("tail"); tail != j.end()) {
+        s.tail_at = number_of(*tail, "at", 0);
+        s.tail = number_of(*tail, "size", 0);
+        s.tail_lines = texts_of(*tail, "lines");
+    }
+    if (const auto roles = j.find("roles"); roles != j.end()) {
+        for (const auto& [name, r] : roles->items()) {
+            SegmentRole role{name, r.value("as", std::string("rows")), text_of(r, "file"), text_of(r, "note")};
+            s.roles.push_back(std::move(role));
+        }
+    }
+    return s;
+}
+
 Banked banked_of(const nlohmann::ordered_json& j) {
     Banked b;
     b.cpu = text_of(j, "cpu");
@@ -144,6 +168,7 @@ Description read_description(std::string_view name) {
     }
     if (const auto banked = j.find("banked"); banked != j.end()) d.banked = banked_of(*banked);
     if (const auto cart = j.find("cart"); cart != j.end()) d.cart = cart_of(*cart);
+    if (const auto segmented = j.find("segmented"); segmented != j.end()) d.segmented = segmented_of(*segmented);
     return d;
 }
 
@@ -265,6 +290,7 @@ image_writer::Written write(const Description& description, const Loaded& progra
     for (const std::string& line : head) comment.push_back(line.empty() ? std::string() : "; " + line);
     if (description.shape == "banked") return write_banked(description, program, comment, values, file_name, folder);
     if (description.shape == "cart6502") return write_cart6502(description, program, comment, file_name, folder);
+    if (description.shape == "segmented") return write_segmented(description, program, comment, values, file_name, folder);
     throw UsageError(std::format("console platform {} names the shape {}, which the writer does not have", description.name, description.shape));
 }
 

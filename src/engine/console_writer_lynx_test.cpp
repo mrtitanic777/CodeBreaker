@@ -1,6 +1,7 @@
 // cb-unity: alone
-// The Lynx writer: a cartridge and a BS93 object come back as ca65 source that builds the same file.
-#include "source/lynx_writer.hpp"
+// The Lynx on the console writer (config/platforms/lynx.json, the segmented shape): a cartridge and a BS93 object come back as ca65 source that
+// builds the same file.
+#include "source/console_writer.hpp"
 
 #include <algorithm>
 
@@ -13,16 +14,20 @@
 #include "engine/lynx_boot.hpp"
 #include "formats/lynx_test_image.hpp"
 
-namespace cb::source::lynx_writer {
+namespace cb::source::console_writer::lynx_test {
 namespace {
 
 // LDA #1 / STA SPRCTL0 / JSR $040C / JMP $0408, a stray byte, STZ SPRGO / INC A / RTS: two functions and a register each way.
 const Bytes kProgram = {0xA9, 0x01, 0x8D, 0x80, 0xFC, 0x20, 0x0C, 0x04, 0x4C, 0x08, 0x04, 0xEA, 0x9C, 0x91, 0xFC, 0x1A, 0x60};
 
-const Booter kBoot = [](formats::lynx::Program& p) {
-    const emulate::lynx::Boot b = engine::lynx_boot::boot(p);
-    p.set_loaded(b.segments, b.entries);
-};
+// The program written as source to `folder`; `boot`: a cartridge's loaders found by playing its boot ROM.
+image_writer::Written written(formats::lynx::Program p, std::string_view name, const std::filesystem::path& folder, bool boot = false) {
+    if (boot && p.kind == formats::lynx::Kind::Cartridge) {
+        const emulate::lynx::Boot b = engine::lynx_boot::boot(p);
+        p.set_loaded(b.segments, b.entries);
+    }
+    return write(describe("lynx"), load_lynx(p), name, folder);
+}
 
 bool has_line(const std::string& source, std::string_view line) {
     for (const std::string_view l : text::lines(source)) {
@@ -31,11 +36,11 @@ bool has_line(const std::string& source, std::string_view line) {
     return false;
 }
 
-CB_TEST("engine.lynx_writer.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
+CB_TEST("engine.console_writer.lynx.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
     fs::ScopedTempDir dir("cb_lynx");
     const Bytes file = formats::lynx_test_image::cartridge(kProgram, "Demo");
     fs::write_file(dir.path() / "demo.lnx", file);
-    const image_writer::Written r = reconstruct(dir.path() / "demo.lnx", dir.path() / "out", kBoot);
+    const image_writer::Written r = written(formats::lynx::read(dir.path() / "demo.lnx"), "demo.lnx", dir.path() / "out", true);
     CB_CHECK(r.notes.empty());
     CB_CHECK(r.linked && r.same);
     CB_CHECK((r.functions == image_writer::Functions{{0x0400, "start"}, {0x040C, "sub_040C"}}));
@@ -54,21 +59,21 @@ CB_TEST("engine.lynx_writer.a_cartridge_comes_back_as_source_that_builds_the_sam
     CB_CHECK(config.find("SEG0: start = $0400, size = $0011") != std::string::npos);
 });
 
-CB_TEST("engine.lynx_writer.a_cartridge_without_a_booter_is_all_data", [] {
+CB_TEST("engine.console_writer.lynx.a_cartridge_without_a_booter_is_all_data", [] {
     fs::ScopedTempDir dir("cb_lynx_nob");
     const Bytes file = formats::lynx_test_image::cartridge(kProgram, "Demo");
-    const image_writer::Written r = write(formats::lynx::parse(file), "demo.lnx", dir.path());
+    const image_writer::Written r = written(formats::lynx::parse(file), "demo.lnx", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.functions.empty());
     CB_CHECK_EQ(r.code_bytes, 0u);
 });
 
-CB_TEST("engine.lynx_writer.a_bs93_object_is_its_header_its_body_and_what_follows", [] {
+CB_TEST("engine.console_writer.lynx.a_bs93_object_is_its_header_its_body_and_what_follows", [] {
     fs::ScopedTempDir dir("cb_lynx_bs93");
     Bytes file = {0x80, 0x08, 0x04, 0x00, 0x00, static_cast<std::uint8_t>(kProgram.size() + 10), 'B', 'S', '9', '3'};
     file.insert(file.end(), kProgram.begin(), kProgram.end());
     file.insert(file.end(), {0xDE, 0xAD});   // bytes after the block, kept
-    const image_writer::Written r = write(formats::lynx::parse(file), "demo.o", dir.path());
+    const image_writer::Written r = written(formats::lynx::parse(file), "demo.o", dir.path());
     CB_CHECK(r.notes.empty());
     CB_CHECK(r.linked && r.same);
     CB_CHECK((r.functions == image_writer::Functions{{0x0400, "start"}, {0x040C, "sub_040C"}}));
@@ -76,11 +81,11 @@ CB_TEST("engine.lynx_writer.a_bs93_object_is_its_header_its_body_and_what_follow
     CB_CHECK(source.find(".segment \"TRAILER\"") != std::string::npos);
 });
 
-CB_TEST("engine.lynx_writer.an_edited_source_builds_a_different_file", [] {
+CB_TEST("engine.console_writer.lynx.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_lynx_edit");
     Bytes file = {0x80, 0x08, 0x04, 0x00, 0x00, static_cast<std::uint8_t>(kProgram.size() + 10), 'B', 'S', '9', '3'};
     file.insert(file.end(), kProgram.begin(), kProgram.end());
-    const image_writer::Written r = write(formats::lynx::parse(file), "demo.o", dir.path());
+    const image_writer::Written r = written(formats::lynx::parse(file), "demo.o", dir.path());
     CB_CHECK(r.same);
     // the source can be edited and rebuilt: INC A becomes DEC A (a different byte, same size)
     std::string source = fs::read_text(r.source);
@@ -94,4 +99,4 @@ CB_TEST("engine.lynx_writer.an_edited_source_builds_a_different_file", [] {
 });
 
 }  // namespace
-}  // namespace cb::source::lynx_writer
+}  // namespace cb::source::console_writer::lynx_test

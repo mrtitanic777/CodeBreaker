@@ -1,10 +1,10 @@
 // The Atari Lynx platform record.
-#include "platforms/lynx.hpp"
+#include "platforms/package.hpp"
 
 #include "core/testing.hpp"
 
 CB_TEST("platforms.lynx.descriptor", [] {
-    const cb::platforms::Platform p = cb::platforms::lynx();
+    const cb::platforms::Platform p = cb::platforms::described("lynx");
     CB_CHECK(p.id == cb::platforms::Id::Machine);
     CB_CHECK_EQ(p.name, "lynx");
     CB_CHECK_EQ(p.title, "Atari Lynx");

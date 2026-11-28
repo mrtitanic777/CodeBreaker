@@ -1,0 +1,33 @@
+{
+  "platform": "lynx",
+  "title": "Atari Lynx",
+  "description": "A .lnx cartridge or a BS93 object, written as the whole file in order: each stretch the boot ROM and the cartridge's loaders copy to RAM (a BS93 object's one block) a ca65 segment linked at its RAM address, the rest bytes of their own segments (the header, the encrypted first stage the boot ROM decrypts, the directory, padding, unloaded blocks). Suzy's and Mikey's registers by their documented names; an ld65 configuration lays the segments out in file order.",
+  "machine": {
+    "family": "6502",
+    "container": "Lynx cartridge (.lnx) or BS93 object (.o)",
+    "cpu": {"language": "6502:LE:16:default", "bits": 8, "endian": "little", "decoder": "m6502", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P", "S"],
+    "toolchain": "CodeBreaker's own assembler, or cc65"
+  },
+  "shape": "segmented",
+  "dialect": "ca65-res",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "{cartridge?Atari Lynx cartridge \"{name}\" ({manufacturer}): {encrypted_blocks} encrypted first-stage block(s), {loaded} loaded segment(s)|Atari Lynx BS93 object: {body} bytes at ${load_address:04X}}",
+    "the file in order: each segment below is a stretch of it; code is linked at the RAM address its loader copies it to",
+    ""
+  ],
+  "segmented": {
+    "cpu": "65sc02",
+    "assembler": "ca65",
+    "built": "{stem}.built.{container}",
+    "prologue": ["        .setcpu \"65SC02\"", ""],
+    "whole": true,
+    "registers": "registers",
+    "roles": {
+      "lnx-header": {"note": "LYNX header: bank 0 block {bank0_block} bytes, bank 1 block {bank1_block}, version {version}, rotation {rotation}"},
+      "bs93-header": {"note": "BS93 object: $80 $08, load address ${load_address:04X} and length ${block_length:04X} (header and body) both big-endian, \"BS93\""},
+      "stage1": {"note": "the boot ROM's first stage: 1 count byte and {encrypted_blocks} encrypted block(s) of 51 bytes, decrypted to $0200"}
+    }
+  }
+}

@@ -1,7 +1,6 @@
 // The Atari 2600 and 7800 platform records, and the registry telling their files apart from the other 6502 machines'.
 #include "core/testing.hpp"
 #include "platforms/package.hpp"
-#include "platforms/nes.hpp"
 
 using namespace cb::platforms;
 
@@ -31,7 +30,7 @@ CB_TEST("platforms.atari7800.descriptor", [] { check_atari(described("atari7800"
 
 CB_TEST("platforms.atari.registry_tells_the_6502_machines_apart", [] {
     // (a registered machine is recognised by the probe its lane gives: engine/lane_registry.hpp)
-    Platform a7800 = described("atari7800"), a2600 = described("atari2600"), nes_platform = nes();
+    Platform a7800 = described("atari7800"), a2600 = described("atari2600"), nes_platform = described("nes");
     nes_platform.recognise = [](const std::filesystem::path& p) { return p.extension() == ".nes"; };
     a7800.recognise = [](const std::filesystem::path& p) { return p.extension() == ".a78"; };
     a2600.recognise = [](const std::filesystem::path& p) { return p.extension() == ".a26"; };

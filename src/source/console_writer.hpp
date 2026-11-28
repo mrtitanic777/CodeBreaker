@@ -5,7 +5,7 @@
 //     r.source                  out/game.asm, in the platform's dialect (the description's `dialect`: sjasmplus for the Z80 machines)
 //     r.same                    the source, built, is the program byte for byte
 //
-// What a platform says, as data: its title, its shape (how the program lies in memory: `z80-block`, one block at one address; `banked`, a cartridge of banks), its dialect,
+// What a platform says, as data: its title, its shape (how the program lies in memory: `z80-block`, one block at one address; `banked`, a cartridge of banks; `cart6502`; `segmented`, ca65 segments an ld65 configuration places), its dialect,
 // which knowledge tables name its hardware (config/knowledge/<platform>/registers.json: `ports` a hardware section for IN/OUT ports, `fixed`
 // a table of fixed addresses outside the program -- BIOS or firmware entry points, system variables) and the head comment, one template per
 // line over the values the platform's loader read from the file's header.
@@ -26,6 +26,10 @@
 
 #include "core/bytes.hpp"
 #include "source/image_writer.hpp"
+
+namespace cb::formats::lynx {
+struct Program;
+}
 
 namespace cb::source::console_writer {
 
@@ -105,6 +109,27 @@ struct CartShape {
     std::vector<ChipTable> chips;
 };
 
+// ---- the segmented shape's part of a description: ca65 segments placed by an ld65 configuration ----
+struct SegmentRole {
+    std::string name;                 // the role a loader gives a piece ("header", "chr")
+    std::string as = "rows";          // how its bytes are written: "rows" (the dialect's data rows), "row" (one `.byte` line), "incbin" (a file of their own)
+    std::string file;                 // (incbin) the file's name, a template ({stem})
+    std::string note;                 // a comment ahead of the bytes, a template over the loader's values ("" none)
+};
+struct Segmented {
+    std::string cpu;                  // "6502", "65sc02"
+    std::string assembler;            // the L2 assembly's syntax ("ca65")
+    std::string source = "s";         // the source's extension
+    std::string built;                // the rebuilt file's name, a template ({stem} and the loader's values)
+    std::vector<std::string> prologue;   // lines ahead of the register names
+    bool whole = false;               // the source is written in the neutral text and said in the dialect at the end (else line by line)
+    std::string registers;            // the knowledge hardware section of the registers the code names
+    std::uint32_t data_floor = 0;     // an absolute operand below this is never a data label
+    std::uint32_t tail_at = 0, tail = 0;   // bytes at a fixed address of a code piece that are data (the vectors), and how they are said
+    std::vector<std::string> tail_lines;   // ({wN} the word at N, by its label; {bN} the byte at N)
+    std::vector<SegmentRole> roles;
+};
+
 // A platform's description (config/platforms/<name>.json).
 struct Description {
     std::string name;        // the file's name: what reconstruct() is asked for
@@ -117,6 +142,7 @@ struct Description {
     std::vector<HeadLine> head;
     Banked banked;           // (the banked shape's)
     CartShape cart;          // (the cart6502 shape's)
+    Segmented segmented;     // (the segmented shape's)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -138,6 +164,21 @@ struct Cart {
     Bytes header;                         // a file header ahead of the image (the A78's), written as data ahead of the banks
 };
 
+// (segmented) One stretch of the image: a ca65 segment in its own ld65 memory area, in image order. A code piece is linked at the address its
+// bytes are seen at; the others are bytes as the role says.
+struct Piece {
+    std::string segment, area;            // the ca65 segment and the ld65 memory area it loads into
+    std::string role;                     // the description's role for it ("" plain data rows)
+    std::uint32_t offset = 0, size = 0;   // in the image
+    std::uint32_t address = 0;            // the start of its memory area: where code is linked
+    bool code = false;
+};
+struct Segments {
+    std::vector<Piece> pieces;
+    std::function<std::optional<std::uint32_t>(std::uint32_t address)> offset_of;   // the image offset the processor sees at an address, if any
+    std::size_t measured = 0;             // the bytes the result says the program is (the PRG, the file)
+};
+
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
 struct Loaded {
     Bytes image;
@@ -147,10 +188,15 @@ struct Loaded {
     std::vector<std::uint32_t> starts;   // (banked) where flow starts, in the order the format found them
     Bytes memory;                        // (banked) the address space at power-on that flow decodes
     Cart cart;                           // (cart6502)
+    Segments segments;                   // (segmented: `image` is the whole file the pieces lie in, `memory` what flow decodes)
 };
 
 // The program in `file`, as the platform's loader reads it (IoError when the file cannot be read, FormatError when it is not the platform's).
 Loaded load(std::string_view platform, const std::filesystem::path& file);
+
+// The Lynx's loader for a program read already: a cartridge's loaded segments are set by the caller, who can play its boot ROM
+// (engine/lynx_boot, which the writer does not link). load("lynx", file) reads one without them: a cartridge is then all data.
+Loaded load_lynx(const formats::lynx::Program& program);
 
 // `text` with each {name} (a value), {name:spec} (a number in std::format's spec: 04X) and {name?yes|no} (the branch for whether the value is
 // set: non-zero, non-empty; the branches are templates too) put in. UsageError for a name `values` does not have.

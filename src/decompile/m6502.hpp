@@ -2,7 +2,7 @@
 //
 // The 151 documented opcodes of the NMOS 6502 -- the NES's 2A03 runs the same set (its decimal mode is wired
 // off). One table serves the disassembler, the assembler that rebuilds the source the NES lane writes
-// (source/nes_writer), and the interpreter (emulate/m6502).
+// (source/console_writer), and the interpreter (emulate/m6502).
 //
 //     decode(code, offset, pc)            the instruction at code[offset] sitting at address pc, or nullopt
 //     text(insn, labels)                  "LDA $0200,X" / "BNE loop" (ca65 syntax)

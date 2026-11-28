@@ -15,7 +15,9 @@
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
+#include "formats/lynx.hpp"
 #include "formats/msx.hpp"
+#include "formats/nes.hpp"
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
 
@@ -198,6 +200,51 @@ Loaded load_atari7800(const std::filesystem::path& file) {
     return l;
 }
 
+// The NES: the 16-byte header, a trainer, the PRG (16 KB at $C000; up to 32 KB at $8000; with a mapper, 16 KB banks, the last fixed at $C000 and
+// the others at $8000, as at power-on) and the CHR, which goes beside the source. Anything after the CHR is not the cartridge's.
+Loaded load_nes(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const formats::nes::Rom>(formats::nes::read(file));
+    constexpr std::uint32_t kBank = 0x4000;
+    Loaded l;
+    l.image = rom->header;
+    l.image.insert(l.image.end(), rom->trainer.begin(), rom->trainer.end());
+    const std::uint32_t prg_at = static_cast<std::uint32_t>(l.image.size());
+    l.image.insert(l.image.end(), rom->prg.begin(), rom->prg.end());
+    l.image.insert(l.image.end(), rom->chr.begin(), rom->chr.end());
+    Segments& s = l.segments;
+    s.pieces.push_back({"HEADER", "HEADER", "header", 0, static_cast<std::uint32_t>(rom->header.size()), 0, false});
+    if (!rom->trainer.empty()) s.pieces.push_back({"TRAINER", "TRAINER", "trainer", static_cast<std::uint32_t>(rom->header.size()), static_cast<std::uint32_t>(rom->trainer.size()), 0x7000, false});
+    const auto bank = [&](std::size_t i, std::uint32_t base, std::uint32_t offset, std::uint32_t size) {
+        s.pieces.push_back({std::format("BANK{}", i), std::format("PRG{}", i), "", prg_at + offset, size, base, true});
+    };
+    const std::uint32_t prg_size = static_cast<std::uint32_t>(rom->prg.size());
+    if (prg_size == kBank) {
+        bank(0, 0xC000, 0, kBank);
+    } else if (rom->mapper == 0 || prg_size <= 0x8000) {
+        bank(0, 0x8000, 0, prg_size);
+    } else {
+        const std::size_t count = rom->bank_count();
+        for (std::size_t i = 0; i < count; ++i) bank(i, i == count - 1 ? 0xC000u : 0x8000u, static_cast<std::uint32_t>(i * kBank), kBank);
+    }
+    if (!rom->chr.empty()) s.pieces.push_back({"CHARS", "CHR", "chr", prg_at + prg_size, static_cast<std::uint32_t>(rom->chr.size()), 0, false});
+    s.offset_of = [rom, prg_at](std::uint32_t a) -> std::optional<std::uint32_t> {
+        const auto mapped = rom->mapped(a);
+        if (!mapped) return std::nullopt;
+        return prg_at + *mapped;
+    };
+    s.measured = rom->prg.size();
+    l.memory = rom->memory();
+    l.starts = rom->functions(isa::m6502_decoder());
+    l.entries = {{rom->vectors.reset, "reset"}};
+    l.entries.try_emplace(rom->vectors.nmi, "nmi");
+    l.entries.try_emplace(rom->vectors.irq, "irq");
+    l.values = {{"mapper", Num{rom->mapper}}, {"prg_kb", Num(rom->prg.size() / 1024)}, {"chr_kb", Num(rom->chr.size() / 1024)},
+                {"mirroring", std::string(formats::nes::to_string(rom->mirroring))}, {"battery", Num{rom->battery}}};
+    return l;
+}
+
+Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
+
 using Loader = Loaded (*)(const std::filesystem::path&);
 
 constexpr std::pair<std::string_view, Loader> kLoaders[] = {
@@ -207,12 +254,71 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"coleco", load_coleco},
     {"cpc", load_cpc},
     {"gb", load_gb},
+    {"lynx", load_lynx_file},
     {"msx", load_msx},
+    {"nes", load_nes},
     {"sms", load_sms},
     {"zx", load_zx},
 };
 
 }  // namespace
+
+// The Lynx: the file in order, each stretch a cartridge's loaders copy to RAM (or a BS93 object's one block) a code piece linked at its RAM
+// address, the rest data: the header, the encrypted first stage (written as the bytes it is), the directory, padding, unloaded blocks.
+Loaded load_lynx(const formats::lynx::Program& program) {
+    namespace lynx = formats::lynx;
+    const bool cartridge = program.kind == lynx::Kind::Cartridge;
+    Loaded l;
+    l.image = program.file;
+    Segments& s = l.segments;
+    const std::uint32_t header = static_cast<std::uint32_t>(cartridge ? lynx::kHeaderSize : lynx::kBs93Header);
+    s.pieces.push_back({"HEADER", "HEADER", cartridge ? "lnx-header" : "bs93-header", 0, header, 0, false});
+    std::uint32_t at = header;
+    int gaps = 0, codes = 0;
+    const auto gap_to = [&](std::uint32_t end, bool trailer) {
+        if (end > at) {
+            const std::string name = trailer ? std::string("TRAILER") : std::format("GAP{}", gaps++);
+            s.pieces.push_back({name, name, at == lynx::kHeaderSize && program.encrypted_blocks > 0 ? "stage1" : "", at, end - at, 0, false});
+        }
+        at = std::max(at, end);
+    };
+    for (const lynx::Segment& seg : program.segments) {
+        if (seg.offset < at || seg.offset + seg.size > program.file.size()) continue;   // (set_loaded sorts them; one that overlaps another or runs off is data)
+        gap_to(seg.offset, false);
+        const std::string name = std::format("SEG{}", codes++);
+        s.pieces.push_back({name, name, "", seg.offset, seg.size, seg.address, true});
+        at = seg.offset + seg.size;
+    }
+    gap_to(static_cast<std::uint32_t>(program.file.size()), !cartridge);
+    // the file offset each RAM address shows (an address two segments load to shows the later one)
+    const auto shown = std::make_shared<std::vector<std::int64_t>>(0x10000, -1);
+    for (const Piece& piece : s.pieces) {
+        if (!piece.code) continue;
+        for (std::uint32_t i = 0; i < piece.size && piece.address + i < lynx::kRamEnd; ++i) (*shown)[piece.address + i] = static_cast<std::int64_t>(piece.offset + i);
+    }
+    s.offset_of = [shown](std::uint32_t a) -> std::optional<std::uint32_t> {
+        if (a >= lynx::kRamEnd || (*shown)[a] < 0) return std::nullopt;
+        return static_cast<std::uint32_t>((*shown)[a]);
+    };
+    s.measured = program.file.size();
+    l.memory = program.memory();
+    l.starts = program.functions(isa::m65sc02_decoder());
+    if (!program.entries.empty() && s.offset_of(program.entries.front())) l.entries[program.entries.front()] = "start";
+    l.values = {{"cartridge", Num{cartridge}},
+                {"container", std::string(cartridge ? "lnx" : "o")},
+                {"name", program.name},
+                {"manufacturer", program.manufacturer},
+                {"encrypted_blocks", Num{program.encrypted_blocks}},
+                {"loaded", Num(program.segments.size())},
+                {"bank0_block", Num{program.bank0_block}},
+                {"bank1_block", Num{program.bank1_block}},
+                {"version", Num{program.version}},
+                {"rotation", Num{program.rotation}},
+                {"load_address", Num{program.load_address}},
+                {"block_length", Num{program.block_length}},
+                {"body", Num{program.block_length} - Num{lynx::kBs93Header}}};
+    return l;
+}
 
 Loaded load(std::string_view platform, const std::filesystem::path& file) {
     for (const auto& [name, loader] : kLoaders) {

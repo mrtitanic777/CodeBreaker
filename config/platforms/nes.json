@@ -1,0 +1,32 @@
+{
+  "platform": "nes",
+  "title": "NES",
+  "description": "An iNES cartridge image: the 16-byte header and a trainer as one row each, the PRG one ca65 segment a 16 KB bank (16 KB at $C000; up to 32 KB at $8000; with a mapper the last bank fixed at $C000 and the others at $8000, as at power-on), the CHR beside the source taken in with .incbin; flow from the NMI, reset and IRQ vectors in the last six bytes, which are written as words. The PPU's and the APU's registers by their documented names; an ld65 configuration places the segments.",
+  "machine": {
+    "family": "6502",
+    "container": "iNES (.nes)",
+    "cpu": {"language": "6502:LE:16:NES:default", "bits": 8, "endian": "little", "decoder": "m6502", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P"],
+    "toolchain": "CodeBreaker's own assembler, or cc65"
+  },
+  "shape": "segmented",
+  "dialect": "ca65",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "mapper {mapper}, {prg_kb} KB PRG, {chr_kb} KB CHR, {mirroring} mirroring{battery?, battery-backed RAM|}",
+    ""
+  ],
+  "segmented": {
+    "cpu": "6502",
+    "assembler": "ca65",
+    "built": "{stem}.built.nes",
+    "registers": "hardware",
+    "data_floor": "0x8000",
+    "tail": {"at": "0xFFFA", "size": 6, "lines": ["        .half {w0},{w2},{w4}"]},
+    "roles": {
+      "header": {"as": "row"},
+      "trainer": {"as": "row"},
+      "chr": {"as": "incbin", "file": "{stem}.chr"}
+    }
+  }
+}

@@ -2,7 +2,7 @@
 //
 //     engine::register_lynx_lane();     // once, before a LaneKit is made (the host's start-up does)
 //
-// The lane is one verify/lanes/image_lane: a `.lnx` cartridge or a BS93 object is written back by source/lynx_writer and rebuilt; one that comes
+// The lane is one verify/lanes/image_lane: a `.lnx` cartridge or a BS93 object is written back by source/console_writer (config/platforms/lynx.json) and rebuilt; one that comes
 // back identical is the original, an edited one has each function run beside the original's in the 65SC02 interpreter (emulate/m6502, Cmos)
 // over the Lynx's memory (emulate/lynx): RAM, Suzy and Mikey logged. The program each file stands for is what the boot ROM leaves in RAM
 // (formats/lynx.hpp): the cartridge's first stage is decrypted, and the loaders are run to see what they copy where; the result is kept per file.

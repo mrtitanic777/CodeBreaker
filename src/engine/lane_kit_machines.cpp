@@ -39,7 +39,6 @@
 #include "source/gba_writer.hpp"
 #include "source/genesis_writer.hpp"
 #include "source/ps1_writer.hpp"
-#include "source/nes_writer.hpp"
 #include "verify/lanes/dos.hpp"
 #include "verify/lanes/image_lane.hpp"
 #include "verify/lanes/msx.hpp"
@@ -548,7 +547,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.effects = nes_effects;
         spec.what = {"end", "A", "X", "Y", "flags", "RAM", "hardware accesses"};
         spec.start = [](const lanes::State& s) { return std::format("from A={:02X} X={:02X} Y={:02X}", at(s, "a"), at(s, "x"), at(s, "y")); };
-        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::nes_writer::reconstruct(m, out)); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("nes", m, out)); };
     } else if (name == "sms") {
         spec.kind = "sms";
         spec.rev = 2;
