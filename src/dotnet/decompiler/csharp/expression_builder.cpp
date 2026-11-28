@@ -222,7 +222,7 @@ TranslatedExpression ExpressionBuilder::translate(ILInstruction* inst, const ITy
     context.type_hint = type_hint != nullptr ? type_hint : &SpecialType::unknown_type();
     std::optional<TranslatedExpression> from_l2;
     if (l2 != nullptr) {
-        if (const translate::ir::Node* node = l2->node(inst)) from_l2 = translate_from_l2(*node, *inst, context);
+        if (const translate::ir::Node* node = l2->node_or_lower(inst)) from_l2 = translate_from_l2(*node, *inst, context);
         l2->count(from_l2.has_value(), *inst);
     }
     TranslatedExpression cexpr = from_l2 ? *std::move(from_l2) : accept_visitor<TranslationContext, TranslatedExpression>(*inst, *this, context);
@@ -482,7 +482,7 @@ TranslatedExpression ExpressionBuilder::translate_new_obj(const CallFacts& inst,
 }
 
 TranslatedExpression ExpressionBuilder::visit_ld_virt_delegate(LdVirtDelegate& inst, TranslationContext) {
-    return CallBuilder(*this, *type_system_, *settings).build(&inst);
+    return CallBuilder(*this, *type_system_, *settings).build(LdVirtDelegateFacts::of(inst));
 }
 
 TranslatedExpression ExpressionBuilder::visit_new_arr(NewArr& inst, TranslationContext) { return translate_new_arr(NewArrFacts::of(inst)); }
@@ -504,19 +504,23 @@ TranslatedExpression ExpressionBuilder::translate_new_arr(const NewArrFacts& ins
                    make<ArrayCreateResolveResult>(make_array_type(*compilation, inst.type(), dimensions), std::move(size_rrs), std::nullopt));
 }
 
-TranslatedExpression ExpressionBuilder::visit_loc_alloc(LocAlloc& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_loc_alloc(LocAlloc& inst, TranslationContext context) { return translate_loc_alloc_expression(LocAllocFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_loc_alloc_expression(const LocAllocFacts& inst, TranslationContext context) {
     const IType* element_type = nullptr;
     StackAllocExpression* expr = translate_loc_alloc(inst, context.type_hint, &element_type);
-    return with_rr(with_il_instruction(expr, &inst), make<ResolveResult>(make_pointer_type(element_type)));
+    return with_rr(with_il_instruction(expr, inst.self), make<ResolveResult>(make_pointer_type(element_type)));
 }
 
-TranslatedExpression ExpressionBuilder::visit_loc_alloc_span(LocAllocSpan& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_loc_alloc_span(LocAllocSpan& inst, TranslationContext context) { return translate_loc_alloc_span_expression(LocAllocFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_loc_alloc_span_expression(const LocAllocFacts& inst, TranslationContext context) {
     const IType* element_type = nullptr;
     StackAllocExpression* expr = translate_loc_alloc_span(inst, context.type_hint, &element_type);
-    return with_rr(with_il_instruction(expr, &inst), make<ResolveResult>(inst.type()));
+    return with_rr(with_il_instruction(expr, inst.self), make<ResolveResult>(inst.type()));
 }
 
-StackAllocExpression* ExpressionBuilder::translate_loc_alloc_span(LocAllocSpan& inst, const IType*, const IType** element_type) {
+StackAllocExpression* ExpressionBuilder::translate_loc_alloc_span(const LocAllocFacts& inst, const IType*, const IType** element_type) {
     *element_type = inst.type()->type_arguments()[0];
     TranslatedExpression count_expression = translate(inst.argument()).convert_to(known(KnownTypeCode::Int32), *this);
     auto* result = make<StackAllocExpression>();
@@ -525,7 +529,7 @@ StackAllocExpression* ExpressionBuilder::translate_loc_alloc_span(LocAllocSpan& 
     return result;
 }
 
-StackAllocExpression* ExpressionBuilder::translate_loc_alloc(LocAlloc& inst, const IType* type_hint, const IType** element_type) {
+StackAllocExpression* ExpressionBuilder::translate_loc_alloc(const LocAllocFacts& inst, const IType* type_hint, const IType** element_type) {
     TranslatedExpression count_expression;
     const PointerType* pointer_type = nullptr;
     ILInstruction* left = nullptr;
@@ -999,14 +1003,14 @@ TranslatedExpression ExpressionBuilder::translate_comp(const CompFacts& inst) {
 }
 
 TranslatedExpression ExpressionBuilder::visit_three_valued_bool_and(ThreeValuedBoolAnd& inst, TranslationContext) {
-    return handle_three_valued_logic(inst, BinaryOperatorType::BitwiseAnd, ExpressionType::And);
+    return handle_three_valued_logic(LogicOperatorFacts::of(inst), BinaryOperatorType::BitwiseAnd, ExpressionType::And);
 }
 
 TranslatedExpression ExpressionBuilder::visit_three_valued_bool_or(ThreeValuedBoolOr& inst, TranslationContext) {
-    return handle_three_valued_logic(inst, BinaryOperatorType::BitwiseOr, ExpressionType::Or);
+    return handle_three_valued_logic(LogicOperatorFacts::of(inst), BinaryOperatorType::BitwiseOr, ExpressionType::Or);
 }
 
-TranslatedExpression ExpressionBuilder::handle_three_valued_logic(BinaryInstruction& inst, BinaryOperatorType op, ExpressionType eop) {
+TranslatedExpression ExpressionBuilder::handle_three_valued_logic(const LogicOperatorFacts& inst, BinaryOperatorType op, ExpressionType eop) {
     TranslatedExpression left = translate(inst.left());
     TranslatedExpression right = translate(inst.right());
     const IType* bool_type = known(KnownTypeCode::Boolean);
@@ -1024,7 +1028,7 @@ TranslatedExpression ExpressionBuilder::handle_three_valued_logic(BinaryInstruct
     }
     return with_rr(make<BinaryOperatorExpression>(left.expression, op, right.expression),
                    make<OperatorResolveResult>(nullable_bool_type, eop, nullptr, true, std::vector<ResolveResult*>{left.resolve_result, right.resolve_result}))
-        .with_il_instruction(&inst);
+        .with_il_instruction(inst.self);
 }
 
 TranslatedExpression ExpressionBuilder::visit_throw(Throw& inst, TranslationContext) { return translate_throw(OperandFacts::of(inst)); }
@@ -1033,7 +1037,9 @@ TranslatedExpression ExpressionBuilder::translate_throw(const OperandFacts& inst
     return with_rr(with_il_instruction(make<ThrowExpression>(translate(inst.argument()).expression), inst.self), make<ThrowResolveResult>());
 }
 
-TranslatedExpression ExpressionBuilder::visit_user_defined_logic_operator(UserDefinedLogicOperator& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_user_defined_logic_operator(UserDefinedLogicOperator& inst, TranslationContext) { return translate_user_defined_logic_operator(LogicOperatorFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_user_defined_logic_operator(const LogicOperatorFacts& inst) {
     const IType* left_type = inst.method()->parameters()[0]->type();
     const IType* right_type = inst.method()->parameters()[1]->type();
     TranslatedExpression left = translate(inst.left(), left_type).convert_to(left_type, *this);
@@ -1048,7 +1054,7 @@ TranslatedExpression ExpressionBuilder::visit_user_defined_logic_operator(UserDe
     }
     return with_rr(make<BinaryOperatorExpression>(left.expression, op, right.expression),
                    make<InvocationResolveResult>(nullptr, inst.method(), std::vector<ResolveResult*>{left.resolve_result, right.resolve_result}))
-        .with_il_instruction(&inst);
+        .with_il_instruction(inst.self);
 }
 
 ExpressionWithResolveResult ExpressionBuilder::assignment(TranslatedExpression left, TranslatedExpression right) {
@@ -2549,13 +2555,15 @@ TranslatedExpression ExpressionBuilder::translate_ld_elema(const LdElemaFacts& i
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_elema_inline_array(LdElemaInlineArray& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_elema_inline_array(LdElemaInlineArray& inst, TranslationContext) { return translate_ld_elema_inline_array(LdElemaInlineArrayFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_elema_inline_array(const LdElemaInlineArrayFacts& inst) {
     TranslatedExpression array_expr = translate_target(inst.array(), true, false, inst.type());
     const IType* inline_array_element_type = typesystem::get_inline_array_element_type(inst.type());
     std::vector<Expression*> index_expressions;
     for (ILInstruction* i : inst.indices()) index_expressions.push_back(translate_array_index(i).expression);
     auto* indexer_expr = make<IndexerExpression>(array_expr.expression, index_expressions);
-    TranslatedExpression expr = with_il_instruction(indexer_expr, &inst).with_rr(make<ResolveResult>(inline_array_element_type));
+    TranslatedExpression expr = with_il_instruction(indexer_expr, inst.self).with_rr(make<ResolveResult>(inline_array_element_type));
     return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, expr.expression))
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
@@ -2656,7 +2664,9 @@ TranslatedExpression ExpressionBuilder::translate_cast_class(const TypedUnaryFac
     return translate(inst.argument()).convert_to(inst.type(), *this);
 }
 
-TranslatedExpression ExpressionBuilder::visit_expression_tree_cast(ExpressionTreeCast& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_expression_tree_cast(ExpressionTreeCast& inst, TranslationContext) { return translate_expression_tree_cast(ExpressionTreeCastFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_expression_tree_cast(const ExpressionTreeCastFacts& inst) {
     return translate(inst.argument()).convert_to(inst.type(), *this, inst.is_checked());
 }
 
@@ -3031,9 +3041,9 @@ TranslatedExpression ExpressionBuilder::translate_stack_alloc_initializer(Block*
         type_hint = make_pointer_type(t);
     }
     if (auto* loc_alloc = il::as<LocAlloc>(stloc->value())) {
-        stack_alloc_expression = translate_loc_alloc(*loc_alloc, type_hint, &element_type);
+        stack_alloc_expression = translate_loc_alloc(LocAllocFacts::of(*loc_alloc), type_hint, &element_type);
     } else if (auto* loc_alloc_span = il::as<LocAllocSpan>(stloc->value())) {
-        stack_alloc_expression = translate_loc_alloc_span(*loc_alloc_span, type_hint, &element_type);
+        stack_alloc_expression = translate_loc_alloc_span(LocAllocFacts::of(*loc_alloc_span), type_hint, &element_type);
     } else {
         throw std::invalid_argument("given Block is invalid!");
     }
@@ -3236,7 +3246,7 @@ TranslatedExpression ExpressionBuilder::translate_if(const IfFacts& inst, Transl
     return with_il_instruction(make<ConditionalExpression>(condition.expression, true_branch.expression, false_branch.expression), inst.self).with_rr(rr);
 }
 
-ExpressionBuilder::SwitchValue ExpressionBuilder::translate_switch_value(SwitchInstruction& inst, bool is_expression_context) {
+ExpressionBuilder::SwitchValue ExpressionBuilder::translate_switch_value(const SwitchFacts& inst, bool is_expression_context) {
     TranslatedExpression value;
     const IType* governing_type;
     // prepare expression and expected type
@@ -3255,11 +3265,11 @@ ExpressionBuilder::SwitchValue ExpressionBuilder::translate_switch_value(SwitchI
         } else if (inst.value()->result_type() == StackType::I4) {
             if (get_stack_type(*governing_type) != StackType::I4) governing_type = find_type(StackType::I4, get_sign(*governing_type));
             if (is_small_integer_type(*governing_type)) {
-                il::SwitchSection* default_section = inst.get_default_section();
+                const SwitchSectionFacts* default_section = inst.get_default_section();
                 int bits = 8 * get_size(*governing_type);
                 int min_value = get_sign(*governing_type) == Sign::Unsigned ? 0 : -(1 << (bits - 1));
                 int max_value = get_sign(*governing_type) == Sign::Unsigned ? (1 << bits) - 1 : (1 << (bits - 1)) - 1;
-                for (il::SwitchSection* section : inst.sections) {
+                for (const SwitchSectionFacts* section : inst.sections()) {
                     if (section == default_section) continue;
                     util::LongInterval interval = section->labels().containing_interval();
                     if (interval.start < min_value || interval.inclusive_end() > max_value) {
@@ -3317,13 +3327,17 @@ const IType* ExpressionBuilder::get_csharp_switch_governing_type(const IType* ty
 }
 
 TranslatedExpression ExpressionBuilder::visit_switch_instruction(SwitchInstruction& inst, TranslationContext context) {
+    return translate_switch_expression(SwitchFacts::of(inst), context);
+}
+
+TranslatedExpression ExpressionBuilder::translate_switch_expression(const SwitchFacts& inst, TranslationContext context) {
     // switch-expression does not support implicit conversions
     SwitchValue switch_value = translate_switch_value(inst, true);
     TranslatedExpression value = switch_value.value;
     const IType* type = switch_value.case_type;
     StringToInt* str_to_int = switch_value.string_to_int;
 
-    il::SwitchSection* default_section = inst.get_default_section();
+    const SwitchSectionFacts* default_section = inst.get_default_section();
     auto* switch_expr = make<SwitchExpression>();
     switch_expr->set_expression(value.expression);
     const IType* result_type;
@@ -3332,12 +3346,12 @@ TranslatedExpression ExpressionBuilder::visit_switch_instruction(SwitchInstructi
     } else {
         result_type = known(to_known_type_code(inst.result_type()));
     }
-    auto translate_section_body = [&](il::SwitchSection* section) -> Expression* {
+    auto translate_section_body = [&](const SwitchSectionFacts* section) -> Expression* {
         TranslatedExpression body = translate(section->body(), result_type);
         return body.convert_to(result_type, *this, false, true).expression;
     };
 
-    for (il::SwitchSection* section : inst.sections) {
+    for (const SwitchSectionFacts* section : inst.sections()) {
         if (section == default_section) continue;
         auto* ses = make<SwitchExpressionSection>();
         if (section->has_null_label()) {
@@ -3362,7 +3376,7 @@ TranslatedExpression ExpressionBuilder::visit_switch_instruction(SwitchInstructi
         switch_expr->switch_sections().add(default_ses);
     }
 
-    return with_il_instruction(switch_expr, &inst).with_rr(make<ResolveResult>(result_type));
+    return with_il_instruction(switch_expr, inst.self).with_rr(make<ResolveResult>(result_type));
 }
 
 TranslatedExpression ExpressionBuilder::visit_address_of(AddressOf& inst, TranslationContext) { return translate_address_of(AddressOfFacts::of(inst)); }
@@ -3441,10 +3455,12 @@ TranslatedExpression ExpressionBuilder::translate_nullable_unwrap(const Nullable
         .with_rr(make<ResolveResult>(nullable_type::get_underlying_type(arg.type())));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_convert_instruction(DynamicConvertInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_convert_instruction(DynamicConvertInstruction& inst, TranslationContext) { return translate_dynamic_convert(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_convert(const DynamicFacts& inst) {
     TranslatedExpression operand = translate(inst.argument()).convert_to(&SpecialType::dynamic(), *this);
     TranslatedExpression result =
-        with_il_instruction(make<CastExpression>(convert_type(inst.type()), operand.expression), &inst)
+        with_il_instruction(make<CastExpression>(convert_type(inst.type()), operand.expression), inst.self)
             .with_rr(make<ConversionResolveResult>(inst.type(), operand.resolve_result,
                                                    inst.is_explicit() ? Conversion::explicit_dynamic_conversion() : Conversion::implicit_dynamic_conversion()));
     annotate_checked(result.expression, inst.is_checked() ? CheckedAnnotationKind::Checked : CheckedAnnotationKind::Unchecked);
@@ -3473,33 +3489,41 @@ std::vector<ResolveResult*> resolve_results_of(const std::vector<TranslatedExpre
 
 }  // namespace
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_get_index_instruction(DynamicGetIndexInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_get_index_instruction(DynamicGetIndexInstruction& inst, TranslationContext) { return translate_dynamic_get_index(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_get_index(const DynamicFacts& inst) {
     TranslatedExpression target = translate_dynamic_target(inst.arguments()[0], inst.argument_info()[0]);
     std::vector<TranslatedExpression> arguments = translate_dynamic_arguments(skip_first(inst.arguments()), skip_first(inst.argument_info()));
-    return with_il_instruction(make<IndexerExpression>(target.expression, expressions_of(arguments)), &inst)
+    return with_il_instruction(make<IndexerExpression>(target.expression, expressions_of(arguments)), inst.self)
         .with_rr(make<DynamicInvocationResolveResult>(
             target.resolve_result, DynamicInvocationType::Indexing, resolve_results_of(arguments), std::vector<ResolveResult*>{},
             create_dynamic_indexer_symbol(dynamic_argument_type(inst.argument_info()[0]), skip_first(inst.argument_info()))));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_get_member_instruction(DynamicGetMemberInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_get_member_instruction(DynamicGetMemberInstruction& inst, TranslationContext) { return translate_dynamic_get_member(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_get_member(const DynamicFacts& inst) {
     TranslatedExpression target = translate_dynamic_target(inst.target(), inst.target_argument_info());
-    return with_il_instruction(make<MemberReferenceExpression>(target.expression, inst.name()), &inst)
+    return with_il_instruction(make<MemberReferenceExpression>(target.expression, inst.name()), inst.self)
         .with_rr(make<DynamicMemberResolveResult>(target.resolve_result, inst.name(), create_dynamic_member_symbol(inst.name(), inst.target_argument_info())));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_constructor_instruction(DynamicInvokeConstructorInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_constructor_instruction(DynamicInvokeConstructorInstruction& inst, TranslationContext) { return translate_dynamic_invoke_constructor(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_invoke_constructor(const DynamicFacts& inst) {
     const IType* constructor_type = nullptr;
     if (!(inst.argument_info()[0].has_flag(CSharpArgumentInfoFlags::IsStaticType) &&
           il::transforms::TransformExpressionTrees::match_get_type_from_handle(inst.arguments()[0], &constructor_type)))
         return error_expression("Could not detect static type for DynamicInvokeConstructorInstruction");
     std::vector<TranslatedExpression> arguments = translate_dynamic_arguments(skip_first(inst.arguments()), skip_first(inst.argument_info()));
     const IMethod* constructor = create_dynamic_constructor_symbol(constructor_type, skip_first(inst.argument_info()));
-    return with_il_instruction(make<ObjectCreateExpression>(convert_type(constructor_type), expressions_of(arguments)), &inst)
+    return with_il_instruction(make<ObjectCreateExpression>(convert_type(constructor_type), expressions_of(arguments)), inst.self)
         .with_rr(make<CSharpInvocationResolveResult>(make<ResolveResult>(constructor_type), constructor, resolve_results_of(arguments)));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_member_instruction(DynamicInvokeMemberInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_member_instruction(DynamicInvokeMemberInstruction& inst, TranslationContext) { return translate_dynamic_invoke_member(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_invoke_member(const DynamicFacts& inst) {
     Expression* target_expr;
     TranslatedExpression target = translate_dynamic_target(inst.arguments()[0], inst.argument_info()[0]);
     std::vector<AstType*> type_arguments;
@@ -3512,16 +3536,18 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_member_instruction(
         target_expr = make<MemberReferenceExpression>(target.expression, inst.name(), type_arguments);
     }
     std::vector<TranslatedExpression> arguments = translate_dynamic_arguments(skip_first(inst.arguments()), skip_first(inst.argument_info()));
-    return with_il_instruction(make<InvocationExpression>(target_expr, expressions_of(arguments)), &inst)
+    return with_il_instruction(make<InvocationExpression>(target_expr, expressions_of(arguments)), inst.self)
         .with_rr(make<DynamicInvocationResolveResult>(
             target.resolve_result, DynamicInvocationType::Invocation, resolve_results_of(arguments), std::vector<ResolveResult*>{},
             create_dynamic_invoke_member_symbol(inst.name(), inst.argument_info()[0], skip_first(inst.argument_info()), inst.type_arguments())));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_instruction(DynamicInvokeInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_invoke_instruction(DynamicInvokeInstruction& inst, TranslationContext) { return translate_dynamic_invoke(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_invoke(const DynamicFacts& inst) {
     TranslatedExpression target = translate_dynamic_target(inst.arguments()[0], inst.argument_info()[0]);
     std::vector<TranslatedExpression> arguments = translate_dynamic_arguments(skip_first(inst.arguments()), skip_first(inst.argument_info()));
-    return with_il_instruction(make<InvocationExpression>(target.expression, expressions_of(arguments)), &inst)
+    return with_il_instruction(make<InvocationExpression>(target.expression, expressions_of(arguments)), inst.self)
         .with_rr(make<DynamicInvocationResolveResult>(target.resolve_result, DynamicInvocationType::Invocation, resolve_results_of(arguments)));
 }
 
@@ -3681,8 +3707,10 @@ TranslatedExpression ExpressionBuilder::change_direction_expression_to(Translate
     return TranslatedExpression(dir_expr);
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_set_index_instruction(DynamicSetIndexInstruction& inst, TranslationContext) {
-    assert(inst.arguments().count() >= 3);
+TranslatedExpression ExpressionBuilder::visit_dynamic_set_index_instruction(DynamicSetIndexInstruction& inst, TranslationContext) { return translate_dynamic_set_index(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_set_index(const DynamicFacts& inst) {
+    assert(inst.arguments().size() >= 3);
     TranslatedExpression target = translate_dynamic_target(inst.arguments()[0], inst.argument_info()[0]);
     std::vector<TranslatedExpression> arguments = translate_dynamic_arguments(skip_first(inst.arguments()), skip_first(inst.argument_info()));
     TranslatedExpression value = arguments.back();
@@ -3692,19 +3720,23 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_set_index_instruction(Dyna
         without_il_instruction(make<IndexerExpression>(target.expression, expressions_of(index_arguments)))
             .with_rr(make<DynamicInvocationResolveResult>(target.resolve_result, DynamicInvocationType::Indexing, resolve_results_of(index_arguments), std::vector<ResolveResult*>{},
                                                           create_dynamic_indexer_symbol(dynamic_argument_type(inst.argument_info()[0]), index_info)));
-    return assignment(indexer, value).with_il_instruction(&inst);
+    return assignment(indexer, value).with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_set_member_instruction(DynamicSetMemberInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_set_member_instruction(DynamicSetMemberInstruction& inst, TranslationContext) { return translate_dynamic_set_member(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_set_member(const DynamicFacts& inst) {
     TranslatedExpression target = translate_dynamic_target(inst.target(), inst.target_argument_info());
     TranslatedExpression value = translate_dynamic_argument(inst.value(), inst.value_argument_info());
     TranslatedExpression member =
         without_il_instruction(make<MemberReferenceExpression>(target.expression, inst.name()))
             .with_rr(make<DynamicMemberResolveResult>(target.resolve_result, inst.name(), create_dynamic_member_symbol(inst.name(), inst.target_argument_info())));
-    return assignment(member, value).with_il_instruction(&inst);
+    return assignment(member, value).with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_binary_operator_instruction(DynamicBinaryOperatorInstruction& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_binary_operator_instruction(DynamicBinaryOperatorInstruction& inst, TranslationContext context) { return translate_dynamic_binary_operator(DynamicFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_binary_operator(const DynamicFacts& inst, TranslationContext context) {
     bool checked_context = (inst.binder_flags() & CSharpBinderFlags::CheckedContext) != CSharpBinderFlags::None;
     auto create_binary_operator = [&](BinaryOperatorType operator_type, std::optional<bool> is_checked = std::nullopt) {
         TranslatedExpression left = translate_dynamic_argument(inst.left(), inst.left_argument_info());
@@ -3714,7 +3746,7 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_binary_operator_instructio
             annotate_checked(boe, CheckedAnnotationKind::Checked);
         else if (is_checked == false)
             annotate_checked(boe, CheckedAnnotationKind::Unchecked);
-        return with_il_instruction(boe, &inst).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
+        return with_il_instruction(boe, inst.self).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
     };
     switch (inst.operation()) {
         case ExpressionType::Add:
@@ -3749,11 +3781,13 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_binary_operator_instructio
         case ExpressionType::LeftShiftAssign: return create_binary_operator(BinaryOperatorType::ShiftLeft);
         case ExpressionType::RightShift:
         case ExpressionType::RightShiftAssign: return create_binary_operator(BinaryOperatorType::ShiftRight);
-        default: return default_visit(inst, context);
+        default: return default_visit(*inst.self, context);
     }
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_logic_operator_instruction(DynamicLogicOperatorInstruction& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_logic_operator_instruction(DynamicLogicOperatorInstruction& inst, TranslationContext context) { return translate_dynamic_logic_operator(DynamicFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_logic_operator(const DynamicFacts& inst, TranslationContext context) {
     BinaryOperatorType operator_type;
     if (inst.operation() == ExpressionType::AndAlso) {
         operator_type = BinaryOperatorType::ConditionalAnd;
@@ -3761,15 +3795,17 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_logic_operator_instruction
         operator_type = BinaryOperatorType::ConditionalOr;
     } else {
         assert(false && "Unknown operation for DynamicLogicOperatorInstruction");
-        return default_visit(inst, context);
+        return default_visit(*inst.self, context);
     }
     TranslatedExpression left = translate_dynamic_argument(inst.left(), inst.left_argument_info());
     TranslatedExpression right = translate_dynamic_argument(inst.right(), inst.right_argument_info());
     auto* boe = make<BinaryOperatorExpression>(left.expression, operator_type, right.expression);
-    return with_il_instruction(boe, &inst).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
+    return with_il_instruction(boe, inst.self).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_unary_operator_instruction(DynamicUnaryOperatorInstruction& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_unary_operator_instruction(DynamicUnaryOperatorInstruction& inst, TranslationContext context) { return translate_dynamic_unary_operator(DynamicFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_unary_operator(const DynamicFacts& inst, TranslationContext context) {
     bool checked_context = (inst.binder_flags() & CSharpBinderFlags::CheckedContext) != CSharpBinderFlags::None;
     auto create_unary_operator = [&](UnaryOperatorType operator_type, std::optional<bool> is_checked = std::nullopt) {
         TranslatedExpression operand = translate_dynamic_argument(inst.operand(), inst.operand_argument_info());
@@ -3778,7 +3814,7 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_unary_operator_instruction
             annotate_checked(uoe, CheckedAnnotationKind::Checked);
         else if (is_checked == false)
             annotate_checked(uoe, CheckedAnnotationKind::Unchecked);
-        return with_il_instruction(uoe, &inst).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
+        return with_il_instruction(uoe, inst.self).with_rr(make<ResolveResult>(&SpecialType::dynamic()));
     };
     switch (inst.operation()) {
         case ExpressionType::Not: return create_unary_operator(UnaryOperatorType::Not);
@@ -3799,20 +3835,22 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_unary_operator_instruction
                 expr = make<ConditionalExpression>(operand.expression, make<PrimitiveExpression>(ConstantValue(true)),
                                                    make<PrimitiveExpression>(ConstantValue(false)));
             }
-            return with_il_instruction(expr, &inst).with_rr(make<ResolveResult>(known(KnownTypeCode::Boolean)));
+            return with_il_instruction(expr, inst.self).with_rr(make<ResolveResult>(known(KnownTypeCode::Boolean)));
         }
         case ExpressionType::IsFalse: {
             TranslatedExpression operand = translate_dynamic_argument(inst.operand(), inst.operand_argument_info());
             // Create a dummy conditional to ensure "operator false" will be invoked.
             Expression* expr = make<ConditionalExpression>(operand.expression, make<PrimitiveExpression>(ConstantValue(false)),
                                                            make<PrimitiveExpression>(ConstantValue(true)));
-            return with_il_instruction(expr, &inst).with_rr(make<ResolveResult>(known(KnownTypeCode::Boolean)));
+            return with_il_instruction(expr, inst.self).with_rr(make<ResolveResult>(known(KnownTypeCode::Boolean)));
         }
-        default: return default_visit(inst, context);
+        default: return default_visit(*inst.self, context);
     }
 }
 
-TranslatedExpression ExpressionBuilder::visit_dynamic_compound_assign(DynamicCompoundAssign& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_dynamic_compound_assign(DynamicCompoundAssign& inst, TranslationContext) { return translate_dynamic_compound_assign(DynamicFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_dynamic_compound_assign(const DynamicFacts& inst) {
     ExpressionWithResolveResult target;
     if (inst.target_kind == CompoundTargetKind::Address) {
         target = ld_obj(inst.target(), &SpecialType::dynamic());
@@ -3827,7 +3865,7 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_compound_assign(DynamicCom
         annotate_checked(ae, CheckedAnnotationKind::Checked);
     else
         annotate_checked(ae, CheckedAnnotationKind::Unchecked);
-    return with_il_instruction(ae, &inst)
+    return with_il_instruction(ae, inst.self)
         .with_rr(make<OperatorResolveResult>(&SpecialType::dynamic(), inst.operation(), std::vector<ResolveResult*>{target.resolve_result, value.resolve_result}));
 }
 
@@ -3947,23 +3985,25 @@ TranslatedExpression ExpressionBuilder::translate_call_indirect(const CallIndire
     return with_rr(invocation, make<ResolveResult>(fpt->return_type)).with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(DeconstructInstruction& inst, TranslationContext) {
-    const IType* rhs_type = inst.pattern()->variable()->type();
-    TranslatedExpression rhs = translate(inst.pattern()->tested_operand(), rhs_type);
+TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(DeconstructInstruction& inst, TranslationContext) { return translate_deconstruct(DeconstructFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_deconstruct(const DeconstructFacts& inst) {
+    const IType* rhs_type = inst.type;
+    TranslatedExpression rhs = translate(inst.tested_operand, rhs_type);
     if (auto* dir_expr = as<DirectionExpression>(rhs.expression)) {
         // Deconstructing a value type takes the address of the deconstructed value:
         // (ref x) => x
         rhs = rhs.unwrap_child(dir_expr->expression());
     }
     rhs = rhs.convert_to(rhs_type, *this);  // TODO allowImplicitConversion
-    auto& assignments = inst.assignments()->instructions;
+    auto& assignments = inst.self->assignments()->instructions;
     int assignment_pos = 0;
-    auto& inits = inst.init;
+    auto& inits = inst.self->init;
     int init_pos = 0;
 
     std::map<ILVariable*, ILVariable*> conversion_mapping;
 
-    for (ILInstruction* conv : inst.conversions()->instructions) {
+    for (ILInstruction* conv : inst.self->conversions()->instructions) {
         ILVariable* output_variable = nullptr;
         ILVariable* input_variable = nullptr;
         if (!DeconstructInstruction::is_conversion_stloc(conv, &output_variable, &input_variable)) continue;
@@ -3974,6 +4014,7 @@ TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(Deconstruc
         ILVariable* v = nullptr;
         if (target->match_ld_loc(&v) && v->kind() == VariableKind::DeconstructionInitTemporary) {
             assert(inits[init_pos]->variable() == v);
+            if (l2 != nullptr) l2->moved(target, inits[init_pos]->value());
             target->replace_with(inits[init_pos]->value());
             init_pos++;
         }
@@ -4023,8 +4064,8 @@ TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(Deconstruc
         return expr;
     };
 
-    TupleExpression* lhs = construct_tuple(inst.pattern());
-    return with_rr(with_il_instruction(make<AssignmentExpression>(lhs, rhs.expression), &inst), make<ResolveResult>(known(KnownTypeCode::Void)));
+    TupleExpression* lhs = construct_tuple(inst.self->pattern());
+    return with_rr(with_il_instruction(make<AssignmentExpression>(lhs, rhs.expression), inst.self), make<ResolveResult>(known(KnownTypeCode::Void)));
 }
 
 TranslatedExpression ExpressionBuilder::visit_match_instruction(MatchInstruction& inst, TranslationContext) { return translate_match(MatchFacts::of(inst)); }
@@ -4343,6 +4384,19 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
                 if (target == nullptr) return std::nullopt;
                 return from(translate_ld_flda(LdFldaFacts{&inst, target, field, static_cast<StackType>(n.stack)}));   // ldflda
             }
+            if (const auto* index = ir::get<ir::Index>(unary->x); index != nullptr && ir::has_flag(n, ir::NodeFlag::InlineArray)) {
+                // ldelema.inlinearray
+                ILInstruction* array = operand(index->arr);
+                const IType* type = cil::clr_type(index->elem);
+                if (array == nullptr || type == nullptr) return std::nullopt;
+                std::vector<ILInstruction*> indices;
+                for (const ir::Node* i : ir::statements(index->index)) {
+                    ILInstruction* x = operand(i);
+                    if (x == nullptr) return std::nullopt;
+                    indices.push_back(x);
+                }
+                return from(translate_ld_elema_inline_array(LdElemaInlineArrayFacts{&inst, array, std::move(indices), type}));
+            }
             if (const auto* index = ir::get<ir::Index>(unary->x); index != nullptr && !ir::has_flag(n, ir::NodeFlag::InlineArray)) {
                 // ldelema: the element's address
                 ILInstruction* array = operand(index->arr);
@@ -4404,6 +4458,97 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
         ILInstruction* orelse = operand(cond->orelse);
         if (self == nullptr || condition == nullptr || then == nullptr || orelse == nullptr) return std::nullopt;
         return from(translate_if(IfFacts{self, condition, then, orelse, static_cast<StackType>(n.stack)}, context));
+    }
+    if (ir::is<ir::SwitchExpr>(&n)) {
+        // switch as an expression
+        auto* self = il::as<il::SwitchInstruction>(&inst);
+        std::optional<SwitchFacts> facts = self != nullptr ? l2->switch_facts(n, *self) : std::nullopt;
+        if (!facts) return std::nullopt;
+        return from(translate_switch_expression(*facts, context));
+    }
+    if (ir::is<ir::Empty>(&n)) {
+        // a nop where a value is wanted (an argument slot the call builder fills with one): what the visitor's default gives
+        return from(error_expression("OpCode not supported: " + std::string(il::opcode_name(OpCode::Nop))));
+    }
+    if (const auto* intrinsic = ir::get<ir::Intrinsic>(&n); intrinsic != nullptr && intrinsic->name.starts_with("cs.dynamic.")) {
+        // the dynamic operations (lift.cpp: the binder flags imms[0], the operation imms[1], the context the last type argument where
+        // flagged, the name strs[0], the operands and their argument infos in order)
+        if (intrinsic->imms.empty()) return std::nullopt;
+        DynamicFacts facts{&inst, static_cast<il::CSharpBinderFlags>(intrinsic->imms[0])};
+        const bool has_context = ir::has_flag(n, ir::NodeFlag::HasContext);
+        if (has_context && intrinsic->targs.empty()) return std::nullopt;
+        facts.context = has_context ? cil::clr_type(intrinsic->targs.back()) : nullptr;
+        const std::size_t own_targs = intrinsic->targs.size() - (has_context ? 1 : 0);
+        for (const ir::Node* a : intrinsic->args) {
+            ILInstruction* x = operand(a);
+            if (x == nullptr) return std::nullopt;
+            facts.arguments_.push_back(x);
+        }
+        for (const ir::ArgMeta& m : intrinsic->argmeta) {
+            il::CSharpArgumentInfo info;
+            info.name = m.name.value_or("");
+            info.flags = static_cast<il::CSharpArgumentInfoFlags>(m.flags);
+            info.compile_time_type = cil::clr_type(m.type);
+            facts.argument_info_.push_back(std::move(info));
+        }
+        if (intrinsic->imms.size() > 1) facts.operation_ = static_cast<il::ExpressionType>(intrinsic->imms[1]);
+        if (!intrinsic->strs.empty()) facts.name_ = intrinsic->strs.front();
+        const std::string_view kind = std::string_view(intrinsic->name).substr(std::string_view("cs.dynamic.").size());
+        const auto args = [&](std::size_t operands, std::size_t infos) { return facts.arguments_.size() == operands && facts.argument_info_.size() == infos; };
+        const auto is = [&](OpCode op) { return inst.op_code == op; };
+        if (kind == "compound_assign" && is(OpCode::DynamicCompoundAssign) && args(2, 2) && intrinsic->imms.size() > 2) {
+            facts.context = nullptr;
+            facts.target_kind = static_cast<il::CompoundTargetKind>(intrinsic->imms[2]);
+            return from(translate_dynamic_compound_assign(facts));
+        }
+        if (kind == "binary" && is(OpCode::DynamicBinaryOperatorInstruction) && args(2, 2)) return from(translate_dynamic_binary_operator(facts, context));
+        if (kind == "logic" && is(OpCode::DynamicLogicOperatorInstruction) && args(2, 2)) return from(translate_dynamic_logic_operator(facts, context));
+        if (kind == "unary" && is(OpCode::DynamicUnaryOperatorInstruction) && args(1, 1)) return from(translate_dynamic_unary_operator(facts, context));
+        if (kind == "convert" && is(OpCode::DynamicConvertInstruction) && args(1, 0) && own_targs >= 1) {
+            facts.type_ = cil::clr_type(intrinsic->targs[0]);
+            return from(translate_dynamic_convert(facts));
+        }
+        if (kind == "get_member" && is(OpCode::DynamicGetMemberInstruction) && args(1, 1)) return from(translate_dynamic_get_member(facts));
+        if (kind == "set_member" && is(OpCode::DynamicSetMemberInstruction) && args(2, 2)) return from(translate_dynamic_set_member(facts));
+        if (facts.arguments_.size() != facts.argument_info_.size()) return std::nullopt;
+        if (kind == "get_index" && is(OpCode::DynamicGetIndexInstruction)) return from(translate_dynamic_get_index(facts));
+        if (kind == "set_index" && is(OpCode::DynamicSetIndexInstruction)) return from(translate_dynamic_set_index(facts));
+        if (kind == "invoke" && is(OpCode::DynamicInvokeInstruction)) return from(translate_dynamic_invoke(facts));
+        if (kind == "invoke_member" && is(OpCode::DynamicInvokeMemberInstruction)) {
+            for (std::size_t i = 0; i < own_targs; ++i) facts.type_arguments_.push_back(cil::clr_type(intrinsic->targs[i]));
+            return from(translate_dynamic_invoke_member(facts));
+        }
+        if (kind == "invoke_constructor" && is(OpCode::DynamicInvokeConstructorInstruction)) {
+            facts.type_ = cil::clr_type(n.type);
+            return from(translate_dynamic_invoke_constructor(facts));
+        }
+        return std::nullopt;
+    }
+    if (const auto* alloc = ir::get<ir::StackAlloc>(&n)) {
+        // localloc, localloc.span (lift.cpp: a span's type the element slot)
+        ILInstruction* count = operand(alloc->count);
+        if (count == nullptr) return std::nullopt;
+        if (!alloc->span) return from(translate_loc_alloc_expression(LocAllocFacts{&inst, count, nullptr}, context));
+        const IType* type = cil::clr_type(alloc->elem);
+        if (type == nullptr) return std::nullopt;
+        return from(translate_loc_alloc_span_expression(LocAllocFacts{&inst, count, type}, context));
+    }
+    if (const auto* ref = ir::get<ir::MethodRef>(&n); ref != nullptr && ref->mode == "virtual_delegate") {
+        auto* self = il::as<il::LdVirtDelegate>(&inst);
+        ILInstruction* target = operand(ref->target);
+        const IMethod* method = cil::clr_method(ref->sym);
+        if (self == nullptr || target == nullptr || method == nullptr) return std::nullopt;
+        return from(CallBuilder(*this, *type_system_, *settings).build(LdVirtDelegateFacts{self, target, cil::clr_type(ref->of), method}));
+    }
+    if (const auto* destructure = ir::get<ir::Destructure>(&n)) {
+        // deconstruct: the value and its type the pattern's (its tested operand and variable)
+        auto* self = il::as<il::DeconstructInstruction>(&inst);
+        const auto* match = ir::get<ir::PatternMatch>(destructure->pattern);
+        il::ILInstruction* pattern = self != nullptr ? l2->instruction(destructure->pattern) : nullptr;
+        ILInstruction* tested = match != nullptr && pattern != nullptr ? l2->operand(match->tested, *pattern) : nullptr;
+        const IType* type = match != nullptr && match->var ? cil::clr_type(match->var->type) : nullptr;
+        if (self == nullptr || pattern == nullptr || pattern->parent() != self || tested == nullptr || type == nullptr) return std::nullopt;
+        return from(translate_deconstruct(DeconstructFacts{self, tested, type}));
     }
     if (const auto* match = ir::get<ir::PatternMatch>(&n)) {
         // match (lift.cpp: the variable the pattern's; the value tested)
@@ -4538,7 +4683,12 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
             case ir::ConvKind::UnboxAny: return typed(&ExpressionBuilder::translate_unbox_any);
             case ir::ConvKind::RefCast: return typed(&ExpressionBuilder::translate_cast_class);
             case ir::ConvKind::TryCast: return typed(&ExpressionBuilder::translate_is_inst);
-            case ir::ConvKind::ExprTree: return std::nullopt;
+            case ir::ConvKind::ExprTree: {
+                ILInstruction* argument = operand(cast->x);
+                const IType* type = cil::clr_type(n.type);
+                if (argument == nullptr || type == nullptr) return std::nullopt;
+                return from(translate_expression_tree_cast(ExpressionTreeCastFacts{&inst, argument, type, cast->overflow == ir::Overflow::Trap}));
+            }
             default: break;
         }
         // conv (lift.cpp: the target from the node's type, the rest from the Cast's slots)
@@ -4550,10 +4700,20 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
                                    context));
     }
     if (const auto* binary = ir::get<ir::Binary>(&n)) {
-        if (binary->sym || (binary->lift == ir::Lift::ThreeValued && (binary->op == "&&" || binary->op == "||"))) return std::nullopt;
         ILInstruction* left = operand(binary->left);
         ILInstruction* right = operand(binary->right);
         if (left == nullptr || right == nullptr) return std::nullopt;
+        if (binary->sym) {
+            // a user-defined && or || (lift.cpp: the operator method the symbol)
+            const IMethod* method = cil::clr_method(binary->sym);
+            if (method == nullptr) return std::nullopt;
+            return from(translate_user_defined_logic_operator(LogicOperatorFacts{&inst, method, left, right}));
+        }
+        if (binary->lift == ir::Lift::ThreeValued && (binary->op == "&&" || binary->op == "||")) {
+            const bool both = binary->op == "&&";
+            return from(handle_three_valued_logic(LogicOperatorFacts{&inst, nullptr, left, right}, both ? BinaryOperatorType::BitwiseAnd : BinaryOperatorType::BitwiseOr,
+                                                  both ? ExpressionType::And : ExpressionType::Or));
+        }
         if (binary->op == "??") {
             // a ?? b (lift.cpp: the kind of coalescing; the underlying result type the left operand's stack slot)
             return from(translate_null_coalescing(NullCoalescingFacts{&inst, left, right,

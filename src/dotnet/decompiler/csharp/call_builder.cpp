@@ -1724,10 +1724,12 @@ bool CallBuilder::can_use_delegate_construction(const IMethod* target_method, il
     }
 }
 
-TranslatedExpression CallBuilder::build(il::LdVirtDelegate* inst) {
+TranslatedExpression CallBuilder::build(il::LdVirtDelegate* inst) { return build(LdVirtDelegateFacts::of(*inst)); }
+
+TranslatedExpression CallBuilder::build(const LdVirtDelegateFacts& inst) {
     ExpectedTargetDetails expected_target_details;
     expected_target_details.call_op_code = OpCode::CallVirt;
-    return handle_delegate_construction(inst->type(), inst->method(), expected_target_details, inst->argument(), inst);
+    return handle_delegate_construction(inst.type(), inst.method(), expected_target_details, inst.argument(), inst.self);
 }
 
 ExpressionWithResolveResult CallBuilder::build_method_reference(const IMethod* method, bool is_virtual) {

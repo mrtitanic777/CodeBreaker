@@ -107,7 +107,9 @@ CB_TEST("dotnet.decompiler.csharp.wip_dump", [] {
             by_op << std::format("time transforms_ms {:.1f} lowering_ms {:.1f} builders_ms {:.1f}\n", ms(lane->transforms_time), ms(lane->lowering_time),
                                  ms(lane->builders_time));
             for (std::size_t op = 0; op < lane->from_ilast_by_op.size(); ++op)
-                if (lane->from_ilast_by_op[op] != 0) by_op << std::format("ilast {} {}\n", il::opcode_name(static_cast<il::OpCode>(op)), lane->from_ilast_by_op[op]);
+                if (lane->from_ilast_by_op[op] != 0)
+                    by_op << std::format("ilast {} {} without_node {}\n", il::opcode_name(static_cast<il::OpCode>(op)), lane->from_ilast_by_op[op],
+                                         lane->without_node_by_op[op]);
         }
     }
     if (!decompiler.errors().empty()) {

@@ -9,10 +9,12 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "dotnet/decompiler/il/instructions.hpp"
+#include "dotnet/decompiler/util/long_set.hpp"
 
 namespace cb::dotnet::decompiler::csharp {
 
@@ -356,7 +358,225 @@ struct MatchFacts {
     il::ILVariable* variable() const { return variable_; }
 };
 
+// switch (a statement or an expression): the value switched on, its type and lifting, each section (its labels, its null label, its
+// body, whether it is the default the compiler made), the result type of a switch expression.
+struct SwitchSectionFacts {
+    il::SwitchSection* self;
+    util::LongSet labels_;
+    bool has_null_label_;
+    bool compiler_generated_default;
+    il::ILInstruction* body_;
+
+    const util::LongSet& labels() const { return labels_; }
+    bool has_null_label() const { return has_null_label_; }
+    bool is_compiler_generated_default_section() const { return compiler_generated_default; }
+    il::ILInstruction* body() const { return body_; }
+};
+struct SwitchFacts {
+    il::SwitchInstruction* self;
+    il::ILInstruction* value_;
+    const typesystem::IType* type;
+    bool is_lifted;
+    il::StackType result_type_;
+    std::vector<SwitchSectionFacts> sections_;
+
+    static SwitchFacts of(il::SwitchInstruction& inst) {
+        SwitchFacts facts{&inst, inst.value(), inst.type, inst.is_lifted, inst.result_type(), {}};
+        facts.sections_.reserve(static_cast<std::size_t>(inst.sections.count()));
+        for (il::SwitchSection* s : inst.sections)
+            facts.sections_.push_back({s, s->labels(), s->has_null_label(), s->is_compiler_generated_default_section(), s->body()});
+        return facts;
+    }
+    il::ILInstruction* value() const { return value_; }
+    il::StackType result_type() const { return result_type_; }
+    // the sections in order, as the instruction's list is read
+    std::vector<const SwitchSectionFacts*> sections() const {
+        std::vector<const SwitchSectionFacts*> out;
+        out.reserve(sections_.size());
+        for (const SwitchSectionFacts& s : sections_) out.push_back(&s);
+        return out;
+    }
+    // the section with the most labels (the first of them), as SwitchInstruction::get_default_section
+    const SwitchSectionFacts* get_default_section() const {
+        const SwitchSectionFacts* best = sections_.empty() ? nullptr : &sections_.front();
+        for (const SwitchSectionFacts& s : sections_)
+            if (s.labels().count() > best->labels().count()) best = &s;
+        return best;
+    }
+};
+
+// the dynamic operations (C#'s `dynamic`): the binder flags, the operation, the calling context, the member's name, the type converted
+// to or constructed, the type arguments, the operands and their argument infos (an operation with two operands: left and right, target
+// and value; one: the operand, the argument, the target), the compound assignment's target kind.
+struct DynamicFacts {
+    il::ILInstruction* self;
+    il::CSharpBinderFlags binder;
+    il::ExpressionType operation_ = il::ExpressionType::Extension;
+    const typesystem::IType* context = nullptr;
+    std::string name_;
+    const typesystem::IType* type_ = nullptr;
+    std::vector<const typesystem::IType*> type_arguments_;
+    std::vector<il::ILInstruction*> arguments_;
+    std::vector<il::CSharpArgumentInfo> argument_info_;
+    il::CompoundTargetKind target_kind = il::CompoundTargetKind::Dynamic;
+
+    static DynamicFacts of(il::DynamicBinaryOperatorInstruction& i) {
+        return {&i, i.binder_flags(), i.operation(), i.calling_context(), {}, nullptr, {}, {i.left(), i.right()}, {i.left_argument_info(), i.right_argument_info()}};
+    }
+    static DynamicFacts of(il::DynamicLogicOperatorInstruction& i) {
+        return {&i, i.binder_flags(), i.operation(), i.calling_context(), {}, nullptr, {}, {i.left(), i.right()}, {i.left_argument_info(), i.right_argument_info()}};
+    }
+    static DynamicFacts of(il::DynamicUnaryOperatorInstruction& i) {
+        return {&i, i.binder_flags(), i.operation(), i.calling_context(), {}, nullptr, {}, {i.operand()}, {i.operand_argument_info()}};
+    }
+    static DynamicFacts of(il::DynamicConvertInstruction& i) {
+        return {&i, i.binder_flags(), il::ExpressionType::Extension, i.calling_context(), {}, i.type(), {}, {i.argument()}, {}};
+    }
+    static DynamicFacts of(il::DynamicGetMemberInstruction& i) {
+        return {&i, i.binder_flags(), il::ExpressionType::Extension, i.calling_context(), i.name(), nullptr, {}, {i.target()}, {i.target_argument_info()}};
+    }
+    static DynamicFacts of(il::DynamicSetMemberInstruction& i) {
+        return {&i, i.binder_flags(), il::ExpressionType::Extension, i.calling_context(), i.name(), nullptr, {}, {i.target(), i.value()},
+                {i.target_argument_info(), i.value_argument_info()}};
+    }
+    static DynamicFacts of(il::DynamicGetIndexInstruction& i) { return arguments_of(i, {}, nullptr, {}); }
+    static DynamicFacts of(il::DynamicSetIndexInstruction& i) { return arguments_of(i, {}, nullptr, {}); }
+    static DynamicFacts of(il::DynamicInvokeInstruction& i) { return arguments_of(i, {}, nullptr, {}); }
+    static DynamicFacts of(il::DynamicInvokeMemberInstruction& i) { return arguments_of(i, i.name(), nullptr, i.type_arguments()); }
+    static DynamicFacts of(il::DynamicInvokeConstructorInstruction& i) { return arguments_of(i, {}, i.constructed_type(), {}); }
+    static DynamicFacts of(il::DynamicCompoundAssign& i) {
+        return {&i, i.binder_flags(), i.operation(), nullptr, {}, nullptr, {}, {i.target(), i.value()}, {i.target_argument_info(), i.value_argument_info()},
+                i.target_kind};
+    }
+
+    il::CSharpBinderFlags binder_flags() const { return binder; }
+    il::ExpressionType operation() const { return operation_; }
+    const std::string& name() const { return name_; }
+    const typesystem::IType* type() const { return type_; }
+    const std::vector<const typesystem::IType*>& type_arguments() const { return type_arguments_; }
+    const std::vector<il::ILInstruction*>& arguments() const { return arguments_; }
+    const std::vector<il::CSharpArgumentInfo>& argument_info() const { return argument_info_; }
+    il::ILInstruction* left() const { return arguments_[0]; }
+    il::ILInstruction* right() const { return arguments_[1]; }
+    il::ILInstruction* target() const { return arguments_[0]; }
+    il::ILInstruction* value() const { return arguments_[1]; }
+    il::ILInstruction* operand() const { return arguments_[0]; }
+    il::ILInstruction* argument() const { return arguments_[0]; }
+    const il::CSharpArgumentInfo& left_argument_info() const { return argument_info_[0]; }
+    const il::CSharpArgumentInfo& right_argument_info() const { return argument_info_[1]; }
+    const il::CSharpArgumentInfo& target_argument_info() const { return argument_info_[0]; }
+    const il::CSharpArgumentInfo& value_argument_info() const { return argument_info_[1]; }
+    const il::CSharpArgumentInfo& operand_argument_info() const { return argument_info_[0]; }
+    bool is_checked() const { return (binder & il::CSharpBinderFlags::CheckedContext) != il::CSharpBinderFlags::None; }
+    bool is_explicit() const { return (binder & il::CSharpBinderFlags::ConvertExplicit) != il::CSharpBinderFlags::None; }
+    const il::SlotInfo* slot_info() const { return self->slot_info(); }
+
+private:
+    static DynamicFacts arguments_of(il::DynamicArgumentsInstruction& i, std::string name, const typesystem::IType* type,
+                                     std::vector<const typesystem::IType*> type_arguments) {
+        return {&i, i.binder_flags(), il::ExpressionType::Extension, i.calling_context(), std::move(name), type, std::move(type_arguments),
+                i.arguments().items(), i.argument_info()};
+    }
+};
+
+// ldelema.inlinearray: the inline array (its address), the indices, the inline array type.
+struct LdElemaInlineArrayFacts {
+    il::ILInstruction* self;
+    il::ILInstruction* array_;
+    std::vector<il::ILInstruction*> indices_;
+    const typesystem::IType* type_;
+
+    static LdElemaInlineArrayFacts of(il::LdElemaInlineArray& inst) { return {&inst, inst.array(), inst.indices().items(), inst.type()}; }
+    il::ILInstruction* array() const { return array_; }
+    const std::vector<il::ILInstruction*>& indices() const { return indices_; }
+    const typesystem::IType* type() const { return type_; }
+};
+
+// expression.tree.cast: the operand, the type, whether it is a checked conversion.
+struct ExpressionTreeCastFacts {
+    il::ILInstruction* self;
+    il::ILInstruction* argument_;
+    const typesystem::IType* type_;
+    bool checked;
+
+    static ExpressionTreeCastFacts of(il::ExpressionTreeCast& inst) { return {&inst, inst.argument(), inst.type(), inst.is_checked()}; }
+    il::ILInstruction* argument() const { return argument_; }
+    const typesystem::IType* type() const { return type_; }
+    bool is_checked() const { return checked; }
+};
+
+// a user-defined && or ||: the operator method (op_BitwiseAnd or op_BitwiseOr), the operands; and the three-valued && and || (no method).
+struct LogicOperatorFacts {
+    il::ILInstruction* self;
+    const typesystem::IMethod* method_;
+    il::ILInstruction* left_;
+    il::ILInstruction* right_;
+
+    static LogicOperatorFacts of(il::UserDefinedLogicOperator& inst) { return {&inst, inst.method(), inst.left(), inst.right()}; }
+    static LogicOperatorFacts of(il::BinaryInstruction& inst) { return {&inst, nullptr, inst.left(), inst.right()}; }
+    const typesystem::IMethod* method() const { return method_; }
+    il::ILInstruction* left() const { return left_; }
+    il::ILInstruction* right() const { return right_; }
+};
+
+// localloc, localloc.span: the size (the count, for a span), the span type.
+struct LocAllocFacts {
+    il::ILInstruction* self;
+    il::ILInstruction* argument_;
+    const typesystem::IType* type_;
+
+    static LocAllocFacts of(il::LocAlloc& inst) { return {&inst, inst.argument(), nullptr}; }
+    static LocAllocFacts of(il::LocAllocSpan& inst) { return {&inst, inst.argument(), inst.type()}; }
+    il::ILInstruction* argument() const { return argument_; }
+    const typesystem::IType* type() const { return type_; }
+};
+
+// ldvirtdelegate: the object, the delegate type, the method.
+struct LdVirtDelegateFacts {
+    il::LdVirtDelegate* self;
+    il::ILInstruction* argument_;
+    const typesystem::IType* type_;
+    const typesystem::IMethod* method_;
+
+    static LdVirtDelegateFacts of(il::LdVirtDelegate& inst) { return {&inst, inst.argument(), inst.type(), inst.method()}; }
+    il::ILInstruction* argument() const { return argument_; }
+    const typesystem::IType* type() const { return type_; }
+    const typesystem::IMethod* method() const { return method_; }
+};
+
+// deconstruct: the instruction (its init stores, pattern, conversions and assignments are read from it as it rewrites them) and the
+// value deconstructed with its type.
+struct DeconstructFacts {
+    il::DeconstructInstruction* self;
+    il::ILInstruction* tested_operand;
+    const typesystem::IType* type;
+
+    static DeconstructFacts of(il::DeconstructInstruction& inst) {
+        return {&inst, inst.pattern()->tested_operand(), inst.pattern()->variable()->type()};
+    }
+};
+
 // ---- statements --------------------------------------------------------------------------------------------------------------------
+
+// initblk, cpblk: the addresses, the value, the size, the unaligned. prefix; ckfinite: the operand.
+struct MemoryBlockFacts {
+    il::ILInstruction* self;
+    il::ILInstruction* dest_address_;    // initblk's address
+    il::ILInstruction* source_;          // initblk's value, cpblk's source address
+    il::ILInstruction* size_;
+    std::uint8_t unaligned;
+
+    static MemoryBlockFacts of(il::Initblk& inst) { return {&inst, inst.address(), inst.value(), inst.size(), inst.unaligned_prefix()}; }
+    static MemoryBlockFacts of(il::Cpblk& inst) { return {&inst, inst.dest_address(), inst.source_address(), inst.size(), inst.unaligned_prefix()}; }
+    static MemoryBlockFacts of(il::Ckfinite& inst) { return {&inst, inst.argument(), nullptr, nullptr, 0}; }
+    il::ILInstruction* address() const { return dest_address_; }
+    il::ILInstruction* dest_address() const { return dest_address_; }
+    il::ILInstruction* argument() const { return dest_address_; }
+    il::ILInstruction* value() const { return source_; }
+    il::ILInstruction* source_address() const { return source_; }
+    il::ILInstruction* size() const { return size_; }
+    std::uint8_t unaligned_prefix() const { return unaligned; }
+};
 
 // fixed: the pinned variable, its initial value, the body.
 struct PinnedRegionFacts {
@@ -478,6 +698,7 @@ struct BlockContainerFacts {
     il::BlockContainer* self;
     bool is_loop;
     il::SwitchInstruction* switch_inst;
+    std::optional<SwitchFacts> switch_facts;   // (the switch's facts, read from its node)
 };
 
 // a control-flow block as a statement: its final instruction where it is not a nop (its instructions are the block's, read as the

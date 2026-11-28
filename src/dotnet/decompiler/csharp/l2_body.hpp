@@ -24,8 +24,10 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include "core/arena.hpp"
+#include "dotnet/decompiler/csharp/instruction_facts.hpp"
 #include "translate/frontends/cil/cil.hpp"
 #include "translate/ir_index.hpp"
 
@@ -58,6 +60,7 @@ public:
     std::size_t from_ilast = 0;
     // The instructions translated through the ILAst, by opcode (il::OpCode's value): what is left to port.
     std::array<std::size_t, 256> from_ilast_by_op{};
+    std::array<std::size_t, 256> without_node_by_op{};   // ... of them, the ones with no node (made after the lowering)
     // The time the bodies took in the transform pipeline, in the lowering, and in the builders (the decompiler measures the first and
     // the last).
     std::chrono::steady_clock::duration transforms_time{};
@@ -79,9 +82,18 @@ public:
 
     // The node an instruction was lowered to (null for one made later, a Nop the lowering dropped ...), and back.
     const ir::Node* node(const il::ILInstruction* inst) const { return map_.node(inst); }
+    // ... and for an instruction the builders made, outside the function (a default value, a constant, the arguments of a call they
+    // build), the node it is lowered to now; null where the lowering refuses it.
+    const ir::Node* node_or_lower(il::ILInstruction* inst);
     il::ILInstruction* instruction(const ir::Node* node) const { return map_.instruction(node); }
     il::ILVariable* variable(const ir::Sym* sym) const { return map_.variable(sym); }
     const ir::SymP* sym(const il::ILVariable* variable) const { return map_.sym(variable); }
+    // The instruction a child node stands for, while it is still where the node is: below `parent`, in the slot it was lowered from (a
+    // rewrite of the ILAst the builders make without telling the body, as the deconstruction's replace_with, leaves the node naming an
+    // instruction that moved). The wrappers a lowering adds (an ExprStmt, a switch arm's Yield) are looked through. Null otherwise.
+    il::ILInstruction* operand(const ir::Node* child, const il::ILInstruction& parent) const;
+    // A switch's facts from its node (a Switch or a SwitchExpr); nothing where a section or an operand is not where it was lowered.
+    std::optional<SwitchFacts> switch_facts(const ir::Node& node, il::SwitchInstruction& inst) const;
     // The tree's derived state: parents, uses, jumps.
     ir::TreeIndex& index() { return index_; }
 
@@ -89,7 +101,8 @@ public:
     void variable_changed(il::ILVariable* variable);                        // its kind, type or name
     void variable_registered(il::ILFunction* function, il::ILVariable* variable);
     void replaced(il::ILInstruction* old, il::ILInstruction* now);           // after old->replace_with(now): `now` a load or an address
-    void inserted(il::Block* block, int at);                                // after block->instructions.insert(at, store)
+    void inserted(il::Block* block, int at);
+    void moved(il::ILInstruction* old, il::ILInstruction* now);              // before old->replace_with(now): `now` an instruction of the tree                                // after block->instructions.insert(at, store)
 
     // Counts an instruction the builders translated from its L2 node, or through the ILAst.
     void count(bool read_from_l2, const il::ILInstruction& inst);

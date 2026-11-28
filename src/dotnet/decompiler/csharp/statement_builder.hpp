@@ -122,7 +122,7 @@ private:
         Deconstruction,
     };
 
-    syntax::SwitchStatement* translate_switch(il::BlockContainer* switch_container, il::SwitchInstruction* inst);
+    syntax::SwitchStatement* translate_switch(il::BlockContainer* switch_container, const SwitchFacts* inst);
     void convert_switch_section_body(syntax::SwitchSection* ast_section, il::ILInstruction* body_inst);
 
     syntax::TryCatchStatement* make_try_catch(il::ILInstruction* try_block);
@@ -171,6 +171,11 @@ private:
     TranslatedStatement translate_block(const BlockFacts& facts);
     TranslatedStatement translate_using(const UsingFacts& inst);
     TranslatedStatement translate_pinned_region(const PinnedRegionFacts& inst);
+    TranslatedStatement translate_switch_statement(const SwitchFacts& inst);
+    TranslatedStatement translate_initblk(const MemoryBlockFacts& inst);
+    TranslatedStatement translate_cpblk(const MemoryBlockFacts& inst);
+    TranslatedStatement translate_ckfinite(const MemoryBlockFacts& inst);
+    TranslatedStatement translate_is_statement(const TypedUnaryFacts& inst);
     // An expression in a statement place (ExpressionStatement; stloc and stobj without the top-level ref, isinst as `is`).
     TranslatedStatement translate_expression_statement(il::ILInstruction& inst, bool strip_ref);
     static bool is_final_leave(il::Leave* leave);

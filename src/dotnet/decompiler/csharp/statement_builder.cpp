@@ -1,5 +1,6 @@
 // dotnet/decompiler/csharp/statement_builder.cpp -- see statement_builder.hpp.
 #include "dotnet/decompiler/csharp/statement_builder.hpp"
+#include "translate/frontends/cil/cil_names.hpp"
 #include "dotnet/decompiler/csharp/l2_body.hpp"
 
 #include <algorithm>
@@ -233,6 +234,13 @@ Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::I
         if (on == nullptr || body == nullptr) return nullptr;
         return from(translate_lock(LockFacts{&inst, on, body}));
     }
+    if (ir::is<ir::Switch>(&n)) {
+        // switch in a statement place, outside a container of its own
+        auto* self = il::as<il::SwitchInstruction>(&inst);
+        std::optional<SwitchFacts> facts = self != nullptr ? l2.switch_facts(n, *self) : std::nullopt;
+        if (!facts) return nullptr;
+        return from(translate_switch_statement(*facts));
+    }
     if (const auto* fixed = ir::get<ir::Fixed>(&n)) {
         // fixed (lift.cpp: the pinned variable a Local of the variable, its value the Local's)
         const auto* local = ir::get<ir::Local>(fixed->var);
@@ -308,6 +316,8 @@ Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::I
         if (stmts->size() == 1 && ir::is<ir::Switch>(stmts->front())) {
             facts.switch_inst = il::as<il::SwitchInstruction>(l2.instruction(stmts->front()));
             if (facts.switch_inst == nullptr) return nullptr;
+            facts.switch_facts = l2.switch_facts(*stmts->front(), *facts.switch_inst);
+            if (!facts.switch_facts) return nullptr;
         }
         return from(translate_block_container(facts));
     }
@@ -317,13 +327,29 @@ Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::I
         const bool plain = !assign->op && !assign->eval && !assign->sym && (ir::is<ir::Name>(assign->target) || (deref != nullptr && deref->op == "*"));
         return from(translate_expression_statement(inst, plain));
     }
-    // (isinst is an `is`; initblk, cpblk and ckfinite have statements of their own)
-    const auto* cast = ir::get<ir::Cast>(&n);
-    const auto* intrinsic = ir::get<ir::Intrinsic>(&n);
-    if (ir::category(n) == ir::Category::Expression && !(cast != nullptr && cast->conv == ir::ConvKind::TryCast) &&
-        !(intrinsic != nullptr && (intrinsic->name == "mem.copy" || intrinsic->name == "mem.fill" || intrinsic->name == "cil.ckfinite"))) {
-        return from(translate_expression_statement(inst, false));
+    // isinst is an `is`; initblk, cpblk and ckfinite have statements of their own (lift.cpp: the intrinsics' operands in order)
+    if (const auto* cast = ir::get<ir::Cast>(&n); cast != nullptr && cast->conv == ir::ConvKind::TryCast) {
+        il::ILInstruction* argument = instruction_of(cast->x);
+        const IType* type = translate::frontends::cil::clr_type(n.type);
+        if (argument == nullptr || type == nullptr) return nullptr;
+        return from(translate_is_statement(TypedUnaryFacts{&inst, argument, type}));
     }
+    if (const auto* intrinsic = ir::get<ir::Intrinsic>(&n)) {
+        const bool copy = intrinsic->name == "mem.copy", fill = intrinsic->name == "mem.fill", finite = intrinsic->name == "cil.ckfinite";
+        if (copy || fill || finite) {
+            std::vector<il::ILInstruction*> args;
+            for (const ir::Node* a : intrinsic->args) {
+                il::ILInstruction* x = instruction_of(a);
+                if (x == nullptr) return nullptr;
+                args.push_back(x);
+            }
+            if (args.size() != (finite ? 1u : 3u)) return nullptr;
+            if (finite) return from(translate_ckfinite(MemoryBlockFacts{&inst, args[0], nullptr, nullptr, 0}));
+            const MemoryBlockFacts facts{&inst, args[0], args[1], args[2], translate::frontends::cil::unaligned_of(n)};
+            return from(copy ? translate_cpblk(facts) : translate_initblk(facts));
+        }
+    }
+    if (ir::category(n) == ir::Category::Expression || ir::is<ir::Destructure>(&n)) return from(translate_expression_statement(inst, false));
     return nullptr;
 }
 
@@ -346,7 +372,9 @@ TranslatedStatement StatementBuilder::default_visit(il::ILInstruction& inst) {
     return with_il_instruction(make<syntax::ExpressionStatement>(expr_builder().translate(&inst)), &inst);
 }
 
-TranslatedStatement StatementBuilder::visit_is_inst(il::IsInst& inst) {
+TranslatedStatement StatementBuilder::visit_is_inst(il::IsInst& inst) { return translate_is_statement(TypedUnaryFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_is_statement(const TypedUnaryFacts& inst) {
     // isinst on top-level (unused result) can be translated in general (even for value types) by using "is" instead of "as". This can
     // happen when the result of "expr is T" is unused and the C# compiler optimizes away the null check portion of the "is" operator.
     TranslatedExpression arg = expr_builder().translate(inst.argument());
@@ -354,8 +382,8 @@ TranslatedStatement StatementBuilder::visit_is_inst(il::IsInst& inst) {
     AstType* type = expr_builder().convert_type(inst.type());
     auto* is_expr = make<syntax::IsExpression>(arg, type);
     TranslatedExpression is_translated =
-        with_rr(is_expr, make<ResolveResult>(decompilation_context_->compilation().find_type(KnownTypeCode::Boolean))).with_il_instruction(&inst);
-    return with_il_instruction(make<syntax::ExpressionStatement>(is_translated), &inst);
+        with_rr(is_expr, make<ResolveResult>(decompilation_context_->compilation().find_type(KnownTypeCode::Boolean))).with_il_instruction(inst.self);
+    return with_il_instruction(make<syntax::ExpressionStatement>(is_translated), inst.self);
 }
 
 TranslatedStatement StatementBuilder::visit_st_loc(il::StLoc& inst) {
@@ -422,10 +450,14 @@ std::vector<ConstantResolveResult*> StatementBuilder::create_typed_case_label(st
 }
 
 TranslatedStatement StatementBuilder::visit_switch_instruction(il::SwitchInstruction& inst) {
-    return with_il_instruction(translate_switch(nullptr, &inst), &inst);
+    return translate_switch_statement(SwitchFacts::of(inst));
 }
 
-syntax::SwitchStatement* StatementBuilder::translate_switch(il::BlockContainer* switch_container, il::SwitchInstruction* inst) {
+TranslatedStatement StatementBuilder::translate_switch_statement(const SwitchFacts& inst) {
+    return with_il_instruction(translate_switch(nullptr, &inst), inst.self);
+}
+
+syntax::SwitchStatement* StatementBuilder::translate_switch(il::BlockContainer* switch_container, const SwitchFacts* inst) {
     il::BlockContainer* old_break_target = break_target_;
     break_target_ = switch_container;  // 'break' within a switch would only leave the switch
     auto old_case_label_mapping = std::move(case_label_mapping_);
@@ -433,11 +465,11 @@ syntax::SwitchStatement* StatementBuilder::translate_switch(il::BlockContainer* 
 
     auto [value, type, str_to_int] = expr_builder().translate_switch_value(*inst, false);
 
-    il::SwitchSection* default_section = inst->get_default_section();
+    const SwitchSectionFacts* default_section = inst->get_default_section();
 
     auto* stmt = make<syntax::SwitchStatement>();
     stmt->set_expression(value);
-    std::vector<std::pair<il::SwitchSection*, syntax::SwitchSection*>> translation_dictionary;
+    std::vector<std::pair<const SwitchSectionFacts*, syntax::SwitchSection*>> translation_dictionary;
     // whether the branch can be translated as the case's own block: all branches to the block are in the switch container
     auto can_inline_target_block = [&](il::Branch* br) {
         if (br->target_container() != switch_container) return false;
@@ -449,7 +481,7 @@ syntax::SwitchStatement* StatementBuilder::translate_switch(il::BlockContainer* 
         return true;
     };
     // initialize C# switch sections.
-    for (il::SwitchSection* section : inst->sections) {
+    for (const SwitchSectionFacts* section : inst->sections()) {
         // This is used in the block-label mapping.
         ConstantResolveResult* first_value_resolve_result;
         auto* ast_section = make<syntax::SwitchSection>();
@@ -483,7 +515,7 @@ syntax::SwitchStatement* StatementBuilder::translate_switch(il::BlockContainer* 
         translation_dictionary.emplace_back(section, ast_section);
         stmt->switch_sections().add(ast_section);
     }
-    for (il::SwitchSection* section : inst->sections) {
+    for (const SwitchSectionFacts* section : inst->sections()) {
         syntax::SwitchSection* ast_section = nullptr;
         for (const auto& entry : translation_dictionary) {
             if (entry.first == section) ast_section = entry.second;
@@ -1366,7 +1398,8 @@ TranslatedStatement StatementBuilder::translate_block_container(const BlockConta
         break_target_ = old_break_target;
         return with_il_instruction(loop, &container);
     } else if (facts.switch_inst != nullptr) {
-        return with_il_instruction(translate_switch(&container, facts.switch_inst), &container);
+        const SwitchFacts switch_facts = facts.switch_facts ? *facts.switch_facts : SwitchFacts::of(*facts.switch_inst);
+        return with_il_instruction(translate_switch(&container, &switch_facts), &container);
     } else {
         syntax::BlockStatement* block_stmt = convert_block_container(&container, false);
         return with_il_instruction(block_stmt, &container);
@@ -1630,29 +1663,35 @@ bool StatementBuilder::is_final_leave(il::Leave* leave) {
 
 // ---- the IL block instructions ---------------------------------------------------------------------------------------------------
 
-TranslatedStatement StatementBuilder::visit_initblk(il::Initblk& inst) {
+TranslatedStatement StatementBuilder::visit_initblk(il::Initblk& inst) { return translate_initblk(MemoryBlockFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_initblk(const MemoryBlockFacts& inst) {
     TranslatedExpression address = expr_builder().translate(inst.address());
     TranslatedExpression value = expr_builder().translate(inst.value());
     TranslatedExpression size = expr_builder().translate(inst.size());
     auto* stmt = make<syntax::ExpressionStatement>(expr_builder().call_unsafe_intrinsic(
         inst.unaligned_prefix() != 0 ? "InitBlockUnaligned" : "InitBlock", {address, value, size},
-        decompilation_context_->compilation().find_type(KnownTypeCode::Void), &inst));
+        decompilation_context_->compilation().find_type(KnownTypeCode::Void), inst.self));
     stmt->add_leading_trivia(make<syntax::Comment>(" IL initblk instruction"));
-    return with_il_instruction(stmt, &inst);
+    return with_il_instruction(stmt, inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_cpblk(il::Cpblk& inst) {
+TranslatedStatement StatementBuilder::visit_cpblk(il::Cpblk& inst) { return translate_cpblk(MemoryBlockFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_cpblk(const MemoryBlockFacts& inst) {
     TranslatedExpression dest = expr_builder().translate(inst.dest_address());
     TranslatedExpression source = expr_builder().translate(inst.source_address());
     TranslatedExpression size = expr_builder().translate(inst.size());
     auto* stmt = make<syntax::ExpressionStatement>(expr_builder().call_unsafe_intrinsic(
         inst.unaligned_prefix() != 0 ? "CopyBlockUnaligned" : "CopyBlock", {dest, source, size},
-        decompilation_context_->compilation().find_type(KnownTypeCode::Void), &inst));
+        decompilation_context_->compilation().find_type(KnownTypeCode::Void), inst.self));
     stmt->add_leading_trivia(make<syntax::Comment>(" IL cpblk instruction"));
-    return with_il_instruction(stmt, &inst);
+    return with_il_instruction(stmt, inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_ckfinite(il::Ckfinite& inst) {
+TranslatedStatement StatementBuilder::visit_ckfinite(il::Ckfinite& inst) { return translate_ckfinite(MemoryBlockFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_ckfinite(const MemoryBlockFacts& inst) {
     auto* is_finite_target = make<syntax::MemberReferenceExpression>();
     is_finite_target->set_target(make<syntax::TypeReferenceExpression>(make<syntax::PrimitiveType>("float")));
     is_finite_target->set_member_name("IsFinite");
@@ -1665,7 +1704,7 @@ TranslatedStatement StatementBuilder::visit_ckfinite(il::Ckfinite& inst) {
     auto* if_else = make<syntax::IfElseStatement>();
     if_else->set_condition(make<syntax::UnaryOperatorExpression>(syntax::UnaryOperatorType::Not, is_finite_call));
     if_else->set_true_statement(make<syntax::ThrowStatement>(make<syntax::ObjectCreateExpression>(arithmetic_exception_syntax)));
-    return with_il_instruction(if_else, &inst);
+    return with_il_instruction(if_else, inst.self);
 }
 
 }  // namespace cb::dotnet::decompiler::csharp

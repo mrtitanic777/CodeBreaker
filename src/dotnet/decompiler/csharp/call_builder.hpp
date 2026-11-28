@@ -80,6 +80,8 @@ public:
 
     TranslatedExpression build(il::LdVirtDelegate* inst);
 
+    TranslatedExpression build(const LdVirtDelegateFacts& inst);
+
     // The method as a method group reference (`Type.Method`, `Method`), for ldftn and similar.
     ExpressionWithResolveResult build_method_reference(const typesystem::IMethod* method, bool is_virtual);
 

@@ -114,7 +114,7 @@ public:
     TranslatedExpression translate_target(il::ILInstruction* target, bool non_virtual_invocation, bool member_static, const IType* member_declaring_type,
                                           const IType* constrained_to = nullptr);
 
-    SwitchValue translate_switch_value(il::SwitchInstruction& inst, bool is_expression_context);
+    SwitchValue translate_switch_value(const SwitchFacts& inst, bool is_expression_context);
 
     static TranslatedExpression unwrap_boxing_conversion(TranslatedExpression arg);
     static bool is_unbox_any_with_is_inst(const TypedUnaryFacts& unbox_any, const IType* is_inst_type);
@@ -209,8 +209,8 @@ private:
     ExpressionWithResolveResult convert_field(const IField* field, il::ILInstruction* target_instruction = nullptr);
     bool is_backing_field_of_automatic_event(const IField* field, const IEvent** ev);
     TranslatedExpression is_type(il::IsInst& inst);
-    syntax::StackAllocExpression* translate_loc_alloc_span(il::LocAllocSpan& inst, const IType* type_hint, const IType** element_type);
-    syntax::StackAllocExpression* translate_loc_alloc(il::LocAlloc& inst, const IType* type_hint, const IType** element_type);
+    syntax::StackAllocExpression* translate_loc_alloc_span(const LocAllocFacts& inst, const IType* type_hint, const IType** element_type);
+    syntax::StackAllocExpression* translate_loc_alloc(const LocAllocFacts& inst, const IType* type_hint, const IType** element_type);
     static bool should_display_as_hex(std::int64_t value, const IType* type);
 
     TranslatedExpression translate_ceq(const CompFacts& inst, bool* negate_output);
@@ -219,7 +219,7 @@ private:
     ExpressionWithResolveResult create_builtin_binary_operator(TranslatedExpression left, syntax::BinaryOperatorType type, TranslatedExpression right,
                                                                bool check_for_overflow = false);
     TranslatedExpression translate_comp(const CompFacts& inst);
-    TranslatedExpression handle_three_valued_logic(il::BinaryInstruction& inst, syntax::BinaryOperatorType op, il::ExpressionType eop);
+    TranslatedExpression handle_three_valued_logic(const LogicOperatorFacts& inst, syntax::BinaryOperatorType op, il::ExpressionType eop);
     ExpressionWithResolveResult assignment(TranslatedExpression left, TranslatedExpression right);
 
     std::optional<TranslatedExpression> handle_pointer_arithmetic(const BinaryNumericFacts& inst, TranslatedExpression left, TranslatedExpression right,
@@ -325,6 +325,25 @@ private:
     TranslatedExpression translate_user_defined_compound_assign(const UserDefinedCompoundAssignFacts& inst);
     TranslatedExpression translate_call_indirect(const CallIndirectFacts& inst);
     TranslatedExpression translate_match(const MatchFacts& inst);
+    TranslatedExpression translate_deconstruct(const DeconstructFacts& inst);
+    TranslatedExpression translate_loc_alloc_span_expression(const LocAllocFacts& inst, TranslationContext context);
+    TranslatedExpression translate_loc_alloc_expression(const LocAllocFacts& inst, TranslationContext context);
+    TranslatedExpression translate_user_defined_logic_operator(const LogicOperatorFacts& inst);
+    TranslatedExpression translate_expression_tree_cast(const ExpressionTreeCastFacts& inst);
+    TranslatedExpression translate_ld_elema_inline_array(const LdElemaInlineArrayFacts& inst);
+    TranslatedExpression translate_dynamic_compound_assign(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_unary_operator(const DynamicFacts& inst, TranslationContext context);
+    TranslatedExpression translate_dynamic_logic_operator(const DynamicFacts& inst, TranslationContext context);
+    TranslatedExpression translate_dynamic_binary_operator(const DynamicFacts& inst, TranslationContext context);
+    TranslatedExpression translate_dynamic_set_member(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_set_index(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_invoke(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_invoke_member(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_invoke_constructor(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_get_member(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_get_index(const DynamicFacts& inst);
+    TranslatedExpression translate_dynamic_convert(const DynamicFacts& inst);
+    TranslatedExpression translate_switch_expression(const SwitchFacts& inst, TranslationContext context);
     TranslatedExpression translate_block(il::Block& block, il::BlockKind kind, TranslationContext context);
 
     const typesystem::DecompilerTypeSystem* type_system_;
