@@ -1,0 +1,51 @@
+# xbe.fmt -- an original Xbox executable (XBE): the image header, the certificate and the section table (formats/xbox/xbe).
+# The header sits at the image base, so the tables it points at by virtual address are at (address - base) in the file.
+# The entry point and the kernel thunk address are stored scrambled (XORed with a key per console kind): the reader
+# unscrambles them.
+
+format xbe
+endian le
+
+struct File {
+    magic               : bytes(4) == "XBEH"
+    base                @ 0x104 : u32
+    size_of_headers     @ 0x108 : u32
+    size_of_image       @ 0x10C : u32
+    cert_addr           @ 0x118 : u32
+    section_count       @ 0x11C : u32
+    section_header_addr @ 0x120 : u32
+    init_flags          @ 0x124 : u32
+    entry_raw           @ 0x128 : u32
+    thunk_raw           @ 0x148 : u32
+
+    assert cert_addr >= base : "the certificate lies below the image base"
+    certificate @ cert_addr - base : Certificate
+
+    # (part `sections`: read when the section table is asked for; one that starts below the base is the reader's error)
+    sections @ section_header_addr - base : Section[section_count] if section_header_addr >= base part sections
+}
+
+struct Certificate {
+    size          : u32
+    timestamp     : u32
+    title_id      : u32
+    title_name    : bytes(80)        # 40 UTF-16LE units, ended by the first zero
+    alt_title_ids : bytes(0x40)
+    allowed_media : u32
+    region        : u32
+    ratings       : u32
+    disk_number   : u32
+    version       : u32
+}
+
+# A section header is 0x38 bytes; the reader needs its first six words (the last header may be all the file has).
+struct Section {
+    flags    : u32
+    vaddr    : u32
+    vsize    : u32
+    raw_addr : u32
+    raw_size : u32
+    name_va  : u32
+    rest     : bytes(min(0x38 - 24, $remaining))
+    name @ name_va - base : cstr if name_va != 0
+}
