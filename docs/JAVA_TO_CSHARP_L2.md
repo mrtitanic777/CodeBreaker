@@ -243,3 +243,24 @@ same class: the same tree, apart from source positions. Then the C# from both is
     API maps key on, so the JDK's class headers (the jmods) should be read for the lookup;
   - raw collections from the bytecode that do not build in C#, such as modern's raw Iterator over a map's entries;
   - RetroMCP's jar, and the Java back end reading these units.
+- 2026-11-28: step 4, second part. The lowering now carries the rest of what it declined, in javac's shape:
+  - anonymous classes are `New` with a body: a class of no name extending what it extends, and also implementing it when that is
+    an interface. Its constructor's statements are an initialiser block, after javac's own constructor, which takes the arguments
+    as the base constructor names them;
+  - local classes are `LocalClass`, named by their simple name;
+  - enum constants with a body have a class of kind enum, in its enum;
+  - in all three, the locals they capture from the method around are that method's locals (or parameters), as javac's are, and
+    the `this()` of a local class's constructor takes no argument, as the text writes it.
+
+  `pairs::jvm_to_csharp` decompiles with REMOVE_SYNTHETIC (Java 17's `$values()` and an enum body's access constructor are the
+  compiler's, not the program's). The rule set java names a JDK exception's Throwable methods (getMessage, getSuppressed ...) as
+  Throwable's, the owner javac gives them, where the bytecode names the exception's own class. Proof:
+  - `java.decompiler.lower_l2.*`: calc and fixtures, and now AnonLibKit too (11 of the 20 kits), are javac's tree of their text;
+  - `translate.csharp.pairs.decompiled_*`: calc and fixtures agree with the JVM, and so do 8 kits: AnonLibKit, BoxKit, ExtKit,
+    FormatKit, HeldKit, MapKeyKit, SwitchTry and ToArrayKit.
+
+  What is left:
+  - raw generic types from the bytecode where C# needs the arguments: modern's raw Iterator over a map's entries, JumpKit's method
+    reference to a raw `Op<T>`, and LocalKit's `List.of` with no inferred type;
+  - the methods Fernflower cannot decompile (CollectionKit's, LibraryKit's, TryKit's);
+  - RetroMCP's jar, and the Java back end reading these units.

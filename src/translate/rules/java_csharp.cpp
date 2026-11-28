@@ -220,6 +220,13 @@ const std::unordered_map<std::string, std::string>& family_table() {
     return m;
 }
 
+// The methods every exception has from Throwable.
+bool throwable_method(std::string_view name) {
+    static const std::unordered_set<std::string_view> names = {"getMessage", "getLocalizedMessage", "getCause", "printStackTrace", "getSuppressed",
+                                                               "addSuppressed", "getStackTrace", "initCause", "fillInStackTrace"};
+    return names.contains(name);
+}
+
 std::optional<std::string_view> object_method(std::string_view name, std::size_t arity) {
     if (name == "toString" && arity == 0) return "ToString";
     if (name == "equals" && arity == 1) return "Equals";
@@ -2617,12 +2624,14 @@ void Pass::check_list_change(const ir::Call& call) const {
 
 Pass::Row Pass::lookup(const ir::Call& call) const {
     const ir::Sym& s = *call.sym;
-    const auto fam = family_table().find(s.owner.value_or(""));
-    if (fam == family_table().end()) return {};
+    const std::string owner = s.owner.value_or("");
+    const auto fam = family_table().find(owner);
+    const std::string family = fam != family_table().end() ? fam->second : std::string();
+    if (family.empty()) return {};
     std::vector<std::string> keys;
-    if (!s.params.empty()) keys.push_back(fam->second + "." + s.name + "(" + param_key(s.params[0]) + ")");
-    keys.push_back(fam->second + "." + s.name + "/" + std::to_string(call.args.size()));
-    keys.push_back(fam->second + "." + s.name);
+    if (!s.params.empty()) keys.push_back(family + "." + s.name + "(" + param_key(s.params[0]) + ")");
+    keys.push_back(family + "." + s.name + "/" + std::to_string(call.args.size()));
+    keys.push_back(family + "." + s.name);
     for (const std::string& k : keys) {
         std::optional<apimap::Mapping> m = registry_.resolve(k, "java", "csharp");
         if (!m || m->name != k) continue;
@@ -3028,7 +3037,13 @@ Node* Pass::call(Node* e, bool statement) {
         return e;
     };
     if (s == nullptr) return plain();
-    const std::string owner = s->owner.value_or("");
+    if (const std::string& o = s->owner.value_or(""); throwable_method(s->name) && o.starts_with("java.") && (o.ends_with("Exception") || o.ends_with("Error"))) {
+        // a JDK exception's own class names what it has from Throwable (the bytecode's owner): Throwable's, as javac names it
+        ir::SymP of = std::make_shared<ir::Sym>(*s);
+        of->owner = "java.lang.Throwable";
+        c.sym = of;
+    }
+    const std::string owner = c.sym->owner.value_or("");
     if (s->name == "clone" && c.args.empty() && c.target != nullptr && c.target->type && c.target->type->kind() == "array")   // a copy of an array: shallow, as Java's
         return mk_.cast(c.target->type, mk_.call(expr(c.target), "Clone", {}, ir::class_type("System.Object")));
     if (s->name == "containsKey" && c.args.size() == 1 && c.target != nullptr && c.target->type && c.args[0]->type) {   // a key of another type: not there

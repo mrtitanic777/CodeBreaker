@@ -42,6 +42,8 @@ using ir::TypeP;
 std::string l2_class_name(const std::string& internal) {
     ClassesProcessor* processor = DecompilerContext::current().class_processor;
     ClassNode* node = processor != nullptr ? processor->get_class_node(internal) : nullptr;
+    if (node != nullptr && node->type == ClassNode::CLASS_ANONYMOUS) return {};   // (javac's anonymous class: no name)
+    if (node != nullptr && node->type == ClassNode::CLASS_LOCAL && node->simple_name) return *node->simple_name;   // (a local class: its simple name)
     if (node != nullptr && node->type == ClassNode::CLASS_MEMBER && node->parent != nullptr && node->simple_name)
         return l2_class_name(node->parent->class_struct->qualified_name) + "." + *node->simple_name;
     std::string out = internal;
@@ -192,6 +194,8 @@ private:
     MethodWrapper* method_ = nullptr;    // the method being lowered
     std::string owner_;                  // its locals' owner ("C.m")
     std::pair<int, int> captured_{0, 0}; // in a lambda's body: the slots of the values it captured (the method around's locals)
+    std::string around_;                 // in an anonymous class: the owner of the locals of the method around it
+    std::set<std::string> around_params_; // and which of them are its parameters
 
     template <class K>
     Node* mk(K kind, TypeP type = {}) {
@@ -313,7 +317,8 @@ private:
         std::string base = "java.lang.Object";
         if (is_enum) base = "java.lang.Enum";
         else if (cl->super_class != nullptr) base = l2_class_name(cl->super_class->get_string());
-        SymP s = ir::make_sym(ir::SymKind::Ctor, "<init>", base, false);
+        const bool local = node_ != nullptr && (node_->type == ClassNode::CLASS_LOCAL || node_->type == ClassNode::CLASS_ANONYMOUS);
+        SymP s = ir::make_sym(ir::SymKind::Ctor, "<init>", local ? std::optional<std::string>() : std::optional<std::string>(base), false);   // (javac's names none there)
         if (is_enum) s->params = {l2_string_type(), ir::i32_type()};
         s->ret = ir::void_type();
         return mk(ir::CtorCall{.kind = "super:implicit", .sym = s});
@@ -335,7 +340,29 @@ private:
                 e.sym = ir::make_sym(ir::SymKind::EnumConst, fd->name(), qname_, true, type);
                 if (initializer != nullptr && initializer->type == Exprent::EXPRENT_NEW) {
                     auto* made = static_cast<NewExprent*>(initializer);
-                    if (made->is_anonymous()) throw L2Declined{"enum-body", "an enum constant with a body"};
+                    if (made->is_anonymous()) {   // a constant with a body: its class of no name extends the enum, made with the constant's arguments
+                        ClassNode* child = made->get_new_type().value ? DecompilerContext::current().class_processor->get_class_node(*made->get_new_type().value) : nullptr;
+                        InvocationExprent* ctor = made->get_constructor();
+                        if (child == nullptr || child->get_wrapper() == nullptr || child->super_invocation == nullptr || ctor == nullptr)
+                            throw L2Declined{"enum-body", "an enum constant with a body whose class is not known"};
+                        InvocationExprent* invsuper = child->super_invocation;
+                        const auto& params = invsuper->get_lst_parameters();
+                        for (std::size_t i = 2; i + 1 < params.size(); ++i) {   // (NewExprent::to_java: the name, the ordinal and the last are not the program's)
+                            Exprent* param = params[i];
+                            if (param->type == Exprent::EXPRENT_VAR) {
+                                const int index = static_cast<VarExprent*>(param)->get_index();
+                                if (index > 0 && index <= static_cast<int>(ctor->get_lst_parameters().size())) param = ctor->get_lst_parameters()[static_cast<std::size_t>(index - 1)];
+                            }
+                            e.args.push_back(casted(param, invsuper->get_descriptor().params.at(i), true));
+                        }
+                        e.ctor = ir::make_sym(ir::SymKind::Ctor, "<init>", std::string(), false);
+                        for (Node* a : e.args) e.ctor->params.push_back(a->type);
+                        e.ctor->ret = ir::void_type();
+                        std::vector<TypeP> taken;
+                        for (Node* a : e.args) taken.push_back(a->type);
+                        e.body = anonymous_decl(child, owner_, "enum", taken);
+                        return mk(std::move(e));
+                    }
                     if (InvocationExprent* ctor = made->get_constructor()) {
                         const auto& params = ctor->get_lst_parameters();
                         for (std::size_t i = 2; i < params.size(); ++i) e.args.push_back(casted(params[i], ctor->get_descriptor().params.at(i), true));
@@ -384,7 +411,6 @@ private:
         const bool clinit = cc::CLINIT_NAME == mt->name();
         const bool init = cc::INIT_NAME == mt->name();
         if (clinit) flags &= cc::ACC_STATIC;
-        if (init && node->type == ClassNode::CLASS_ANONYMOUS) return unsupported("anonymous-class", "the constructor of an anonymous class");
 
         std::optional<GenericMethodDescriptor> generic;
         if (const GenericSignatureAttribute* sig = l2_signature(*mt)) {
@@ -459,6 +485,16 @@ private:
             stmts = {mk(ir::ExprStmt{.expr = unsupported("method", "a method Fernflower could not decompile")})};
         }
         const bool throws_exceptions = !d.throws.empty();
+        if (init && node->type == ClassNode::CLASS_ANONYMOUS) {   // (ClassWriter's dinit: a block of the constructor's statements, after the base call)
+            if (!stmts.empty() && ir::is<ir::CtorCall>(stmts.front())) stmts.erase(stmts.begin());
+            if (stmts.empty()) return nullptr;
+            ir::MethodDecl block;
+            block.name = "<init-block>";
+            block.kind = "init";
+            block.ret = ir::void_type();
+            block.body = mk(ir::Block{.stmts = std::move(stmts)});
+            return mk(std::move(block));
+        }
         if (stmts.empty() && (clinit || hide_constructor(wrapper, init, throws_exceptions, param_count))) {
             return clinit ? nullptr : implicit_ctor_of(node, wrapper, is_enum);
         }
@@ -715,7 +751,7 @@ private:
             switch (e->type) {
                 case Exprent::EXPRENT_VAR: {
                     auto* v = static_cast<VarExprent*>(e);
-                    if (v->is_class_def()) throw L2Declined{"local-class", "a class declared in a method"};
+                    if (v->is_class_def()) return local_class(v);
                     if (v->is_definition()) return local(v, nullptr);
                     break;
                 }
@@ -760,6 +796,34 @@ private:
         }
     }
 
+    // A class declared in a method (VarExprent::to_java's class_def): javac's LocalClass, its class named by its simple name; the locals of
+    // the method around it it reads are that method's.
+    Node* local_class(VarExprent* v) {
+        const VarType vt = v->get_var_type();
+        ClassNode* child = vt.value ? DecompilerContext::current().class_processor->get_class_node(*vt.value) : nullptr;
+        if (child == nullptr || child->get_wrapper() == nullptr) throw L2Declined{"local-class", "a class declared in a method whose class is not known"};
+        const std::set<std::string> saved_params = std::exchange(around_params_, method_params());
+        const std::string saved_around = std::exchange(around_, owner_);
+        Node* decl = class_decl(child, std::nullopt);
+        around_ = saved_around;
+        around_params_ = saved_params;
+        return mk_at(ir::LocalClass{.decl = decl}, {}, v);
+    }
+
+    // The names of the parameters of the method being lowered.
+    std::set<std::string> method_params() const {
+        std::set<std::string> params;
+        if (method_ == nullptr) return params;
+        const StructMethod* mt = method_->method_struct;
+        const MethodDescriptor md = MethodDescriptor::parse(mt->descriptor());
+        int index = mt->has_modifier(cc::ACC_STATIC) ? 0 : 1;
+        for (const VarType& pt : md.params) {
+            if (const std::optional<std::string> pname = method_->varproc->get_var_name(VarVersionPair(index, 0))) params.insert(*pname);
+            index += pt.stack_size;
+        }
+        return params;
+    }
+
     Node* local(VarExprent* v, Node* init) {
         ir::Local l;
         const TypeP t = l2_type(v->get_var_type());
@@ -779,7 +843,11 @@ private:
         ir::CtorCall c;
         c.kind = inv->get_classname() != *this_class ? "super" : "this";
         c.sym = ctor_sym(*inv);
-        c.args = call_args(*inv, inv->get_classname(), true);
+        if (signature_fields(inv->get_classname(), inv->get_string_descriptor(), inv->get_lst_parameters().size())) {
+            c.sym->params.clear();   // (InvocationExprent::to_java writes no argument of a constructor with signature fields: `this()` of a local class)
+        } else {
+            c.args = call_args(*inv, inv->get_classname(), true);
+        }
         return mk_at(std::move(c), {}, inv);
     }
 
@@ -947,6 +1015,11 @@ private:
                 const std::string name = var_name(v);
                 if (name.ends_with(".this")) return this_node(name.substr(0, name.size() - 5));   // (an outer instance the nested-class pass named)
                 const bool captured = v->get_index() >= captured_.first && v->get_index() < captured_.second && v->get_version() == 0;
+                if (!around_.empty() && v->get_processor() != nullptr && v->get_processor()->get_external_vars().contains(VarVersionPair(v))) {
+                    // (in an anonymous class: a local of the method around it, which the class captured)
+                    const ir::SymKind kind = around_params_.contains(name) ? ir::SymKind::Param : ir::SymKind::Local;
+                    return mk_at(ir::Name{.sym = ir::make_sym(kind, name, around_, false, t)}, t, e);
+                }
                 const bool param = method_ != nullptr && !captured && is_param(v);
                 // the variable's declared type (a use's own type can be the stack's: an int where the variable is a boolean)
                 TypeP declared = t;
@@ -1211,9 +1284,138 @@ private:
     }
 
 
+    // An anonymous class (NewExprent::to_java's anonymous branch): `new Base(args) { members }` as javac's New with a body, its class of
+    // no name extending what it extends or implements, its constructor's statements an initialiser block after javac's own constructor.
+    Node* anonymous(NewExprent* n) {
+        ClassNode* child = n->get_new_type().value ? DecompilerContext::current().class_processor->get_class_node(*n->get_new_type().value) : nullptr;
+        if (child == nullptr || child->get_wrapper() == nullptr || !child->anonymous_class_type) throw L2Declined{"anonymous-class", "an anonymous class whose class is not known"};
+        InvocationExprent* ctor = n->get_constructor();
+        ir::New made;
+        if (ctor != nullptr && child->super_invocation != nullptr) {
+            InvocationExprent* invsuper = child->super_invocation;
+            const SignatureFields sig = signature_fields(invsuper->get_classname(), invsuper->get_string_descriptor(), ctor->get_lst_parameters().size());
+            const auto& params = invsuper->get_lst_parameters();
+            for (std::size_t i = 0; i < params.size(); ++i) {
+                if (sig && i < sig->size() && sig->at(i)) continue;
+                Exprent* param = params[i];
+                if (param->type == Exprent::EXPRENT_VAR) {   // (the anonymous constructor's parameter: what the new hands it)
+                    const int index = static_cast<VarExprent*>(param)->get_index();
+                    if (index > 0 && index <= static_cast<int>(ctor->get_lst_parameters().size())) param = ctor->get_lst_parameters()[static_cast<std::size_t>(index - 1)];
+                }
+                made.args.push_back(casted(param, invsuper->get_descriptor().params.at(i), true));
+            }
+        }
+        made.sym = ir::make_sym(ir::SymKind::Ctor, "<init>", std::string(), false);
+        std::vector<TypeP> taken;
+        if (ctor != nullptr && child->super_invocation != nullptr) {
+            InvocationExprent* invsuper = child->super_invocation;
+            const SignatureFields sig = signature_fields(invsuper->get_classname(), invsuper->get_string_descriptor(), ctor->get_lst_parameters().size());
+            for (std::size_t i = 0; i < invsuper->get_descriptor().params.size(); ++i) {
+                if (sig && i < sig->size() && sig->at(i)) continue;
+                taken.push_back(l2_type(invsuper->get_descriptor().params[i]));
+            }
+        }
+        if (taken.size() != made.args.size()) taken.clear();
+        made.sym->params = taken;
+        made.sym->ret = ir::void_type();
+        const std::set<std::string> saved_params = std::exchange(around_params_, method_params());   // (a captured parameter is a Param, as javac's)
+        made.body = anonymous_decl(child, owner_, "class", taken);
+        around_params_ = saved_params;
+        return mk_at(std::move(made), ir::class_type(std::string()), n);
+    }
+
+    // The names of the parameters of an own class's constructor the text writes, as the base of a body names them (empty: not an own one).
+    std::vector<std::string> base_param_names(InvocationExprent* invsuper) {
+        std::vector<std::string> names;
+        if (invsuper == nullptr) return names;
+        ClassNode* base = DecompilerContext::current().class_processor->get_class_node(invsuper->get_classname());
+        if (base == nullptr || base->get_wrapper() == nullptr) return names;
+        MethodWrapper* mw = base->get_wrapper()->get_method_wrapper(std::string(cc::INIT_NAME), invsuper->get_string_descriptor());
+        if (mw == nullptr || mw->varproc == nullptr) return names;
+        const bool is_enum = base->class_struct->has_modifier(cc::ACC_ENUM) && DecompilerContext::option(pref::DECOMPILE_ENUM);
+        const auto& params = invsuper->get_descriptor().params;
+        int index = is_enum ? 3 : 1;
+        for (std::size_t i = is_enum ? 2 : 0; i < params.size(); ++i) {
+            if (!(mw->signature_fields && i < mw->signature_fields->size() && mw->signature_fields->at(i))) {
+                const std::optional<std::string> n = mw->varproc->get_var_name(VarVersionPair(index, 0));
+                names.push_back(n.value_or("param" + std::to_string(index)));
+            }
+            index += params[i].stack_size;
+        }
+        return names;
+    }
+
+    // `kind` "enum" and `taken`: an enum constant's body, whose constructor takes the constant's arguments and hands them to the enum's.
+    Node* anonymous_decl(ClassNode* node, const std::string& around, const std::string& kind = "class", const std::vector<TypeP>& taken = {}) {
+        ClassNode* const saved_node = std::exchange(node_, node);
+        const std::string saved_qname = std::exchange(qname_, std::string());
+        const std::string saved_around = std::exchange(around_, around);
+        DecompilerContext& ctx = DecompilerContext::current();
+        ClassNode* const saved_current = std::exchange(ctx.current_class_node, node);
+        struct Restore {
+            std::function<void()> f;
+            ~Restore() { f(); }
+        } restore{[&] {
+            ctx.current_class_node = saved_current;
+            node_ = saved_node;
+            qname_ = saved_qname;
+            around_ = saved_around;
+        }};
+        ClassWrapper* wrapper = node->get_wrapper();
+        const StructClass* cl = wrapper->get_class_struct();
+        ir::ClassDecl c;
+        c.name = std::string();
+        c.qname = std::string();
+        c.kind = kind;
+        c.extends = l2_type(*node->anonymous_class_type);
+        if (kind == "enum") c.outer = l2_class_name(*node->anonymous_class_type->value);
+        if (cl->super_class != nullptr && VarType::parse(cl->super_class->get_string(), true) == VarType::OBJECT && !cl->interfaces().empty())
+            c.implements.push_back(c.extends);   // (`new Runnable() { ... }`: javac's class implements what it names)
+        Node* decl = mk(std::move(c));
+        auto& members = ir::get<ir::ClassDecl>(decl)->members;
+        // javac's constructor of an anonymous class: its base's, with the arguments the new gives
+        ir::MethodDecl implicit;
+        implicit.sym = ir::make_sym(ir::SymKind::Ctor, "<init>", std::string(), false);
+        implicit.sym->ret = ir::void_type();
+        implicit.name = "<init>";
+        implicit.kind = "ctor";
+        implicit.ret = ir::void_type();
+        const bool of_enum = kind == "enum";
+        const bool with_args = of_enum || !taken.empty();
+        SymP base = ir::make_sym(ir::SymKind::Ctor, "<init>", with_args ? std::optional<std::string>(l2_class_name(*node->anonymous_class_type->value)) : std::nullopt, false);
+        base->ret = ir::void_type();
+        ir::CtorCall call{.kind = "super:implicit", .sym = base};
+        const std::vector<std::string> names = base_param_names(node->super_invocation);
+        for (std::size_t i = 0; i < taken.size(); ++i) {
+            const std::string pname = names.size() == taken.size() ? names[i] : "arg" + std::to_string(i);
+            const SymP arg = ir::make_sym(ir::SymKind::Param, pname, std::string(".<init>"), false, taken[i]);
+            implicit.params.push_back(mk(ir::Param{.sym = arg, .type = taken[i]}));
+            implicit.sym->params.push_back(taken[i]);
+            base->params.push_back(taken[i]);
+            call.args.push_back(mk(ir::Name{.sym = arg}, taken[i]));
+        }
+        implicit.body = mk(ir::Block{.stmts = {mk(std::move(call))}});
+        members.push_back(mk(std::move(implicit)));
+        for (const auto& fd_ptr : cl->fields()) {
+            const StructField* fd = fd_ptr.get();
+            const bool hide = (fd->is_synthetic() && DecompilerContext::option(pref::REMOVE_SYNTHETIC)) ||
+                              wrapper->get_hidden_members().contains(InterpreterUtil::make_unique_key(fd->name(), fd->descriptor()));
+            if (!hide) members.push_back(field(wrapper, cl, fd, false));
+        }
+        for (const auto& mt_ptr : cl->methods()) {
+            const StructMethod* mt = mt_ptr.get();
+            const bool hide = (mt->is_synthetic() && DecompilerContext::option(pref::REMOVE_SYNTHETIC)) ||
+                              (mt->has_modifier(cc::ACC_BRIDGE) && DecompilerContext::option(pref::REMOVE_BRIDGE)) ||
+                              wrapper->get_hidden_members().contains(InterpreterUtil::make_unique_key(mt->name(), mt->descriptor()));
+            if (hide) continue;
+            if (Node* m = method(node, mt, false, false)) members.push_back(m);
+        }
+        return decl;
+    }
+
     Node* new_node(NewExprent* n, const TypeP& t) {
         if (n->is_lambda()) return lambda(n, t);
-        if (n->is_anonymous()) throw L2Declined{"anonymous-class", "an anonymous class"};
+        if (n->is_anonymous()) return anonymous(n);
         const VarType& new_type = n->get_new_type();
         if (new_type.array_dim > 0) {
             ir::NewArray a;

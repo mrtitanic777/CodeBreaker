@@ -10,8 +10,8 @@
 //     out.units;          // one ir::Unit per root class, lang "java", in the order the classes are written
 //     out.text;           // the Java text, as decompile() gives it
 //
-// What the lowering does not carry yet is an Unsupported node with its reason (an anonymous or local class, a lambda, an inner class made on an
-// outer instance), never a guess; the units say so to whoever reads them (ir::unsupported).
+// What the lowering does not carry is an Unsupported node with its reason (a method Fernflower could not decompile, an assert), never a guess;
+// the units say so to whoever reads them (ir::unsupported).
 //
 // Not upstream code: Fernflower writes Java text only.
 #pragma once

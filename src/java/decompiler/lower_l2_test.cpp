@@ -89,7 +89,8 @@ void ll_normalise(cb::Json& doc) {
             cb::Json kept = cb::Json::array();
             for (const cb::Json& m : doc["mods"])
                 if (m != "IMPLICIT") kept.push_back(m);
-            doc["mods"] = std::move(kept);
+            if (kept.empty()) doc.erase("mods");
+            else doc["mods"] = std::move(kept);
         }
         for (const char* flag : {"postfix", "default", "implicit"})
             if (doc.contains(flag) && doc[flag] == false) doc.erase(flag);
@@ -205,13 +206,15 @@ CB_TEST("java.decompiler.lower_l2.the_corpus_lowers_as_javac_lowers_its_text", [
 });
 
 // The kits the Java -> C# capability test runs, each compiled alone (Java 8's class files, or Java 17's). The ones listed are javac's tree of
-// their text; the others are printed with where they differ: what the lowering does not carry yet (an anonymous or local class, an enum
-// constant with a body: an Unsupported node), a lambda's parameters where the text is raw (as modern's), and the JDK's own knowledge of its
-// generic methods' results (javac's `Objects.requireNonNull(x)` is of x's type).
+// their text; the others are printed with where they differ: a method Fernflower cannot decompile (an Unsupported node, where javac has the
+// text's empty body), a lambda's parameters where the text is raw (as modern's), the JDK's own knowledge of its generic methods' results
+// (javac's `Objects.requireNonNull(x)` is of x's type), javac's names for what it writes itself (an enum body's constructor's parameters)
+// and the method a class in a class in a method captures a local of (the outermost: the lowering names the one around it).
 CB_TEST("java.decompiler.lower_l2.the_kits_lower_as_javac_lowers_their_text", [] {
     const std::optional<LlJdk> jdk = ll_jdk();
     if (!jdk) return;
-    const std::set<std::string> same = {"AsListKit", "BoxKit", "BoxStep", "ClientKit", "DataKit", "ExtKit", "FormatKit", "LibKit", "SwitchTry", "ToArrayKit"};
+    const std::set<std::string> same = {"AnonLibKit", "AsListKit", "BoxKit", "BoxStep", "ClientKit", "DataKit",
+                                        "ExtKit", "FormatKit", "LibKit", "SwitchTry", "ToArrayKit"};
     std::vector<stdfs::path> kits;
     for (const char* dir : {"translate/testdata/csharp_java/kit", "translate/testdata/c_java/trykit", "translate/testdata/c_java/streamkit"})
         for (const stdfs::path& f : ll_java_files(cb::testing::data_path(dir))) kits.push_back(f);

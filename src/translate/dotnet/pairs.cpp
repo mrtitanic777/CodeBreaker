@@ -106,6 +106,7 @@ Verdict Pairs::jvm_to_csharp(const stdfs::path& src_dir, const std::string& main
 
     cb::java::decompiler::DecompileRequest request;
     request.sources = {classes};
+    request.options = {{"rsy", "1"}};   // (the compiler's synthetic members are not the program's: Java 17's $values(), an enum body's access constructor)
     const cb::java::decompiler::lower_l2::Lowered lowered = cb::java::decompiler::lower_l2::decompile(request, arena);
     cs::L2CSharpOptions options;
     options.java_registry = java.registry;

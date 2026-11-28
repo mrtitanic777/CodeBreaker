@@ -315,9 +315,8 @@ CB_TEST("translate.csharp.pairs.decompiled_java_programs_round_trip_to_equivalen
 });
 
 // The kits of the Java -> C# capability test from their bytecode, each alone: the verdict of each is printed, and those listed agree with the JVM.
-// The others are refused for what the lowering does not carry yet (anonymous and local classes, an enum constant with a body), for a JDK
-// member named by the class the bytecode names (IllegalStateException.getMessage, which javac names Throwable's), or for what the source
-// route refuses too.
+// The others: raw generic types from the bytecode where C# needs the arguments (JumpKit's method reference to a raw Op<T>, LocalKit's List.of
+// with no inferred type), methods Fernflower cannot decompile (CollectionKit, LibraryKit, TryKit), and what the source route refuses too.
 CB_TEST("translate.csharp.pairs.decompiled_kits_round_trip", [] {
     const dn::Sdk* sdk = csf_installed();
     const stdfs::path jdk = "C:/Program Files/Java/jdk-21/bin";
@@ -331,7 +330,7 @@ CB_TEST("translate.csharp.pairs.decompiled_kits_round_trip", [] {
     side.runtime_dir = cb::testing::data_path("../config/translate/dotnet/runtime");
     side.jdk = dn::judge::Jdk{.javac = javac, .jvm = java};
     const cs::Frontend frontend = csf_frontend_of(*sdk);
-    const std::set<std::string> agree = {"BoxKit", "ExtKit", "FormatKit", "MapKeyKit", "SwitchTry", "ToArrayKit"};
+    const std::set<std::string> agree = {"AnonLibKit", "BoxKit", "ExtKit", "FormatKit", "HeldKit", "MapKeyKit", "SwitchTry", "ToArrayKit"};
     std::size_t agreed = 0, kits = 0;
     for (const char* dir : {"translate/testdata/csharp_java/kit", "translate/testdata/c_java/trykit", "translate/testdata/c_java/streamkit"}) {
         for (const auto& entry : stdfs::directory_iterator(cb::testing::data_path(dir))) {
