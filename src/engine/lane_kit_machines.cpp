@@ -34,17 +34,14 @@
 #include "formats/nes.hpp"
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
+#include "source/console_writer.hpp"
 #include "source/dos_writer.hpp"
 #include "source/gb_writer.hpp"
 #include "source/gba_writer.hpp"
 #include "source/genesis_writer.hpp"
-#include "source/coleco_writer.hpp"
-#include "source/cpc_writer.hpp"
-#include "source/msx_writer.hpp"
 #include "source/ps1_writer.hpp"
 #include "source/nes_writer.hpp"
 #include "source/sms_writer.hpp"
-#include "source/zx_writer.hpp"
 #include "verify/lanes/dos.hpp"
 #include "verify/lanes/image_lane.hpp"
 #include "verify/lanes/msx.hpp"
@@ -597,7 +594,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
     } else if (name == "zx") {
         spec = flat_spec(FlatMachine{
             std::string(lanes::zx::kKind), lanes::zx::kRev, {lanes::zx::kRomLow, lanes::zx::kRomHigh},
-            [](const stdfs::path& m, const stdfs::path& out) { return source::zx_writer::reconstruct(m, out); },
+            [](const stdfs::path& m, const stdfs::path& out) { return source::console_writer::reconstruct("zx", m, out); },
             [](const stdfs::path& m) {
                 const formats::zx::Program p = formats::zx::read(m);
                 return std::make_tuple(p.origin, p.image, p.memory);
@@ -605,7 +602,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
     } else if (name == "msx") {
         spec = flat_spec(FlatMachine{
             std::string(lanes::msx::kKind), lanes::msx::kRev, {lanes::msx::kRomLow, lanes::msx::kRomHigh},
-            [](const stdfs::path& m, const stdfs::path& out) { return source::msx_writer::reconstruct(m, out); },
+            [](const stdfs::path& m, const stdfs::path& out) { return source::console_writer::reconstruct("msx", m, out); },
             [](const stdfs::path& m) {
                 const formats::msx::Program p = formats::msx::read(m);
                 return std::make_tuple(p.origin, p.image, Bytes());
@@ -613,7 +610,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
     } else if (name == "coleco") {
         spec = flat_spec(FlatMachine{
             "coleco", 1, {0, 0},
-            [](const stdfs::path& m, const stdfs::path& out) { return source::coleco_writer::reconstruct(m, out); },
+            [](const stdfs::path& m, const stdfs::path& out) { return source::console_writer::reconstruct("coleco", m, out); },
             [](const stdfs::path& m) {
                 const formats::coleco::Program p = formats::coleco::read(m);
                 return std::make_tuple(formats::coleco::kOrigin, p.image, Bytes());
@@ -622,7 +619,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
     } else if (name == "cpc") {
         spec = flat_spec(FlatMachine{
             "cpc", 1, {0, 0},
-            [](const stdfs::path& m, const stdfs::path& out) { return source::cpc_writer::reconstruct(m, out); },
+            [](const stdfs::path& m, const stdfs::path& out) { return source::console_writer::reconstruct("cpc", m, out); },
             [](const stdfs::path& m) {
                 const formats::cpc::Program p = formats::cpc::read(m);
                 return std::make_tuple(p.origin, p.image, p.memory);

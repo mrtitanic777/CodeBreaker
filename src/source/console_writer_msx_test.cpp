@@ -1,14 +1,27 @@
 // Tests of the MSX writer over a small cartridge written byte by byte: it must come back as source that builds the same bytes, with the
 // MSX's names for what the code touches, and a file that is not a cartridge must be refused.
 
-#include "source/msx_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/msx.hpp"
 
-namespace cb::source::msx_writer {
+namespace cb::source::console_writer::msx_test {
 namespace {
+
+// The platform's writer over a file (the description: config/source/platforms/msx.json).
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("msx", file, folder);
+}
+
+// `data` kept in `folder` as `name` and written beside it.
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::write_file(folder / std::string(name), data);
+    return reconstruct(folder / std::string(name), folder);
+}
+
 
 // A 16 KB cartridge at $4000: "AB" and INIT = $4010.
 //   $4010 init: CALL $4020; OUT ($98),A; RET
@@ -26,10 +39,10 @@ Bytes cartridge() {
     return b;
 }
 
-CB_TEST("source.msx_writer.a_cartridge_comes_back_as_source_that_builds_the_same_bytes", [] {
+CB_TEST("source.console_writer.msx.a_cartridge_comes_back_as_source_that_builds_the_same_bytes", [] {
     fs::ScopedTempDir dir("cb_msx");
     const formats::msx::Program p = formats::msx::parse(cartridge());
-    const image_writer::Written r = write(p, "demo.rom", dir.path());
+    const image_writer::Written r = write(cartridge(), "demo.rom", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0x4010, "init"}, {0x4020, "sub_4020"}}));
@@ -39,9 +52,9 @@ CB_TEST("source.msx_writer.a_cartridge_comes_back_as_source_that_builds_the_same
     CB_CHECK(r.built_image && *r.built_image == p.image);
 });
 
-CB_TEST("source.msx_writer.the_source_names_the_ports_and_the_bios_by_the_handbook", [] {
+CB_TEST("source.console_writer.msx.the_source_names_the_ports_and_the_bios_by_the_handbook", [] {
     fs::ScopedTempDir dir("cb_msx");
-    const image_writer::Written r = write(formats::msx::parse(cartridge()), "demo.rom", dir.path());
+    const image_writer::Written r = write(cartridge(), "demo.rom", dir.path());
     const std::string text = fs::read_text(r.source);
     for (const char* line : {"; MSX cartridge demo.rom; 16 KB at $4000; INIT $4010 STATEMENT $0000 DEVICE $0000 TEXT $0000", "VDP_DATA", "RDVRM",
                              "        OUT (VDP_DATA),A", "        CALL RDVRM", "        CALL sub_4020", "init:"}) {
@@ -50,7 +63,7 @@ CB_TEST("source.msx_writer.the_source_names_the_ports_and_the_bios_by_the_handbo
     CB_CHECK(text.find("PSG_ADDR") == std::string::npos);   // only what the code uses is defined
 });
 
-CB_TEST("source.msx_writer.reconstruct_reads_the_file_and_refuses_what_is_not_a_cartridge", [] {
+CB_TEST("source.console_writer.msx.reconstruct_reads_the_file_and_refuses_what_is_not_a_cartridge", [] {
     fs::ScopedTempDir dir("cb_msx");
     const Bytes image = cartridge();
     fs::write_file(dir.path() / "game.rom", image);
@@ -64,4 +77,4 @@ CB_TEST("source.msx_writer.reconstruct_reads_the_file_and_refuses_what_is_not_a_
 });
 
 }  // namespace
-}  // namespace cb::source::msx_writer
+}  // namespace cb::source::console_writer::msx_test

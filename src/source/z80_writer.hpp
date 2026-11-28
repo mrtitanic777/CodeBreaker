@@ -1,9 +1,9 @@
 // source/z80_writer.hpp -- a flat Z80 program (one block of memory at one address) as assembly source that builds back into it.
-// The ZX Spectrum and MSX lanes write through it: they give the block, its entry points and the machine's names.
+// The console writer's z80-block shape (source/console_writer: the Spectrum, the MSX, the ColecoVision, the CPC) and the Neo Geo's sound CPU write through it: they give the block, its entry points and the machine's names.
 //
 //     z80_writer::Block block{.image = bytes, .origin = 0x4000, .entries = {{0x4010, "init"}}};
 //     image_writer::Written r = z80_writer::write(block, machine, "out", "game");
-//     r.source                  <stem>.asm (the Z80 SLEIGH description's syntax, source/z80_source: .org, .equ, .byte, .ascii, .space)
+//     r.source                  <stem>.asm (in the machine's dialect, sjasmplus unless it says another: source/z80_source)
 //     r.same                    the source, built, is the block byte for byte
 //     r.functions               {address: name}
 //     r.built_image             the block as the source builds it
@@ -41,6 +41,7 @@ struct Block {
 struct Machine {
     image_writer::Names ports;
     image_writer::Names names;
+    std::string dialect = "sjasmplus";      // the dialect the source is written in (config/dialects/<dialect>.json)
 };
 
 // What flow reaches from the entries inside the block: the code (by address), the jump targets, the function starts. A called

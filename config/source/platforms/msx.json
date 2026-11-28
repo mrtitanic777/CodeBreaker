@@ -1,0 +1,12 @@
+{
+  "platform": "msx",
+  "title": "MSX cartridge",
+  "description": "A cartridge of up to 48 KB, written from its INIT, STATEMENT and DEVICE entries, with the MSX's I/O ports and BIOS entry points and system variables.",
+  "shape": "z80-block",
+  "dialect": "sjasmplus",
+  "ports": "ports",
+  "fixed": "firmware",
+  "head": [
+    "MSX cartridge {file}; {kb} KB at ${origin:04X}; INIT ${init:04X} STATEMENT ${statement:04X} DEVICE ${device:04X} TEXT ${text:04X}"
+  ]
+}

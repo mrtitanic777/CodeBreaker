@@ -1,16 +1,29 @@
 // Tests of the Amstrad CPC writer over a small AMSDOS binary and a snapshot written byte by byte: each must come back as source that builds the same
 // bytes, with the firmware's names for what the code calls, and a file that is not a CPC program must be refused.
 
-#include "source/cpc_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include <cstring>
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/cpc.hpp"
 
-namespace cb::source::cpc_writer {
+namespace cb::source::console_writer::cpc_test {
 namespace {
+
+// The platform's writer over a file (the description: config/source/platforms/cpc.json).
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("cpc", file, folder);
+}
+
+// `data` kept in `folder` as `name` and written beside it.
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::write_file(folder / std::string(name), data);
+    return reconstruct(folder / std::string(name), folder);
+}
+
 
 // $4000 start: CALL $4010; RET        $4010 sub: CALL $BB5A (TXT_OUTPUT); LD A,(HL); RET
 Bytes code() {
@@ -39,10 +52,10 @@ Bytes amsdos(const Bytes& body) {
     return f;
 }
 
-CB_TEST("source.cpc_writer.a_binary_comes_back_as_source_that_builds_the_same_bytes", [] {
+CB_TEST("source.console_writer.cpc.a_binary_comes_back_as_source_that_builds_the_same_bytes", [] {
     fs::ScopedTempDir dir("cb_cpc");
     const formats::cpc::Program p = formats::cpc::parse(amsdos(code()), ".bin");
-    const image_writer::Written r = write(p, "demo.bin", dir.path());
+    const image_writer::Written r = write(amsdos(code()), "demo.bin", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK_EQ(r.functions.at(0x4000), "start");
     CB_CHECK_EQ(r.functions.at(0x4010), "sub_4010");
@@ -54,7 +67,7 @@ CB_TEST("source.cpc_writer.a_binary_comes_back_as_source_that_builds_the_same_by
     }
 });
 
-CB_TEST("source.cpc_writer.a_snapshot_is_written_from_its_program_counter", [] {
+CB_TEST("source.console_writer.cpc.a_snapshot_is_written_from_its_program_counter", [] {
     fs::ScopedTempDir dir("cb_cpc");
     Bytes sna(0x100 + 0x10000, 0);
     std::memcpy(sna.data(), "MV - SNA", 8);
@@ -69,7 +82,7 @@ CB_TEST("source.cpc_writer.a_snapshot_is_written_from_its_program_counter", [] {
     CB_CHECK(fs::read_text(r.source).find("registers at the snapshot:") != std::string::npos);
 });
 
-CB_TEST("source.cpc_writer.what_is_not_a_cpc_program_is_refused", [] {
+CB_TEST("source.console_writer.cpc.what_is_not_a_cpc_program_is_refused", [] {
     fs::ScopedTempDir dir("cb_cpc");
     fs::write_file(dir.path() / "junk.bin", Bytes(300, 'x'));
     CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "junk.bin", dir.path() / "out"));
@@ -77,4 +90,4 @@ CB_TEST("source.cpc_writer.what_is_not_a_cpc_program_is_refused", [] {
 });
 
 }  // namespace
-}  // namespace cb::source::cpc_writer
+}  // namespace cb::source::console_writer::cpc_test

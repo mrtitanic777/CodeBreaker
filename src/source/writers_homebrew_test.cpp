@@ -6,17 +6,16 @@
 #include "core/testing.hpp"
 #include "source/atari2600_writer.hpp"
 #include "source/atari5200_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/gb_writer.hpp"
 #include "source/lynx_writer.hpp"
 #include "source/pce_writer.hpp"
 #include "source/snes_writer.hpp"
 #include "source/genesis_writer.hpp"
-#include "source/coleco_writer.hpp"
 #include "source/gba_writer.hpp"
 #include "source/gekko_writer.hpp"
 #include "source/jaguar_writer.hpp"
 #include "source/n64_writer.hpp"
-#include "source/msx_writer.hpp"
 #include "source/n3ds_writer.hpp"
 #include "source/nds_writer.hpp"
 #include "source/ps1_writer.hpp"
@@ -27,7 +26,6 @@
 #include "source/sms_writer.hpp"
 #include "source/vb_writer.hpp"
 #include "source/vita_writer.hpp"
-#include "source/zx_writer.hpp"
 
 namespace cb::source {
 namespace {
@@ -38,6 +36,11 @@ std::optional<std::filesystem::path> sample(std::string_view relative) {
     const std::filesystem::path file = root / std::string(relative);
     if (!std::filesystem::is_regular_file(file)) return std::nullopt;
     return file;
+}
+
+// The console writer for a platform (config/source/platforms/<platform>.json), as a writer of a file.
+auto console(std::string_view platform) {
+    return [platform](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct(platform, f, d); };
 }
 
 template <class Writer>
@@ -69,9 +72,9 @@ CB_TEST("source.writers.homebrew.master_system", [] {
 // (the SG-1000 is the Master System's lane; the MSX and the ColecoVision write a flat block)
 CB_TEST("source.writers.homebrew.z80_family", [] {
     rebuild("sg1000-240p/suitesg.sg", 1, sms_writer::reconstruct);
-    rebuild("msx-nohzdyve/nohzdyve.rom", 1, msx_writer::reconstruct);
-    rebuild("msx-wrally/rally-demo.rom", 1, msx_writer::reconstruct);
-    rebuild("coleco-240p/suitecv.rom", 1, coleco_writer::reconstruct);
+    rebuild("msx-nohzdyve/nohzdyve.rom", 1, console("msx"));
+    rebuild("msx-wrally/rally-demo.rom", 1, console("msx"));
+    rebuild("coleco-240p/suitecv.rom", 1, console("coleco"));
 });
 
 // (the 6502 family's, through the 6502, 65C02, HuC6280 and 65816 descriptions: the Atari 2600 and 5200, the Lynx, the PC Engine and the SNES --
@@ -98,7 +101,7 @@ CB_TEST("source.writers.homebrew.m6502_family", [] {
 CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, gb_writer::reconstruct); });
 
 // (the ZX Spectrum's: a tape's code block, written with the Spectrum's names)
-CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, zx_writer::reconstruct); });
+CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, console("zx")); });
 
 // (the 68000 and MIPS consoles' source is the processor's SLEIGH description's text, built again through its assembler: each program must come back byte for byte)
 CB_TEST("source.writers.homebrew.genesis", [] {

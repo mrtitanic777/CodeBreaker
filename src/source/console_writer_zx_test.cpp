@@ -2,15 +2,21 @@
 // engine/testdata/lane_kit/zx_demo.asm): built with the one assembler (the Z80 SLEIGH description) into a tape (a BASIC loader that calls USR 32768,
 // then the code block) and into a 48K snapshot stopped at its start; the program comes back as source that builds the same bytes, and the
 // source names the Spectrum's ULA port, ROM routines and system variables.
-#include "source/zx_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/processors.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/zx.hpp"
 
-namespace cb::source::zx_writer {
+namespace cb::source::console_writer::zx_test {
 namespace {
+
+// The platform's writer over a file (the description: config/source/platforms/zx.json).
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("zx", file, folder);
+}
+
 
 Bytes tap_block(std::uint8_t flag, const Bytes& payload) {
     Bytes body{flag};
@@ -83,7 +89,7 @@ Bytes demo_snapshot() {
 
 bool has(const std::string& text, std::string_view line) { return text.find(line) != std::string::npos; }
 
-CB_TEST("source.zx_writer.a_tape_comes_back_as_source_that_builds_the_same_bytes", [] {
+CB_TEST("source.console_writer.zx.a_tape_comes_back_as_source_that_builds_the_same_bytes", [] {
     fs::ScopedTempDir dir("cb_zx_writer");
     const std::filesystem::path tape = dir.path() / "demo.tap";
     fs::write_file(tape, demo_tape());
@@ -99,7 +105,7 @@ CB_TEST("source.zx_writer.a_tape_comes_back_as_source_that_builds_the_same_bytes
     for (const char* line : {"CALL CHAN_OPEN", "OUT (ULA),A", "LD HL,FRAMES", "RST $10"}) CB_CHECK(has(text, line));
 });
 
-CB_TEST("source.zx_writer.a_snapshot_stopped_at_the_start_is_the_same_program", [] {
+CB_TEST("source.console_writer.zx.a_snapshot_stopped_at_the_start_is_the_same_program", [] {
     fs::ScopedTempDir dir("cb_zx_writer");
     const std::filesystem::path snapshot = dir.path() / "demo.sna";
     fs::write_file(snapshot, demo_snapshot());
@@ -114,4 +120,4 @@ CB_TEST("source.zx_writer.a_snapshot_stopped_at_the_start_is_the_same_program", 
 });
 
 }  // namespace
-}  // namespace cb::source::zx_writer
+}  // namespace cb::source::console_writer::zx_test

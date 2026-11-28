@@ -1,0 +1,14 @@
+{
+  "platform": "coleco",
+  "title": "ColecoVision cartridge",
+  "description": "A cartridge as it sits from $8000, written from the start address and the vectors the BIOS jumps through (start, rst08 .. rst30, irq, nmi). The header ($AA55 / $55AA, the five table pointers, the title) is data, said in the head comment.",
+  "shape": "z80-block",
+  "dialect": "sjasmplus",
+  "ports": "ports",
+  "fixed": "bios",
+  "head": [
+    "ColecoVision cartridge {file}; {kb} KB at $8000; {title_screen?$AA55: the BIOS shows its title screen first|$55AA: the game starts at once}",
+    "sprite names ${sprite_names:04X} sprite order ${sprite_order:04X} work buffer ${work_buffer:04X} controllers ${controllers:04X} start ${start:04X}",
+    {"line": "title: {title}", "when": "title"}
+  ]
+}

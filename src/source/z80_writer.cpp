@@ -60,10 +60,9 @@ private:
 
 class BlockListing final : public iw::Listing<z80::Insn> {
 public:
-    BlockListing(const Block& block, const std::map<std::uint32_t, z80::Insn>& code, const decompile::AddressLabels& names, const iw::Names& ports)
-        : block_(block), code_(code), names_(names), ports_(ports) {}
-    // (the Z80 programs of the Spectrum, the MSX, the ColecoVision and the CPC are written in sjasmplus's dialect: config/dialects/sjasmplus.json)
-    static const dialect::Dialect& sjasmplus() { static const dialect::Dialect& d = dialect::find("sjasmplus"); return d; }
+    BlockListing(const Block& block, const std::map<std::uint32_t, z80::Insn>& code, const decompile::AddressLabels& names, const iw::Names& ports,
+                 const dialect::Dialect& dialect)
+        : block_(block), code_(code), names_(names), ports_(ports), dialect_(dialect) {}
 
     std::uint8_t byte(std::uint32_t address) const override { return block_.image[address - block_.origin]; }
     std::uint32_t address(std::uint32_t offset) const override { return offset; }
@@ -72,15 +71,16 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const z80::Insn& insn) const override { return insn.size; }
-    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, ports_, sjasmplus()); }   // (the description's text, the names put in, said in the dialect)
-    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data, sjasmplus()); }
-    std::string label_line(const std::string& name) const override { return sjasmplus().label_line(name); }
+    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, ports_, dialect_); }   // (the description's text, the names put in, said in the dialect)
+    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data, dialect_); }
+    std::string label_line(const std::string& name) const override { return dialect_.label_line(name); }
 
 private:
     const Block& block_;
     const std::map<std::uint32_t, z80::Insn>& code_;
     const decompile::AddressLabels& names_;
     const iw::Names& ports_;
+    const dialect::Dialect& dialect_;
 };
 
 }  // namespace
@@ -130,24 +130,24 @@ iw::Written write(const Block& block, const Machine& machine, const std::filesys
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker", stem)};
     for (const std::string& line : block.header) head.push_back("; " + line);
     head.push_back("");
-    const dialect::Dialect& sjasmplus = dialect::find("sjasmplus");
-    translate::l2::Assembly out(head, "sjasmplus", std::string(stem));
-    for (const auto& [port, name] : used_ports) out.append(z80_source::equ(name, port, 2, sjasmplus));
-    for (const auto& [address, name] : used_names) out.append(z80_source::equ(name, address, 4, sjasmplus));
+    const dialect::Dialect& said = dialect::find(machine.dialect);
+    translate::l2::Assembly out(head, machine.dialect, std::string(stem));
+    for (const auto& [port, name] : used_ports) out.append(z80_source::equ(name, port, 2, said));
+    for (const auto& [address, name] : used_names) out.append(z80_source::equ(name, address, 4, said));
     if (!used_ports.empty() || !used_names.empty()) out.append("");
-    out.append(sjasmplus.line(std::format("        .org 0x{:04x}", origin)));
+    out.append(said.line(std::format("        .org 0x{:04x}", origin)));
     decompile::AddressLabels names_for_text;   // the labels and the fixed addresses: a fixed address wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     for (const auto& [a, name] : used_names) names_for_text[a] = name;
 
-    BlockListing listing(block, code, names_for_text, used_ports);
+    BlockListing listing(block, code, names_for_text, used_ports, said);
     iw::emit<z80::Insn>(out, origin, end, labels, functions, listing);
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, std::string(stem) + ".asm", source, functions, iw::code_bytes(code, flow), block.image.size());
 
     // (the one directive layer says where the first byte stands only through the `.org` this writer put first)
     const std::optional<Bytes> built = iw::assembled(
-        r, [&] { return z80_source::assemble(source, folder, sjasmplus); }, block.image, std::nullopt, "block",
+        r, [&] { return z80_source::assemble(source, folder, said); }, block.image, std::nullopt, "block",
         [&](ByteView made) { return made.size() == block.image.size() && std::equal(made.begin(), made.end(), block.image.begin()); });
     if (built) r.built_image = *built;
     return r;
