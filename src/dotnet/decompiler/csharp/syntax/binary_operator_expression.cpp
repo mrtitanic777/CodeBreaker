@@ -78,6 +78,7 @@ std::string_view BinaryOperatorExpression::get_operator_token(BinaryOperatorType
         case BinaryOperatorType::NullCoalescing: return BinaryOperatorExpression::null_coalescing_token;
         case BinaryOperatorType::Range: return BinaryOperatorExpression::range_token;
         case BinaryOperatorType::IsPattern: return BinaryOperatorExpression::is_keyword;
+        case BinaryOperatorType::PatternOr: return BinaryOperatorExpression::pattern_or_keyword;
         default: throw std::invalid_argument("Invalid value for BinaryOperatorType");
     }
 }

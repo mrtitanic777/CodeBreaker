@@ -2899,6 +2899,12 @@ Node* Pass::library_call(Node* e) {
     const auto family = family_table().find(owner);
     const std::string fam = family != family_table().end() ? family->second : std::string();
 
+    if (owner == "java.lang.Number" && !is_static && c.args.empty() && c.target != nullptr) {   // a Number is an object here: its box's value
+        static const std::unordered_map<std::string_view, std::string_view> values = {{"intValue", "numberInt"},     {"longValue", "numberLong"},
+                                                                                      {"doubleValue", "numberDouble"}, {"floatValue", "numberFloat"},
+                                                                                      {"shortValue", "numberShort"}, {"byteValue", "numberByte"}};
+        if (const auto v = values.find(s.name); v != values.end()) return lib(std::string(v->second), {expr(c.target)});
+    }
     if (owner == "java.util.stream.Stream") return is_static ? on_type(ir::class_type("JStream", {result_arg(0)}), s.name, arguments()) : on_target();
     if (owner == "java.util.stream.IntStream") return is_static ? on_type(ir::class_type("JIntStream"), s.name, arguments()) : on_target();
     if (owner == "java.util.Optional" || owner == "java.util.OptionalInt" || owner == "java.util.OptionalDouble") {
@@ -3239,6 +3245,15 @@ Node* Pass::expr(Node* e) {
             if (const ir::ClassDecl* own = class_named(*q); own != nullptr && (needs_outer(*own) || has_captures(*own))) return new_inner(x, *own);
         }
         return new_object(x);
+    }
+    if (auto* is = ir::get<ir::InstanceOf>(x)) {
+        const auto* tested = is->test ? std::get_if<ir::ClassType>(&is->test->body) : nullptr;
+        const ir::ClassDecl* own = tested != nullptr && tested->args.empty() ? class_named(tested->name) : nullptr;
+        if (own != nullptr && !own->typeparams.empty()) {   // `o instanceof Box` of a generic class: a Box of any arguments (C#'s `is` names one)
+            if (is->binding != nullptr) throw Declined{"instanceof", "a pattern of the raw type " + tested->name};
+            Node* closed = ir::make(arena_, ir::ClassLit{.of = is->test}, ir::class_type("System.Type"));   // (its definition is what is compared)
+            return jlib("isRaw", {expr(is->x), closed}, x->type);
+        }
     }
     if (ir::is<ir::Binary>(x)) return binary(x);
     if (ir::is<ir::Concat>(x)) return concat(x);

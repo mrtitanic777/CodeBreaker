@@ -2,11 +2,11 @@
 // ILSpy's syntax tree and output visitor.
 //
 // The corpus programs are the C# front end's lowering of tests/translate/corpus/csharp (translate/testdata/csharp_NAME.l2.json, the inputs
-// the old writer's goldens are made from). The expected C# (dotnet/testdata/l2_csharp/NAME.cs.txt) was reviewed against the old writer's
+// the old writer's goldens were made from; the old writer, translate/backends/csharp, is retired). The expected C# (dotnet/testdata/l2_csharp/NAME.cs.txt) was reviewed against the old writer's
 // golden: the same program, in the output visitor's layout. Each was also compiled with Roslyn and run against its original, with the same
 // output (work/stage15/judge_cs.sh).
 //
-// With CB_L2CS_OUT set to a folder, each corpus test writes the C# it made there (NAME.cs), to compare with the old writer's golden.
+// With CB_L2CS_OUT set to a folder, each corpus test writes the C# it made there (NAME.cs), to read or build.
 #include "dotnet/decompiler/csharp/l2_syntax_builder.hpp"
 
 #include "core/fs.hpp"
@@ -54,8 +54,8 @@ CB_TEST("dotnet.l2_csharp.corpus.text", [] { l2cs_check_corpus("text"); });
 
 // ---- Java units, through the rule set java (translate/rules/java_csharp) -----------------------------------------------------------
 //
-// The javac front end's units of the C# writer's Java programs (translate/testdata/csharp_java/NAME.l2.json, the inputs of
-// translate.csharp_java.*), written through the rule set and the plain lowering. The expected text (dotnet/testdata/l2_csharp_java/
+// The javac front end's units of the C# writer's Java programs (translate/testdata/csharp_java/NAME.l2.json, once the inputs
+// of the old writer's translate.csharp_java.*), written through the rule set and the plain lowering. The expected text (dotnet/testdata/l2_csharp_java/
 // NAME.cs.txt: each file under a marker line, the runtime files left out; NAME.ledger.txt) was compared with the old writer's: the
 // programs with a Main build with Roslyn and print what the old translation printed (work/stage15/judge_java.sh).
 

@@ -51,6 +51,10 @@ enum class BinaryOperatorType : std::uint8_t {
     Range,                // left .. right (left and right are optional and may be null)
 
     IsPattern,            // left is right (right must be a pattern)
+
+    // Not upstream: the C# 9 pattern combinator `left or right` (the plain lowering, l2_syntax_builder, writes a switch-expression arm of
+    // several constants with it; ILSpy's builders never make it).
+    PatternOr,
 };
 
 enum class UnaryOperatorType : std::uint8_t {

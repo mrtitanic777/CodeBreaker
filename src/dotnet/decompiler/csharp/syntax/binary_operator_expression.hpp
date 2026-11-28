@@ -48,6 +48,7 @@ public:
     static constexpr std::string_view null_coalescing_token = "??";
     static constexpr std::string_view range_token = "..";
     static constexpr std::string_view is_keyword = "is";
+    static constexpr std::string_view pattern_or_keyword = "or";   // (not upstream: BinaryOperatorType::PatternOr)
 
     static constexpr CSharpSlotInfoT<Expression> left_slot{"Left", false, &Slots::left, true};
     static constexpr CSharpSlotInfoT<Expression> right_slot{"Right", false, &Slots::right, true};

@@ -1,19 +1,23 @@
 // cb-unity: alone
-// Tests of cb/translate/backends/csharp: the C# back end, on programs built the way the C# and Java front ends build them
-// (resolved symbols, typed expressions, one Unit per source file). The expected C# is written out in full where it is one
-// unit's file, and was read for correctness, not recorded: the layout (blank lines between members, expression bodies, the
-// namespace braces), every literal's spelling, the parentheses a precedence needs and no more, the statements of a method.
-// A library for another source language (Java's) is a `csharp::Library`; the tests use a small one to check the hooks the
-// writer calls, and that a language with none is declined, class by class.
+// Tests of the C# back end's plain lowering (dotnet/decompiler/csharp/l2_syntax_builder), the one C# back end of every front end with no
+// IL facts, on programs built the way the C# and Java front ends build them (resolved symbols, typed expressions, one Unit per source
+// file). They are the old writer's tests (translate/backends/csharp, retired in stage 15), moved onto this path. The expected C# was
+// reviewed against what the old writer wrote: the same program, with the layout and literal spelling of ILSpy's output visitor (no blank
+// line between the types of a namespace, `: base(...)` on its own line, `where` on the declaration's line, a block lambda, a switch
+// expression and an object initialiser one item to a line, `7uL`, `3f`, `- -a`, `(long)-1`, text that is not ASCII as it is).
+// Java units go through the rule set java (translate/rules/java_csharp) when the options give the API-mapping registry; without it
+// they are declined, class by class.
 //
 // Behaviour pinned here: a statement list where a statement is expected (a bare list of statements as a body) is written as a
-// block; a float literal is the shortest text that reads back as the same value (`1E+22`, `100000.0`); constant folding for
-// `unchecked` is exact in 64 bits; two units of one file stem get `_2`, not one file over the other; a u64 literal above
-// int64's maximum is written.
-#include "translate/backends/csharp.hpp"
+// block; a float literal reads back as the same value, and a double a float cannot hold is declined (not written as an infinity);
+// constant folding for `unchecked` is exact in 64 bits; two units of one file stem get `_2`, not one file over the other; a u64
+// literal above int64's maximum is written.
+#include "dotnet/decompiler/csharp/l2_syntax_builder.hpp"
 #include "translate/l2.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <limits>
 
 #include <nlohmann/json.hpp>
@@ -24,7 +28,7 @@
 
 namespace {
 
-namespace cs = cb::translate::backends::csharp;
+namespace cs = cb::dotnet::decompiler::csharp;
 namespace ir = cb::translate::ir;
 using ir::Node;
 using ir::TypeP;
@@ -101,10 +105,17 @@ struct B {
     }
 };
 
-std::string write_one(Node* unit, cs::Options options = {}) {
+std::string write_one(Node* unit) {
     Node* units[] = {unit};
-    cs::Program p(units, std::move(options));
+    cs::L2CSharpProgram p(units);
     return p.files().at(0).text;
+}
+
+// Whether `text` holds `part`; when it does not, the text is printed, to read what was written instead.
+bool l2u_holds(const std::string& text, std::string_view part) {
+    if (text.find(part) != std::string::npos) return true;
+    std::fprintf(stderr, "not in the text: [%.*s]\n----\n%s----\n", static_cast<int>(part.size()), part.data(), text.c_str());
+    return false;
 }
 
 // The text a single expression is written as: `T x = <text>;` in the one method of a class.
@@ -125,7 +136,7 @@ std::string render(B& b, Node* e) {
 
 // ---- the file ------------------------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.unit.class_in_a_namespace", [] {
+CB_TEST("dotnet.l2_csharp.unit.class_in_a_namespace", [] {
     B b;
     // namespace Geo { public class Circle { public double R; public Circle(double r) { R = r; }
     //                 public double Area => R * R * 3.14159; public override string ToString() { return "Circle " + R; } } }
@@ -149,7 +160,6 @@ CB_TEST("translate.csharp.unit.class_in_a_namespace", [] {
     Node* circle = b.klass("Geo.Circle", {field, ctor, b.n(std::move(property)), to_string});
     const std::string expected =
         "// Translated by CodeBreaker from Geo.cs (csharp).\n"
-        "\n"
         "namespace Geo\n"
         "{\n"
         "    public class Circle\n"
@@ -169,7 +179,7 @@ CB_TEST("translate.csharp.unit.class_in_a_namespace", [] {
     CB_CHECK_EQ(write_one(b.unit("src/Geo.cs", {circle})), expected);
 });
 
-CB_TEST("translate.csharp.unit.usings_and_nested_names", [] {
+CB_TEST("dotnet.l2_csharp.unit.usings_and_nested_names", [] {
     B b;
     // Outer.Inner is named from inside Outer by its own name, from outside by Outer.Inner; a library class gets a using.
     Node* inner = b.klass("N.Outer.Inner", {}, {"public"});
@@ -180,30 +190,33 @@ CB_TEST("translate.csharp.unit.usings_and_nested_names", [] {
     Node* outer = b.klass("N.Outer", {inner, run});
     Node* other_unit_class = b.klass("N.User", {b.method("F", nullptr, {}, b.block({b.local(b.local_sym("q", ir::class_type("N.Outer.Inner"), "N.User.F"))}))});
     const std::string file = write_one(b.unit("A.cs", {outer, other_unit_class}));
-    CB_CHECK(file.find("using System.Collections.Generic;") != std::string::npos);
-    CB_CHECK(file.find("        public class Inner\n") != std::string::npos);
-    CB_CHECK(file.find("            Inner a;\n") != std::string::npos);                // inside Outer: the nested name alone
-    CB_CHECK(file.find("            List<int> l;\n") != std::string::npos);
-    CB_CHECK(file.find("            Outer.Inner q;\n") != std::string::npos);          // from another class: through its outer class
+    CB_CHECK(l2u_holds(file, "using System.Collections.Generic;"));
+    CB_CHECK(l2u_holds(file, "        public class Inner\n"));
+    CB_CHECK(l2u_holds(file, "            Inner a;\n"));                // inside Outer: the nested name alone
+    CB_CHECK(l2u_holds(file, "            List<int> l;\n"));
+    CB_CHECK(l2u_holds(file, "            Outer.Inner q;\n"));          // from another class: through its outer class
     CB_CHECK_EQ(std::count(file.begin(), file.end(), '{'), std::count(file.begin(), file.end(), '}'));
     CB_CHECK_EQ(file.find("namespace N\n"), file.rfind("namespace N\n"));              // one namespace block for both classes
 });
 
-CB_TEST("translate.csharp.unit.keywords_are_escaped", [] {
-    CB_CHECK_EQ(cs::ident("class"), "@class");
-    CB_CHECK_EQ(cs::ident("object"), "@object");
-    CB_CHECK_EQ(cs::ident("Class"), "Class");
+CB_TEST("dotnet.l2_csharp.unit.keywords_are_escaped", [] {
     B b;
     const auto s = b.local_sym("event", t_int());
-    Node* m = b.method("M", nullptr, {}, b.block({b.local(s, b.i(1)), b.expr_stmt(b.assign(b.name(s), b.i(2)))}));
+    const auto k1 = b.local_sym("class", t_int());
+    const auto k2 = b.local_sym("object", t_int());
+    const auto k3 = b.local_sym("Class", t_int());
+    Node* m = b.method("M", nullptr, {}, b.block({b.local(s, b.i(1)), b.expr_stmt(b.assign(b.name(s), b.i(2))), b.local(k1, b.i(3)), b.local(k2, b.i(4)), b.local(k3, b.i(5))}));
     const std::string file = write_one(b.unit("K.cs", {b.klass("Prog", {m})}));
-    CB_CHECK(file.find("int @event = 1;") != std::string::npos);
-    CB_CHECK(file.find("@event = 2;") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "int @event = 1;"));
+    CB_CHECK(l2u_holds(file, "@event = 2;"));
+    CB_CHECK(l2u_holds(file, "int @class = 3;"));
+    CB_CHECK(l2u_holds(file, "int @object = 4;"));
+    CB_CHECK(l2u_holds(file, "int Class = 5;"));   // (C#'s keywords are lower case)
 });
 
 // ---- literals ----------------------------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.literals.integers", [] {
+CB_TEST("dotnet.l2_csharp.literals.integers", [] {
     B b;
     CB_CHECK_EQ(render(b, b.i(5)), "5");
     CB_CHECK_EQ(render(b, b.i(-5)), "-5");
@@ -214,13 +227,13 @@ CB_TEST("translate.csharp.literals.integers", [] {
     CB_CHECK_EQ(render(b, b.i(std::numeric_limits<std::int64_t>::max(), ir::prim_type(ir::Prim::I64))), "long.MaxValue");
     CB_CHECK_EQ(render(b, b.i(7, ir::prim_type(ir::Prim::U32))), "7u");
     CB_CHECK_EQ(render(b, b.i(4294967295LL, ir::prim_type(ir::Prim::U32))), "uint.MaxValue");
-    CB_CHECK_EQ(render(b, b.i(7, ir::prim_type(ir::Prim::U64))), "7UL");
+    CB_CHECK_EQ(render(b, b.i(7, ir::prim_type(ir::Prim::U64))), "7uL");   // (the output visitor's spelling of a ulong)
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551615ULL}}, ir::prim_type(ir::Prim::U64))), "ulong.MaxValue");
-    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551614ULL}}, ir::prim_type(ir::Prim::U64))), "18446744073709551614UL");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551614ULL}}, ir::prim_type(ir::Prim::U64))), "18446744073709551614uL");
     CB_CHECK_EQ(render(b, b.i(3, ir::prim_type(ir::Prim::U8))), "3");
 });
 
-CB_TEST("translate.csharp.literals.floats_bools_null", [] {
+CB_TEST("dotnet.l2_csharp.literals.floats_bools_null", [] {
     B b;
     const auto f64 = [&](double v) { return render(b, b.n(ir::Lit{.value = v}, t_dbl())); };
     CB_CHECK_EQ(f64(1.5), "1.5");
@@ -231,7 +244,7 @@ CB_TEST("translate.csharp.literals.floats_bools_null", [] {
     CB_CHECK_EQ(f64(123456789.125), "123456789.125");
     CB_CHECK_EQ(f64(0.0001), "0.0001");
     CB_CHECK_EQ(f64(1.5e-5), "1.5E-05");
-    CB_CHECK_EQ(f64(1e16), "1E+16");
+    CB_CHECK_EQ(f64(1e16), "10000000000000000.0");
     CB_CHECK_EQ(f64(0.0), "0.0");
     CB_CHECK_EQ(f64(1.7976931348623157e308), "1.7976931348623157E+308");
     CB_CHECK_EQ(f64(std::numeric_limits<double>::quiet_NaN()), "double.NaN");
@@ -239,8 +252,8 @@ CB_TEST("translate.csharp.literals.floats_bools_null", [] {
     CB_CHECK_EQ(f64(-std::numeric_limits<double>::infinity()), "double.NegativeInfinity");
     const TypeP f32 = ir::prim_type(ir::Prim::F32);
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 0.1}, f32)), "0.1f");                       // the shortest text that is this float
-    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 3.0}, f32)), "3.0f");
-    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 1e10}, f32)), "10000000000.0f");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 3.0}, f32)), "3f");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 1e10}, f32)), "1E+10f");
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 3.4028234663852886e38}, f32)), "3.4028235E+38f");
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::numeric_limits<double>::quiet_NaN()}, f32)), "float.NaN");
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::int64_t{2}}, t_dbl())), "2.0");        // an integer in a double's place
@@ -250,15 +263,15 @@ CB_TEST("translate.csharp.literals.floats_bools_null", [] {
     // a double beyond float's range is declined, and the method is a gap
     const ir::SymP x = b.local_sym("x", f32);
     const std::string gap = write_one(b.unit("F.cs", {b.klass("Prog", {b.method("M", nullptr, {}, b.block({b.local(x, b.n(ir::Lit{.value = 1e300}, f32))}))})}));
-    CB_CHECK(gap.find("CB-GAP: a float literal beyond the range of float") != std::string::npos);
+    CB_CHECK(l2u_holds(gap, "CB-GAP: a float literal beyond the range of float"));
 });
 
-CB_TEST("translate.csharp.literals.text_and_chars", [] {
+CB_TEST("dotnet.l2_csharp.literals.text_and_chars", [] {
     B b;
     CB_CHECK_EQ(render(b, b.str("plain")), "\"plain\"");
     CB_CHECK_EQ(render(b, b.str("a\"b\\c\n\r\t")), "\"a\\\"b\\\\c\\n\\r\\t\"");
     CB_CHECK_EQ(render(b, b.str(std::string("nul\0z", 5))), "\"nul\\0z\"");
-    CB_CHECK_EQ(render(b, b.str("caf\xC3\xA9")), "\"caf\\u00e9\"");                         // not ASCII: an escape
+    CB_CHECK_EQ(render(b, b.str("caf\xC3\xA9")), "\"caf\xC3\xA9\"");                         // not ASCII: as it is (the file is UTF-8)
     CB_CHECK_EQ(render(b, b.str("\xF0\x9F\x98\x80")), "\"\\ud83d\\ude00\"");               // beyond the BMP: a surrogate pair
     CB_CHECK_EQ(render(b, b.str("\xED\xA0\x80")), "\"\\ud800\"");                          // half of a pair, as a Java char keeps it
     const TypeP ch = ir::prim_type(ir::Prim::U16, std::nullopt, ir::CharEncoding::Utf16);
@@ -272,7 +285,7 @@ CB_TEST("translate.csharp.literals.text_and_chars", [] {
 
 // ---- operators and precedence -----------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.expr.parentheses_only_where_needed", [] {
+CB_TEST("dotnet.l2_csharp.expr.parentheses_only_where_needed", [] {
     B b;
     const auto a = b.local_sym("a", t_int());
     const auto c = b.local_sym("c", t_int());
@@ -285,11 +298,11 @@ CB_TEST("translate.csharp.expr.parentheses_only_where_needed", [] {
     CB_CHECK_EQ(render(b, b.bin("+", b.bin("<<", b.name(a), b.i(1)), b.i(2))), "(a << 1) + 2");
     CB_CHECK_EQ(render(b, b.bin("&", b.name(a), b.bin("|", b.name(c), b.name(d)))), "a & (c | d)");
     CB_CHECK_EQ(render(b, b.n(ir::Paren{.x = b.bin("+", b.name(a), b.name(c))}, t_int())), "a + c");   // grouping is rebuilt from precedence
-    CB_CHECK_EQ(render(b, b.n(ir::Unary{.op = "-", .x = b.n(ir::Unary{.op = "-", .x = b.name(a)}, t_int())}, t_int())), "-(-a)");
+    CB_CHECK_EQ(render(b, b.n(ir::Unary{.op = "-", .x = b.n(ir::Unary{.op = "-", .x = b.name(a)}, t_int())}, t_int())), "- -a");
     CB_CHECK_EQ(render(b, b.n(ir::Unary{.op = "!", .x = b.cmp("==", b.name(a), b.name(c))}, ir::bool_type())), "!(a == c)");
     CB_CHECK_EQ(render(b, b.n(ir::Cast{.x = b.bin("+", b.name(a), b.name(c))}, ir::prim_type(ir::Prim::I64))), "(long)(a + c)");
     CB_CHECK_EQ(render(b, b.n(ir::Cast{.x = b.name(a)}, ir::prim_type(ir::Prim::F64))), "(double)a");
-    CB_CHECK_EQ(render(b, b.n(ir::Cast{.x = b.i(-1)}, ir::prim_type(ir::Prim::I64))), "(long)(-1)");
+    CB_CHECK_EQ(render(b, b.n(ir::Cast{.x = b.i(-1)}, ir::prim_type(ir::Prim::I64))), "(long)-1");
     Node* post = b.n(ir::Unary{.op = "++", .x = b.name(a), .postfix = true}, t_int());
     CB_CHECK_EQ(render(b, post), "a++");
     Node* cond = b.n(ir::Cond{.cond = b.cmp(">", b.name(a), b.i(0)), .then = b.name(a), .orelse = b.n(ir::Unary{.op = "-", .x = b.name(a)}, t_int())}, t_int());
@@ -306,7 +319,7 @@ CB_TEST("translate.csharp.expr.parentheses_only_where_needed", [] {
     CB_CHECK_EQ(render(b, b.n(std::move(checked_add), t_int())), "checked(a + c)");
 });
 
-CB_TEST("translate.csharp.expr.constants_that_overflow_are_unchecked", [] {
+CB_TEST("dotnet.l2_csharp.expr.constants_that_overflow_are_unchecked", [] {
     B b;
     // Java wraps a constant expression; C# refuses to compile one that leaves its type's range
     const auto max = [&] { return b.i(std::numeric_limits<std::int32_t>::max()); };
@@ -324,7 +337,7 @@ CB_TEST("translate.csharp.expr.constants_that_overflow_are_unchecked", [] {
     CB_CHECK_EQ(render(b, b.bin("/", b.i(1), b.i(0))), "1 / 0");
 });
 
-CB_TEST("translate.csharp.expr.string_concatenation", [] {
+CB_TEST("dotnet.l2_csharp.expr.string_concatenation", [] {
     B b;
     const auto n = b.local_sym("n", t_int());
     const auto s = b.local_sym("s", t_str());
@@ -340,7 +353,7 @@ CB_TEST("translate.csharp.expr.string_concatenation", [] {
     CB_CHECK_EQ(render(b, b.n(ir::Concat{.parts = {b.str("a\n"), b.name(n), b.str("b")}}, t_str())), "\"a\\n\" + n + \"b\"");
 });
 
-CB_TEST("translate.csharp.expr.calls_members_indexers_and_lambdas", [] {
+CB_TEST("dotnet.l2_csharp.expr.calls_members_indexers_and_lambdas", [] {
     B b;
     const auto list = b.local_sym("list", ir::class_type("System.Collections.Generic.List", {t_int()}));
     const auto n = b.local_sym("n", t_int());
@@ -381,7 +394,7 @@ CB_TEST("translate.csharp.expr.calls_members_indexers_and_lambdas", [] {
     CB_CHECK_EQ(render(b, lam), "p => p * 2");
     const auto q = b.param_sym("q", t_int(), "Prog.M.lambda");
     Node* lam2 = b.n(ir::Lambda{.params = {b.param(p), b.param(q)}, .body = b.block({b.ret(b.bin("+", b.name(p), b.name(q)))})}, ir::class_type("System.Func", {t_int(), t_int(), t_int()}));
-    CB_CHECK_EQ(render(b, lam2), "(p, q) =>\n{\n    return p + q;\n}");
+    CB_CHECK_EQ(render(b, lam2), "(p, q) =>\n        {\n            return p + q;\n        }");   // (a block lambda is indented with its statement)
     // is-patterns and typeof
     const auto o = b.local_sym("o", t_obj());
     const auto bound = b.local_sym("s", t_str());
@@ -393,14 +406,14 @@ CB_TEST("translate.csharp.expr.calls_members_indexers_and_lambdas", [] {
     ir::Case c1{.labels = {b.i(1)}, .body = {b.n(ir::Yield{.expr = b.str("one")})}};
     ir::Case c2{.is_default = true, .body = {b.n(ir::Yield{.expr = b.str("many")})}};
     Node* sw = b.n(ir::SwitchExpr{.expr = b.name(k), .cases = {b.n(std::move(c1)), b.n(std::move(c2))}}, t_str());
-    CB_CHECK_EQ(render(b, sw), "k switch { 1 => \"one\", _ => \"many\" }");
+    CB_CHECK_EQ(render(b, sw), "k switch\n        {\n            1 => \"one\",\n            _ => \"many\",\n        }");   // (one arm to a line)
     // `new`, with its arguments coerced to the parameters
     const auto ctor = ir::make_sym(ir::SymKind::Ctor, "Pair", "Pair", false);
     ctor->params = {t_int(), t_str()};
     CB_CHECK_EQ(render(b, b.n(ir::New{.sym = ctor, .args = {b.i(1), b.str("x")}}, ir::class_type("Pair"))), "new Pair(1, \"x\")");
 });
 
-CB_TEST("translate.csharp.expr.null_conditional_and_ref_arguments", [] {
+CB_TEST("dotnet.l2_csharp.expr.null_conditional_and_ref_arguments", [] {
     B b;
     const auto r = b.local_sym("r", ir::class_type("Node"));
     const auto next = ir::make_sym(ir::SymKind::Field, "Next", "Node", false, ir::class_type("Node"));
@@ -419,7 +432,7 @@ CB_TEST("translate.csharp.expr.null_conditional_and_ref_arguments", [] {
 
 // ---- statements ---------------------------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.stmt.a_method_of_every_statement", [] {
+CB_TEST("dotnet.l2_csharp.stmt.a_method_of_every_statement", [] {
     B b;
     const TypeP ints = ir::array_of(t_int());
     const auto xs = b.param_sym("xs", ints, "Prog.Run");
@@ -517,18 +530,18 @@ CB_TEST("translate.csharp.stmt.a_method_of_every_statement", [] {
     CB_CHECK_EQ(write_one(b.unit("Prog.cs", {b.klass("Prog", {run})})), expected);
 });
 
-CB_TEST("translate.csharp.stmt.names_declared_in_inner_blocks_are_renamed", [] {
+CB_TEST("dotnet.l2_csharp.stmt.names_declared_in_inner_blocks_are_renamed", [] {
     B b;
     // { int a = 1; } int a = 2;  -- Java's scope of a local begins at its declaration; C#'s is its whole block
     const auto first = b.local_sym("a", t_int());
     const auto second = b.local_sym("a", t_int());
     Node* body = b.block({b.block({b.local(first, b.i(1))}), b.local(second, b.i(2))});
     const std::string file = write_one(b.unit("R.cs", {b.klass("Prog", {b.method("M", nullptr, {}, body)})}));
-    CB_CHECK(file.find("            int a2 = 1;\n") != std::string::npos);
-    CB_CHECK(file.find("        int a = 2;\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "            int a2 = 1;\n"));
+    CB_CHECK(l2u_holds(file, "        int a = 2;\n"));
 });
 
-CB_TEST("translate.csharp.stmt.hoisted_initialisers_are_put_back", [] {
+CB_TEST("dotnet.l2_csharp.stmt.hoisted_initialisers_are_put_back", [] {
     B b;
     // var __t1 = new List<int>(); __t1.Add(1); __t1.Add(2); Use(__t1);   ->   Use(new List<int> { 1, 2 });
     const TypeP list = ir::class_type("System.Collections.Generic.List", {t_int()});
@@ -552,13 +565,13 @@ CB_TEST("translate.csharp.stmt.hoisted_initialisers_are_put_back", [] {
     Node* body = b.block({b.local(t1, b.n(ir::New{.sym = ctor}, list)), adds(1), adds(2), use_call,
                           b.local(t2, b.n(ir::New{.sym = ir::make_sym(ir::SymKind::Ctor, "Pt", "Pt", false)}, pt)), sets(fx, 1), sets(fy, 2), show_call});
     const std::string file = write_one(b.unit("I.cs", {b.klass("Prog", {b.method("M", nullptr, {}, body)})}));
-    CB_CHECK(file.find("        Use(new List<int> { 1, 2 });\n") != std::string::npos);
-    CB_CHECK(file.find("        Show(new Pt { X = 1, Y = 2 });\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "        Use(new List<int> { 1, 2 });\n"));
+    CB_CHECK(l2u_holds(file, "        Show(new Pt\n        {\n            X = 1,\n            Y = 2\n        });\n"));
     CB_CHECK(file.find("__t") == std::string::npos);
-    CB_CHECK(file.find("using System.Collections.Generic;") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "using System.Collections.Generic;"));
 });
 
-CB_TEST("translate.csharp.stmt.using_lock_assert_and_labels", [] {
+CB_TEST("dotnet.l2_csharp.stmt.using_lock_assert_and_labels", [] {
     B b;
     const auto res = b.local_sym("r", ir::class_type("System.IO.StringReader"));
     const auto lockee = b.local_sym("gate", t_obj());
@@ -572,14 +585,14 @@ CB_TEST("translate.csharp.stmt.using_lock_assert_and_labels", [] {
     Node* go = b.n(ir::Goto{.label = "again"});
     Node* note = b.n(ir::Comment{.text = "done"});
     const std::string file = write_one(b.unit("U.cs", {b.klass("Prog", {b.method("M", nullptr, {}, b.block({using_stmt, lock_stmt, assert_stmt, labelled, go, note}))})}));
-    CB_CHECK(file.find("using (var r = new StringReader(\"\"))\n        {\n            ;\n        }\n") != std::string::npos);
-    CB_CHECK(file.find("lock (gate)\n        {\n            ;\n        }\n") != std::string::npos);
-    CB_CHECK(file.find("Debug.Assert(true);") != std::string::npos);
-    CB_CHECK(file.find("using System.Diagnostics;") != std::string::npos);
-    CB_CHECK(file.find("        again:\n        ;\n        goto again;\n        // done\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "using (var r = new StringReader(\"\"))\n        {\n            ;\n        }\n"));
+    CB_CHECK(l2u_holds(file, "lock (gate)\n        {\n            ;\n        }\n"));
+    CB_CHECK(l2u_holds(file, "Debug.Assert(true);"));
+    CB_CHECK(l2u_holds(file, "using System.Diagnostics;"));
+    CB_CHECK(l2u_holds(file, "        again:\n        ;\n        goto again;\n        // done\n"));
 });
 
-CB_TEST("translate.csharp.stmt.a_bare_statement_list_is_a_block", [] {
+CB_TEST("dotnet.l2_csharp.stmt.a_bare_statement_list_is_a_block", [] {
     B b;
     // the decompiler's and the Python front end's bodies are lists, not Blocks
     const auto v = b.local_sym("v", t_int());
@@ -596,13 +609,13 @@ CB_TEST("translate.csharp.stmt.a_bare_statement_list_is_a_block", [] {
     m2.kind = "method";
     m2.body = std::vector<Node*>{b.n(std::move(branch))};
     const std::string file = write_one(b.unit("L.cs", {b.klass("Prog", {b.n(std::move(m)), b.n(std::move(m2))})}));
-    CB_CHECK(file.find("    static void M()\n    {\n        int v = 1;\n        return;\n    }\n") != std::string::npos);
-    CB_CHECK(file.find("    void N()\n    {\n        if (true)\n        {\n            return;\n        }\n    }\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "    static void M()\n    {\n        int v = 1;\n        return;\n    }\n"));
+    CB_CHECK(l2u_holds(file, "    void N()\n    {\n        if (true)\n        {\n            return;\n        }\n    }\n"));
 });
 
 // ---- declarations -------------------------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.decl.enums_interfaces_records_delegates_generics", [] {
+CB_TEST("dotnet.l2_csharp.decl.enums_interfaces_records_delegates_generics", [] {
     B b;
     // enum Color { Red = 0, Green = 1 }
     ir::EnumConst red{.sym = ir::make_sym(ir::SymKind::EnumConst, "Red", "Color", true), .value = 0};
@@ -629,32 +642,26 @@ CB_TEST("translate.csharp.decl.enums_interfaces_records_delegates_generics", [] 
     const std::string file = write_one(b.unit("D.cs", {color, shape, op, box, derived}));
     const std::string expected =
         "// Translated by CodeBreaker from D.cs (csharp).\n"
-        "\n"
         "public enum Color\n"
         "{\n"
         "    Red = 0,\n"
         "    Green = 1\n"
         "}\n"
-        "\n"
         "public interface IShape\n"
         "{\n"
         "    double Area();\n"
         "}\n"
-        "\n"
         "public delegate int Op(int a, int b);\n"
-        "\n"
-        "public struct Box<T>\n"
-        "    where T : class\n"
+        "public struct Box<T> where T : class\n"
         "{\n"
         "}\n"
-        "\n"
         "public class Derived : Base, IShape\n"
         "{\n"
         "}\n";
     CB_CHECK_EQ(file, expected);
 });
 
-CB_TEST("translate.csharp.decl.operators_properties_and_constructors", [] {
+CB_TEST("dotnet.l2_csharp.decl.operators_properties_and_constructors", [] {
     B b;
     // public static V operator +(V a, V b) { return a; }  public int this[int i] { get; set; }  public int N { get; set; } = 3;
     const auto pa = b.param_sym("a", ir::class_type("V"), "V.op");
@@ -680,29 +687,29 @@ CB_TEST("translate.csharp.decl.operators_properties_and_constructors", [] {
     Node* chain = b.n(ir::CtorCall{.kind = "base", .sym = base_ctor, .args = {b.name(pn)}});
     Node* ctor = b.method("V", nullptr, {b.param(pn)}, b.block({chain}), {"public"}, "ctor");
     const std::string file = write_one(b.unit("V.cs", {b.klass("V", {plus, b.n(std::move(indexer)), b.n(std::move(auto_prop)), ctor})}));
-    CB_CHECK(file.find("    public static V operator +(V a, V b) => a;\n") != std::string::npos);
-    CB_CHECK(file.find("    public int this[int i] { get; set; }\n") != std::string::npos);
-    CB_CHECK(file.find("    public int N { get; set; } = 3;\n") != std::string::npos);
-    CB_CHECK(file.find("    public V(int n) : base(n)\n    {\n    }\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "    public static V operator +(V a, V b) => a;\n"));
+    CB_CHECK(l2u_holds(file, "    public int this[int i] { get; set; }\n"));
+    CB_CHECK(l2u_holds(file, "    public int N { get; set; } = 3;\n"));
+    CB_CHECK(l2u_holds(file, "    public V(int n)\n        : base(n)\n    {\n    }\n"));
 });
 
 // ---- what is declined ----------------------------------------------------------------------------------------------------------
 
-CB_TEST("translate.csharp.decline.a_method_with_an_unsupported_node_is_a_gap", [] {
+CB_TEST("dotnet.l2_csharp.decline.a_method_with_an_unsupported_node_is_a_gap", [] {
     B b;
     ir::Unsupported await{.kind = "await", .raw = "await is not carried"};
     Node* bad = b.method("Later", nullptr, {}, b.block({b.expr_stmt(b.n(std::move(await)))}));
     Node* good = b.method("Fine", nullptr, {}, b.block({b.ret()}));
     Node* units[] = {b.unit("G.cs", {b.klass("Prog", {bad, good})})};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     const std::string& text = p.files().at(0).text;
-    CB_CHECK(text.find("    static void Later()\n    {\n        throw new System.NotSupportedException(\"CB-GAP: await is not carried\");\n    }\n") != std::string::npos);
-    CB_CHECK(text.find("    static void Fine()\n    {\n        return;\n    }\n") != std::string::npos);   // the next method is written
+    CB_CHECK(l2u_holds(text, "    static void Later()\n    {\n        throw new System.NotSupportedException(\"CB-GAP: await is not carried\");\n    }\n"));
+    CB_CHECK(l2u_holds(text, "    static void Fine()\n    {\n        return;\n    }\n"));   // the next method is written
     CB_CHECK_EQ(p.ledger().size(), std::size_t{1});
-    CB_CHECK(p.ledger().at(0) == (cs::Gap{"Prog.Later", "await", "await is not carried"}));
+    CB_CHECK(p.ledger().at(0) == (cs::L2Gap{"Prog.Later", "await", "await is not carried"}));
 });
 
-CB_TEST("translate.csharp.decline.constructs_without_a_csharp_form", [] {
+CB_TEST("dotnet.l2_csharp.decline.constructs_without_a_csharp_form", [] {
     B b;
     const auto v = b.local_sym("v", t_int());
     ir::LocalClass lc{.decl = b.klass("Prog.Local", {})};
@@ -718,24 +725,24 @@ CB_TEST("translate.csharp.decline.constructs_without_a_csharp_form", [] {
     int k = 0;
     for (Node* body : bodies) methods.push_back(b.method("M" + std::to_string(k++), nullptr, {}, body));
     Node* units[] = {b.unit("X.cs", {b.klass("Prog", methods)})};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     p.files();
     std::vector<std::string> kinds;
-    for (const cs::Gap& g : p.ledger()) kinds.push_back(g.kind);
+    for (const cs::L2Gap& g : p.ledger()) kinds.push_back(g.kind);
     const std::vector<std::string> want = {"local-class", "anonymous-class", "inner-class", "machine", "operator", "method-ref"};
     CB_CHECK(kinds == want);
     CB_CHECK(p.ledger().at(3).why == "machine code (hand-written)");
 });
 
-CB_TEST("translate.csharp.decline.a_class_that_cannot_be_written_is_a_comment_and_the_rest_is_kept", [] {
+CB_TEST("dotnet.l2_csharp.decline.a_class_that_cannot_be_written_is_a_comment_and_the_rest_is_kept", [] {
     B b;
     Node* odd = b.klass("Odd", {}, {"public"}, "annotation");
     Node* fine = b.klass("Fine", {});
     Node* units[] = {b.unit("O.cs", {odd, fine})};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     const std::string& text = p.files().at(0).text;
-    CB_CHECK(text.find("// CB-GAP: Odd was not translated: a annotation\n") != std::string::npos);
-    CB_CHECK(text.find("public class Fine\n{\n}\n") != std::string::npos);
+    CB_CHECK(l2u_holds(text, "// CB-GAP: Odd was not translated: a annotation\n"));
+    CB_CHECK(l2u_holds(text, "public class Fine\n{\n}\n"));
     CB_CHECK_EQ(p.ledger().size(), std::size_t{1});
     CB_CHECK_EQ(p.ledger()[0].kind, "class-kind");
     // a field whose initialiser is declined keeps the field
@@ -743,324 +750,267 @@ CB_TEST("translate.csharp.decline.a_class_that_cannot_be_written_is_a_comment_an
     const auto fld = ir::make_sym(ir::SymKind::Field, "F", "Prog", false, t_int());
     Node* field = c.n(ir::FieldDecl{.sym = fld, .type = t_int(), .init = c.n(ir::Unsupported{.kind = "stackalloc", .raw = "stackalloc"}, t_int())});
     const std::string file = write_one(c.unit("F.cs", {c.klass("Prog", {field})}));
-    CB_CHECK(file.find("    int F = default /* CB-GAP: stackalloc */;\n") != std::string::npos);
+    CB_CHECK(l2u_holds(file, "    int F = default(int)/* CB-GAP: stackalloc */;\n"));
 });
 
-CB_TEST("translate.csharp.decline.only_unit_nodes_are_written", [] {
+CB_TEST("dotnet.l2_csharp.decline.only_unit_nodes_are_written", [] {
     B b;
     Node* units[] = {b.klass("Prog", {})};
-    CB_CHECK_THROWS_AS(cb::UsageError, (void)cs::Program(units));
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)cs::L2CSharpProgram(units));
 });
 
-// ---- the program: files, names, runtime, a source language's library ------------------------------------------------------------
+// ---- the program: files, names, runtime, Java units -------------------------------------------------------------------------
 
 namespace {
 
-// A small stand-in for Java's library: java.lang.String is string; `out.println(x)` is Console.WriteLine; a Java method is
-// public virtual; statics keep their text; the runtime file JavaRt is used when a number is written as text.
-class MiniJava final : public cs::Library {
-public:
-    int prepared = 0;
-    int asked_call = 0;
-    void prepare(cs::Program&) override { ++prepared; }
-    std::optional<std::string> type_name(cs::Context&, const TypeP& t) override {
-        const std::string* n = &std::get<ir::ClassType>(t->body).name;
-        if (*n == "java.lang.String") return "string";
-        if (*n == "java.lang.Runnable") return "System.Action";
-        return std::nullopt;
-    }
-    bool keep_interface(const TypeP& t) override { return std::get<ir::ClassType>(t->body).name != "java.io.Serializable"; }
-    std::vector<std::string> class_mods(cs::Context&, ir::ClassDecl&) override { return {"public"}; }
-    std::vector<std::string> field_mods(cs::Context&, ir::FieldDecl& f, ir::ClassDecl&) override { return f.mods; }
-    std::vector<std::string> method_mods(cs::Context&, ir::MethodDecl& m, ir::ClassDecl&) override {
-        std::vector<std::string> out = {"public"};
-        for (const std::string& x : m.mods) {
-            if (x == "static") out.push_back("static");
-        }
-        if (out.size() == 1) out.push_back("virtual");
-        return out;
-    }
-    std::string method_name(cs::Context&, ir::MethodDecl& m, ir::ClassDecl&) override { return m.name == "main" ? "Main" : cs::ident(m.name.value_or("")); }
-    std::string member_name(cs::Context&, const ir::Sym& s) override { return cs::ident(s.name); }
-    std::optional<cs::Ex> call(cs::Context& w, Node* e, bool) override {
-        ++asked_call;
-        const auto* c = ir::get<ir::Call>(e);
-        if (c->sym->name != "println") return std::nullopt;
-        w.add_using("System");
-        return cs::Ex{"Console.WriteLine(" + w.expr(c->args.at(0)).text + ")", cs::kPrimary};
-    }
-    std::optional<std::string> coerce(cs::Context& w, Node* e, const TypeP&) override {
-        const auto* l = ir::get<ir::Lit>(e);
-        if (l != nullptr && std::holds_alternative<double>(l->value)) {
-            w.program().use_runtime("JavaRt");
-            return "JavaRt.D(" + w.expr(e).text + ")";
-        }
-        return std::nullopt;
-    }
-};
+const cb::java::apimap::Registry& l2u_registry() {
+    static const cb::java::apimap::Registry reg = cb::java::apimap::Registry::load(cb::testing::data_path("../config/java/api_maps"));
+    return reg;
+}
+
+cs::L2CSharpOptions l2u_java_options() {
+    cs::L2CSharpOptions options;
+    options.java_registry = &l2u_registry();
+    options.runtime_dir = cb::testing::data_path("../config/translate/dotnet/runtime");
+    return options;
+}
 
 }  // namespace
 
-CB_TEST("translate.csharp.program.a_library_for_java_is_asked_where_java_differs", [] {
+CB_TEST("dotnet.l2_csharp.program.a_java_unit_is_restated_by_the_rule_set", [] {
+    // package pkg; public class App implements java.io.Serializable {
+    //     public static void main(String msg) { System.out.println(msg); }  void helper() { return; }  static void scale() { double d = 2.5; } }
     B b;
-    const auto msg = b.param_sym("msg", ir::class_type("java.lang.String"), "App.main");
+    const auto msg = b.param_sym("msg", ir::class_type("java.lang.String"), "pkg.App.main");
     const auto println = ir::make_sym(ir::SymKind::Method, "println", "java.io.PrintStream", false);
     println->params = {ir::class_type("java.lang.String")};
     const auto out = ir::make_sym(ir::SymKind::Field, "out", "java.lang.System", true, ir::class_type("java.io.PrintStream"));
-    Node* print = b.expr_stmt(b.n(ir::Call{.target = b.n(ir::Select{.obj = b.n(ir::TypeName{}, ir::class_type("java.lang.System")), .sym = out}, ir::class_type("java.io.PrintStream")), .sym = println, .args = {b.name(msg)}}));
+    Node* print = b.expr_stmt(b.n(ir::Call{.target = b.n(ir::Select{.obj = b.n(ir::TypeName{}, ir::class_type("java.lang.System")), .sym = out}, ir::class_type("java.io.PrintStream")),
+                                           .sym = println, .args = {b.name(msg)}}));
     Node* main_m = b.method("main", nullptr, {b.param(msg)}, b.block({print}), {"public", "static"});
     Node* helper = b.method("helper", nullptr, {}, b.block({b.ret()}), {});
-    const auto d = ir::make_sym(ir::SymKind::Local, "d", "App.helper", false, t_dbl());
+    const auto d = ir::make_sym(ir::SymKind::Local, "d", "pkg.App.scale", false, t_dbl());
     Node* with_double = b.method("scale", nullptr, {}, b.block({b.local(d, b.n(ir::Lit{.value = 2.5}, t_dbl()))}), {"static"});
     Node* app = b.klass("pkg.App", {main_m, helper, with_double});
-    auto* decl = ir::get<ir::ClassDecl>(app);
-    decl->implements = {ir::class_type("java.io.Serializable"), ir::class_type("java.lang.Runnable")};
-    Node* unit = b.unit("pkg/App.java", {app}, "java");
-    cb::fs::ScopedTempDir dir("cb-csharp-test");
-    cb::fs::write_text(dir.path() / "JavaRt.cs", "// runtime\r\npublic static class JavaRt { }\r\n");
-    MiniJava* library = nullptr;
-    cs::Options options;
-    options.runtime_dir = dir.path();
-    options.libraries["java"] = [&library] {
-        auto made = std::make_unique<MiniJava>();
-        library = made.get();
-        return made;
-    };
-    Node* units[] = {unit};
-    cs::Program p(units, options);
+    ir::get<ir::ClassDecl>(app)->implements = {ir::class_type("java.io.Serializable")};
+    Node* units[] = {b.unit("pkg/App.java", {app}, "java")};
+    cs::L2CSharpProgram p(units, l2u_java_options());
     const auto& files = p.files();
-    CB_CHECK_EQ(files.size(), std::size_t{2});
-    CB_CHECK_EQ(files[0].name, "App.cs");
-    CB_CHECK_EQ(files[1].name, "JavaRt.cs");
-    CB_CHECK_EQ(files[1].text, "// runtime\npublic static class JavaRt { }\n");   // the runtime as the file holds it, with \n
+    CB_CHECK(!files.empty());
+    if (files.empty()) return;
+    CB_CHECK_EQ(files[0].name, std::string("App.cs"));
     const std::string expected =
         "// Translated by CodeBreaker from App.java (java).\n"
-        "#nullable disable\n"
         "using System;\n"
         "\n"
         "namespace pkg\n"
         "{\n"
-        "    public class App : System.Action\n"
+        "    public class App\n"                                  // (Serializable has no C# form: dropped)
         "    {\n"
-        "        public static void Main(string msg)\n"
+        "        public static void Main(string msg)\n"           // main is Main
         "        {\n"
-        "            Console.WriteLine(msg);\n"
+        "            Console.WriteLine(JavaRt.Str(msg));\n"       // System.out.println, a null String printed as Java prints it
         "        }\n"
         "\n"
-        "        public virtual void helper()\n"
+        "        internal virtual void helper()\n"                // Java's package access, dispatched virtually
         "        {\n"
         "            return;\n"
         "        }\n"
         "\n"
-        "        public static void scale()\n"
+        "        internal static void scale()\n"
         "        {\n"
-        "            double d = JavaRt.D(2.5);\n"
+        "            double d = 2.5;\n"
         "        }\n"
         "    }\n"
         "}\n";
     CB_CHECK_EQ(files[0].text, expected);
-    CB_CHECK(library != nullptr);
-    CB_CHECK_EQ(library->prepared, 1);   // once, before anything is written
-    CB_CHECK_EQ(library->asked_call, 1);
     CB_CHECK(p.ledger().empty());
+    CB_CHECK(p.java_rules());
+    // the units given are not changed: the rule set restates a copy
+    CB_CHECK(ir::get<ir::MethodDecl>(main_m)->name == std::optional<std::string>("main"));
 });
 
-CB_TEST("translate.csharp.program.java_with_no_library_is_declined_class_by_class", [] {
+CB_TEST("dotnet.l2_csharp.program.java_with_no_registry_is_declined_class_by_class", [] {
     B b;
     Node* units[] = {b.unit("pkg/Plain.java", {b.klass("pkg.Plain", {b.method("f", nullptr, {}, b.block({b.ret()}))})}, "java"),
                      b.unit("pkg/Other.cs", {b.klass("Other", {})}, "csharp")};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     CB_CHECK_EQ(p.files().size(), std::size_t{2});
-    CB_CHECK(p.files()[0].text.find("// CB-GAP: Plain was not translated: no library for java source\n") != std::string::npos);
-    CB_CHECK(p.files()[1].text.find("public class Other\n{\n}\n") != std::string::npos);   // the C# unit is unaffected
+    CB_CHECK(l2u_holds(p.files()[0].text, "// CB-GAP: Plain was not translated: no rule set for java source in the plain lowering yet\n"));
+    CB_CHECK(l2u_holds(p.files()[1].text, "public class Other\n{\n}\n"));   // the C# unit is unaffected
     CB_CHECK_EQ(p.ledger().size(), std::size_t{1});
-    CB_CHECK_EQ(p.ledger()[0].kind, "library");
-    // a unit that says no language is Java's
-    B c;
-    Node* none = c.unit("N.java", {c.klass("N", {})}, "java");
-    ir::get<ir::Unit>(none)->lang.reset();
-    Node* units2[] = {none};
-    cs::Program q(units2);
-    CB_CHECK(q.files()[0].text.find("(java).") != std::string::npos);
+    if (!p.ledger().empty()) CB_CHECK_EQ(p.ledger()[0].kind, std::string("library"));
+    CB_CHECK(!p.java_rules());
 });
 
-CB_TEST("translate.csharp.program.file_names_and_writing", [] {
+CB_TEST("dotnet.l2_csharp.program.file_names_and_writing", [] {
     B b;
     Node* units[] = {b.unit("a/Same.cs", {b.klass("A", {})}), b.unit("b/Same.cs", {b.klass("B", {})}), b.unit("", {b.klass("C", {})})};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     const auto& files = p.files();
     CB_CHECK_EQ(files.size(), std::size_t{3});
-    CB_CHECK_EQ(files[0].name, "Same.cs");
-    CB_CHECK_EQ(files[1].name, "Same_2.cs");   // not one file over the other
-    CB_CHECK_EQ(files[2].name, "Unit.cs");
-    cb::fs::ScopedTempDir dir("cb-csharp-test");
+    if (files.size() != 3) return;
+    CB_CHECK_EQ(files[0].name, std::string("Same.cs"));
+    CB_CHECK_EQ(files[1].name, std::string("Same_2.cs"));   // not one file over the other
+    CB_CHECK_EQ(files[2].name, std::string("Unit.cs"));
+    cb::fs::ScopedTempDir dir("cb-l2cs-test");
     const auto paths = p.write(dir.path() / "out" / "deep");
     CB_CHECK_EQ(paths.size(), std::size_t{3});
-    CB_CHECK_EQ(cb::fs::read_text(paths[1]), files[1].text);
+    if (paths.size() == 3) CB_CHECK_EQ(cb::fs::read_text(paths[1]), files[1].text);
     // a runtime file that is not there is an IoError, not a silent omission
     B c;
-    Node* with_rt = c.unit("R.java", {c.klass("R", {})}, "java");
-    cs::Options options;
+    const auto d = ir::make_sym(ir::SymKind::Local, "d", "R.f", false, t_dbl());
+    const auto s = ir::make_sym(ir::SymKind::Local, "s", "R.f", false, ir::class_type("java.lang.String"));
+    Node* text = c.n(ir::Concat{.parts = {c.str("d = "), c.name(d)}}, ir::class_type("java.lang.String"));   // (a double as text: JavaRt.Str)
+    Node* f = c.method("f", nullptr, {}, c.block({c.local(d, c.n(ir::Lit{.value = 0.5}, t_dbl())), c.local(s, text)}), {"static"});
+    Node* units2[] = {c.unit("R.java", {c.klass("R", {f})}, "java")};
+    cs::L2CSharpOptions options = l2u_java_options();
     options.runtime_dir = dir.path();
-    options.libraries["java"] = [] {
-        struct NeedsRuntime final : cs::Library {
-            void prepare(cs::Program& program) override { program.use_runtime("Missing"); }
-            std::vector<std::string> class_mods(cs::Context&, ir::ClassDecl&) override { return {}; }
-            std::vector<std::string> field_mods(cs::Context&, ir::FieldDecl&, ir::ClassDecl&) override { return {}; }
-            std::vector<std::string> method_mods(cs::Context&, ir::MethodDecl&, ir::ClassDecl&) override { return {}; }
-            std::string method_name(cs::Context&, ir::MethodDecl&, ir::ClassDecl&) override { return {}; }
-            std::string member_name(cs::Context&, const ir::Sym&) override { return {}; }
-        };
-        return std::make_unique<NeedsRuntime>();
-    };
-    Node* units2[] = {with_rt};
-    cs::Program q(units2, options);
+    cs::L2CSharpProgram q(units2, options);
     CB_CHECK_THROWS_AS(cb::Error, q.files());
 });
 
-CB_TEST("translate.csharp.program.class_index_and_overrides", [] {
+CB_TEST("dotnet.l2_csharp.program.class_index", [] {
     B b;
-    const auto p1 = b.param_sym("x", t_int(), "Base.f");
-    const auto p2 = b.param_sym("x", t_int(), "Derived.f");
-    const auto p3 = b.param_sym("x", t_str(), "Derived.g");
-    Node* base_f = b.method("f", nullptr, {b.param(p1)}, b.block({}), {"public"});
-    Node* base_priv = b.method("h", nullptr, {}, b.block({}), {"private"});
-    Node* derived_f = b.method("f", nullptr, {b.param(p2)}, b.block({}), {"public"});
-    Node* derived_g = b.method("g", nullptr, {b.param(p3)}, b.block({}), {"public"});
-    Node* derived_h = b.method("h", nullptr, {}, b.block({}), {"public"});
-    Node* base = b.klass("p.Base", {base_f, base_priv});
-    Node* derived = b.klass("p.Derived", {derived_f, derived_g, derived_h});
+    Node* base = b.klass("p.Base", {b.method("f", nullptr, {}, b.block({}), {"public"})});
+    Node* nested = b.klass("p.Derived.In", {});
+    ir::get<ir::ClassDecl>(nested)->outer = "p.Derived";
+    Node* derived = b.klass("p.Derived", {b.method("f", nullptr, {}, b.block({}), {"public"}), nested});
     ir::get<ir::ClassDecl>(derived)->extends = ir::class_type("p.Base");
     Node* units[] = {b.unit("P.cs", {base, derived})};
-    cs::Program p(units);
+    cs::L2CSharpProgram p(units);
     CB_CHECK(p.class_named("p.Base") == ir::get<ir::ClassDecl>(base));
+    CB_CHECK(p.class_named("p.Derived.In") == ir::get<ir::ClassDecl>(nested));   // a nested class is indexed too
     CB_CHECK(p.class_named("p.Nope") == nullptr);
-    ir::ClassDecl& d = *ir::get<ir::ClassDecl>(derived);
-    CB_CHECK(p.base_of(d) == ir::get<ir::ClassDecl>(base));
+    CB_CHECK(p.base_of(*ir::get<ir::ClassDecl>(derived)) == ir::get<ir::ClassDecl>(base));
     CB_CHECK(p.base_of(*ir::get<ir::ClassDecl>(base)) == nullptr);
-    CB_CHECK(p.overrides(d, *ir::get<ir::MethodDecl>(derived_f)));       // same name and parameter types
-    CB_CHECK(!p.overrides(d, *ir::get<ir::MethodDecl>(derived_g)));      // a name Base does not have
-    CB_CHECK(!p.overrides(d, *ir::get<ir::MethodDecl>(derived_h)));      // Base's is private
 });
 
-// ---- the real programs -----------------------------------------------------------------------------------------------------------
+// ---- Java units: what the rule set says in the text (the javac front end's units of translate/testdata/csharp_java) ----------------
+//
+// The whole text of each program is pinned by dotnet.l2_csharp.java.* (l2_syntax_builder_test.cpp); these name what a reader looks for.
 
 namespace {
 
-// The C# corpus programs of tests/translate/corpus/csharp (written for the kit), as the Roslyn front end lowers them: their
-// units as L2 JSON, and the C# text the back end wrote for them. The text was read through for correctness -- it is the program
-// again, in C#'s own idioms -- and is what the checked-in goldens hold.
-void check_corpus_program(const std::string& name) {
-    const std::string stem = "translate/testdata/csharp_" + name;
-    const cb::Json docs = cb::json::load(cb::testing::data_path(stem + ".l2.json"));
-    const std::string expected = cb::fs::read_text(cb::testing::data_path(stem + ".cs.txt"));
+struct L2uUnits {
     cb::Arena arena;
     std::vector<Node*> units;
-    for (const cb::Json& doc : docs) units.push_back(cb::translate::l2::from_json(arena, doc));
-    cs::Program p(units);
-    const auto& files = p.files();
-    CB_CHECK_EQ(files.size(), std::size_t{1});
-    if (files.empty()) return;
-    CB_CHECK_EQ(files[0].text, expected);
-    CB_CHECK(p.ledger().empty());
+};
+
+std::unique_ptr<L2uUnits> l2u_load(const std::string& name) {
+    auto u = std::make_unique<L2uUnits>();
+    const cb::Json docs = cb::json::load(cb::testing::data_path("translate/testdata/csharp_java/" + name + ".l2.json"));
+    for (const cb::Json& d : docs) u->units.push_back(cb::translate::l2::from_json(u->arena, d));
+    return u;
 }
 
-}  // namespace
+bool l2u_runtime_file(const std::string& name) {
+    return name == "JavaRt.cs" || name == "JavaCollections.cs" || name == "JavaStreams.cs" || name == "JavaCharTypes.cs";
+}
 
-CB_TEST("translate.csharp.corpus.accounts", [] { check_corpus_program("accounts"); });
-CB_TEST("translate.csharp.corpus.bank", [] { check_corpus_program("bank"); });
-CB_TEST("translate.csharp.corpus.generics", [] { check_corpus_program("generics"); });
-CB_TEST("translate.csharp.corpus.inventory", [] { check_corpus_program("inventory"); });
-CB_TEST("translate.csharp.corpus.linq", [] { check_corpus_program("linq"); });
-CB_TEST("translate.csharp.corpus.numbers", [] { check_corpus_program("numbers"); });
-CB_TEST("translate.csharp.corpus.records", [] { check_corpus_program("records"); });
-CB_TEST("translate.csharp.corpus.shapes", [] { check_corpus_program("shapes"); });
-CB_TEST("translate.csharp.corpus.sieve", [] { check_corpus_program("sieve"); });
-CB_TEST("translate.csharp.corpus.text", [] { check_corpus_program("text"); });
-
-// ---- the old harness's programs -----------------------------------------------------------------------------------------------------
-
-namespace {
-
-std::string first_difference(const std::string& expected, const std::string& actual) {
-    std::size_t line = 1;
-    std::size_t at = 0;
-    while (at < expected.size() && at < actual.size()) {
-        const std::size_t e_end = expected.find('\n', at);
-        const std::size_t a_end = actual.find('\n', at);
-        if (e_end != a_end || expected.compare(at, e_end - at, actual, at, a_end - at) != 0) break;
-        at = e_end + 1;
-        ++line;
+std::string l2u_text(cs::L2CSharpProgram& p) {
+    std::string out;
+    for (const cs::L2File& f : p.files()) {
+        if (!l2u_runtime_file(f.name)) out += "// ==== " + f.name + " ====\n" + f.text;
     }
-    const auto row = [&](const std::string& t) { return t.substr(at, t.find('\n', at) - at); };
-    return std::format("line {}: expected [{}] actual [{}]", line, row(expected), row(actual));
+    return out;
+}
+
+bool l2u_has_runtime(cs::L2CSharpProgram& p) {
+    return std::any_of(p.files().begin(), p.files().end(), [](const cs::L2File& f) { return l2u_runtime_file(f.name); });
 }
 
 }  // namespace
 
-// The programs of test-inputs/csharp-harness (the translator's C# corpus, the front end's own tools, the XNA
-// runtime, programs written for this back end) lowered to L2, with the recorded answer for each: run
-// when CB_CSHARP_HARNESS names the folder holding them; a run without it has nothing to compare and passes.
-CB_TEST("translate.csharp.harness.recorded_programs_agree", [] {
-    const auto dir = cb::fs::get_env("CB_CSHARP_HARNESS");
-    if (!dir) return;
-    const std::string all = cb::fs::read_text(std::filesystem::path(*dir) / "expected.txt");
-    std::size_t compared = 0;
-    std::int64_t total_us = 0;   // the writing alone (not the reading of the L2)
-    std::size_t at = 0;
-    while (at < all.size()) {
-        const std::size_t end = all.find('\n', at);
-        const std::string row = all.substr(at, end - at);
-        at = end + 1;
-        const std::size_t tab = row.find('\t');
-        const std::string key = row.substr(0, tab);
-        const cb::Json want = cb::json::parse(row.substr(tab + 1));
-        const std::size_t bar = key.find('|');
-        const std::string prog = key.substr(0, bar);
-        const std::string rest = key.substr(bar + 1);
-        const cb::Json docs = cb::json::load(std::filesystem::path(*dir) / (prog + ".json"));
-        cb::Arena arena;
-        std::vector<Node*> units;
-        if (rest == "whole") {
-            for (const cb::Json& d : docs) units.push_back(cb::translate::l2::from_json(arena, d));
-        } else {
-            units.push_back(cb::translate::l2::from_json(arena, docs.at(static_cast<std::size_t>(std::stoi(rest.substr(rest.find('|') + 1))))));
-        }
-        std::int64_t best_us = std::numeric_limits<std::int64_t>::max();   // the best of five writes
-        for (int rep = 0; rep < 5; ++rep) {
+CB_TEST("dotnet.l2_csharp.java.semantics_in_the_text", [] {
+    auto u = l2u_load("features");
+    cs::L2CSharpProgram p(u->units, l2u_java_options());
+    const std::string text = l2u_text(p);
+    const auto has = [&](std::string_view s) {
+        const bool found = text.find(s) != std::string::npos;
+        if (!found) std::fprintf(stderr, "not in the text: %.*s\n", static_cast<int>(s.size()), s.data());
+        return found;
+    };
+    CB_CHECK(has("public override string ToString()"));                  // toString is ToString
+    CB_CHECK(has("public override bool Equals(object o)"));
+    CB_CHECK(has("public override int GetHashCode()"));
+    CB_CHECK(has("public virtual int CompareTo(Shape o)"));              // Comparable
+    CB_CHECK(has("class Resource : IDisposable"));                       // AutoCloseable
+    CB_CHECK(has("public virtual void Dispose()"));                      // close
+    CB_CHECK(has("public abstract string greet(string name);"));         // the abstract class declares what its interface leaves
+    CB_CHECK(has("public override string greet(string name)"));
+    CB_CHECK(has("static Features()\n"));                                // static initialisers in one static constructor
+    CB_CHECK(has("internal const int LIMIT = 10;"));
+    CB_CHECK(has("(object)a == (object)b"));                             // Java compares the references
+    CB_CHECK(has("JavaRt.Str(d)"));                                      // a double as text
+    CB_CHECK(has("JLib.CloseResource(r, j_thrown1);"));   // (a close that throws must not replace the exception on its way, as C#'s using lets it)
+    CB_CHECK(has("public static void Main(string[] args)"));
+    CB_CHECK(p.ledger().empty());
+    CB_CHECK(l2u_has_runtime(p));
+});
+
+CB_TEST("dotnet.l2_csharp.java.what_it_once_declined", [] {
+    {   // a box that may be null is a nullable value, and only that one
+        auto u = l2u_load("boxed_null");
+        cs::L2CSharpProgram p(u->units, l2u_java_options());
+        const std::string written = l2u_text(p);
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(written.find("int? absent()") != std::string::npos);
+        CB_CHECK(written.find("int x = 5;") != std::string::npos);
+    }
+    {   // an enum of objects is a class
+        auto u = l2u_load("enum_object");
+        cs::L2CSharpProgram p(u->units, l2u_java_options());
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(l2u_text(p).find(": JEnum") != std::string::npos);
+    }
+    {   // an exception made from a cause keeps it
+        auto u = l2u_load("exception_cause");
+        cs::L2CSharpProgram p(u->units, l2u_java_options());
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(l2u_text(p).find("new Exception(") != std::string::npos);
+    }
+    {   // the instance around an inner class is a field, given to the constructor
+        auto u = l2u_load("inner_outer");
+        cs::L2CSharpProgram p(u->units, l2u_java_options());
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(l2u_text(p).find("outer_") != std::string::npos);
+    }
+    {   // a HashMap is Java's table, so a walk of it is in Java's order
+        auto u = l2u_load("hash_order");
+        cs::L2CSharpProgram p(u->units, l2u_java_options());
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(l2u_text(p).find("JHashMap<") != std::string::npos);
+    }
+});
+
+CB_TEST("dotnet.l2_csharp.java.a_unit_of_another_language_is_not_restated", [] {
+    // only Java units go through the rule set: a C# unit (with the registry given) is written as C#'s own
+    auto u = l2u_load("calc");
+    for (Node* unit : u->units) ir::get<ir::Unit>(unit)->lang = "csharp";
+    cs::L2CSharpProgram p(u->units, l2u_java_options());
+    CB_CHECK(!p.files().empty());
+    CB_CHECK(!l2u_has_runtime(p));
+});
+
+CB_TEST("dotnet.l2_csharp.java.a_java_unit_without_the_registry_is_declined", [] {
+    auto u = l2u_load("calc");
+    cs::L2CSharpProgram p(u->units);
+    CB_CHECK(!p.ledger().empty());
+    if (!p.ledger().empty()) CB_CHECK_EQ(p.ledger()[0].kind, std::string("library"));
+});
+
+// The speed of the writing, the rule set included: the best of 20, printed.
+CB_TEST("dotnet.l2_csharp.java.timing", [] {
+    for (const char* name : {"modern", "calc", "features"}) {
+        auto u = l2u_load(name);
+        std::int64_t best_us = std::numeric_limits<std::int64_t>::max();
+        for (int rep = 0; rep < 20; ++rep) {
             const auto t0 = std::chrono::steady_clock::now();
-            cs::Program timed(units);
-            timed.files();
+            cs::L2CSharpProgram p(u->units, l2u_java_options());
+            (void)p.files();
             best_us = std::min(best_us, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
         }
-        total_us += best_us;
-        cs::Program p(units);
-        std::vector<std::vector<std::string>> got_gaps;
-        for (const cs::Gap& g : p.ledger()) got_gaps.push_back({g.where, g.kind, g.why});
-        ++compared;
-        if (!want.contains("files")) {
-            CB_CHECK(false);
-            std::fprintf(stderr, "%s: the golden holds %s\n", key.c_str(), want.dump().substr(0, 200).c_str());
-            continue;
-        }
-        const cb::Json& files = want.at("files");
-        CB_CHECK_EQ(p.files().size(), files.size());
-        for (std::size_t i = 0; i < files.size() && i < p.files().size(); ++i) {
-            const std::string name = files[i][0].get<std::string>();
-            const std::string text = files[i][3].get<std::string>();
-            CB_CHECK_EQ(p.files()[i].name, name);
-            if (p.files()[i].text != text) {
-                CB_CHECK(false);
-                std::fprintf(stderr, "%s %s: %s\n", key.c_str(), name.c_str(), first_difference(text, p.files()[i].text).c_str());
-            }
-        }
-        std::vector<std::vector<std::string>> want_gaps;
-        for (const cb::Json& g : want.at("ledger")) want_gaps.push_back({g[0].get<std::string>(), g[1].get<std::string>(), g[2].get<std::string>()});
-        if (want_gaps != got_gaps) {
-            CB_CHECK(false);
-            std::fprintf(stderr, "%s: ledger %zu entries, expected %zu\n", key.c_str(), got_gaps.size(), want_gaps.size());
-        }
+        std::fprintf(stderr, "l2_csharp java %s: %lld us\n", name, static_cast<long long>(best_us));
     }
-    std::fprintf(stderr, "csharp harness: %zu questions, writing took %lld us\n", compared, static_cast<long long>(total_us));
-    CB_CHECK(compared > 10);
 });

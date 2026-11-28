@@ -7,7 +7,7 @@
 //     for (const L2File& f : program.files()) ...         // {"Shapes.cs", text}
 //     for (const L2Gap& g : program.ledger()) ...         // what was declined, and why
 //
-// Each L2 node becomes the syntax node C# writes it with; the decisions the old writer (translate/backends/csharp) made from the tree are
+// Each L2 node becomes the syntax node C# writes it with; the decisions the old writer (translate/backends/csharp, retired in stage 15) made from the tree are
 // made the same way here (a name an inner block declares before an outer one is renumbered, a constant that overflows is `unchecked`, an
 // object initialiser the front end hoisted is put back, a section that falls through ends in `goto case`). The text -- parentheses,
 // spacing, layout, literal spelling, `@` before a keyword -- is the output visitor's alone (InsertParenthesesVisitor, the Allman options

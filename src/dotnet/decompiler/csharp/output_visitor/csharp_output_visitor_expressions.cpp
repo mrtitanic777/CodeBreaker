@@ -194,6 +194,7 @@ void CSharpOutputVisitor::visit_binary_operator_expression(BinaryOperatorExpress
             break;
         case BinaryOperatorType::NullCoalescing:
         case BinaryOperatorType::IsPattern:
+        case BinaryOperatorType::PatternOr:
             space_policy = true;
             break;
         case BinaryOperatorType::Range:
@@ -204,7 +205,7 @@ void CSharpOutputVisitor::visit_binary_operator_expression(BinaryOperatorExpress
     }
     space(space_policy);
     std::string_view operator_token = BinaryOperatorExpression::get_operator_token(binary_operator_expression.operator_());
-    if (operator_token == BinaryOperatorExpression::is_keyword) {
+    if (operator_token == BinaryOperatorExpression::is_keyword || operator_token == BinaryOperatorExpression::pattern_or_keyword) {
         write_keyword(operator_token);
     } else {
         write_token(operator_token);
