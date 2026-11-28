@@ -12,8 +12,10 @@
 #include "formats/cab.hpp"
 #include "core/text.hpp"
 #include "formats/detect.hpp"
+#include "formats/disc_image.hpp"
 #include "formats/dos.hpp"
 #include "formats/format_compare_kit.hpp"
+#include "formats/iso9660.hpp"
 #include "formats/le.hpp"
 #include "formats/mips_elf.hpp"
 #include "formats/ne.hpp"
@@ -709,6 +711,7 @@ namespace {
 
 struct Digest {
     std::string text;
+    bool verbose = false;   // --readers-text: an error's words too (the hash leaves them out)
     template <class... A>
     void line(std::format_string<A...> f, A&&... a) {
         text += std::format(f, std::forward<A>(a)...);
@@ -718,13 +721,15 @@ struct Digest {
     void guard(std::string_view what, F&& body) {   // an answer that throws is an answer too
         try {
             body();
-        } catch (const TruncatedError&) {
-            line("{}: truncated", what);
-        } catch (const FormatError&) {
-            line("{}: format error", what);
-        } catch (const Error&) {
-            line("{}: error", what);
+        } catch (const TruncatedError& e) {
+            line("{}: truncated{}", what, said(e));
+        } catch (const FormatError& e) {
+            line("{}: format error{}", what, said(e));
+        } catch (const Error& e) {
+            line("{}: error{}", what, said(e));
         }
+    }
+    std::string said(const Error& e) const { return verbose ? std::string(" (") + e.what() + ")" : std::string();
     }
 };
 
@@ -1071,10 +1076,58 @@ void digest_omf(Digest& g, ByteView data) {
     if (w.error) g.line("  walk error");
 }
 
+void digest_iso_tree(Digest& g, const iso9660::Volume& v, iso9660::Names names, const iso9660::Entry& dir, int depth, std::size_t& seen, std::size_t& files) {
+    if (depth > 12 || seen > 20000) return;
+    const std::vector<iso9660::Entry> entries = v.list(dir, names);
+    for (const iso9660::Entry& e : entries) {
+        ++seen;
+        g.line("  {}{} {} {} {} {:x}", std::string(static_cast<std::size_t>(depth), ' '), e.name, e.directory, e.size, e.extent,
+               dig_hash(Bytes(e.recorded.begin(), e.recorded.end())));
+        for (const iso9660::Extent& x : e.extents) g.line("    extent {} {}", x.sector, x.size);
+        if (e.directory) {
+            g.guard("dir", [&] { digest_iso_tree(g, v, names, e, depth + 1, seen, files); });
+        } else if (files < 64 && e.size < (8u << 20)) {
+            ++files;
+            g.guard("file", [&] {
+                const Bytes b = v.read(e);
+                g.line("    data {} {:x}", b.size(), dig_hash(b));
+            });
+        }
+    }
+}
+
+void digest_iso(Digest& g, ByteView data) {
+    const iso9660::Volume v(disc::Sectors::of(data));
+    g.line("iso {} {}", v.has_joliet(), v.sector_count());
+    for (const iso9660::Names names : {iso9660::Names::Primary, iso9660::Names::Joliet}) {
+        if (names == iso9660::Names::Joliet && !v.has_joliet()) break;
+        const iso9660::Info i = v.info(names);
+        g.line(" info {} {} {} {} {} {} {} {} {} {}", i.system, i.label, i.created, i.tree_label, i.blocks, i.block_size, i.has_joliet, i.root_sector, i.root_size,
+               dig_opt(i.boot_catalog));
+        const iso9660::Entry root = v.root(names);
+        g.line(" root {} {}", root.size, root.extent);
+        std::size_t seen = 0, files = 0;
+        g.guard("tree", [&] { digest_iso_tree(g, v, names, root, 0, seen, files); });
+        g.guard("lookup", [&] {
+            for (const iso9660::Entry& e : v.list("/", names))
+                if (!e.directory) {
+                    const Bytes b = v.read("/" + e.name, names);
+                    g.line(" read /{} {} {:x}", e.name, b.size(), dig_hash(b));
+                    break;
+                }
+        });
+    }
+    g.guard("sectors", [&] {
+        const Bytes b = v.read_sectors(16, 2);
+        g.line(" sectors {} {:x}", b.size(), dig_hash(b));
+    });
+}
+
 }  // namespace
 
 std::string reader_digest(ByteView data, const std::filesystem::path& file, bool text) {
     Digest g;
+    g.verbose = text;
     g.guard("pe", [&] { digest_pe(g, data); });
     g.guard("ne", [&] { digest_ne(g, data); });
     g.guard("le", [&] { digest_le(g, data); });
@@ -1093,6 +1146,9 @@ std::string reader_digest(ByteView data, const std::filesystem::path& file, bool
                              (data.size() >= 4 && ((data[0] == 0x4E && data[1] == 0x53 && data[2] == 0x4F && data[3] == 0x30) || (data[0] == 0x7F && data[1] == 0x45)));
     if (switch_file) g.guard("nro", [&] { digest_nro(g, data); });
     if (data.size() >= 1 && (data[0] == 0x80 || data[0] == 0xF0)) g.guard("omf", [&] { digest_omf(g, data); });
+    const bool cd001 = (data.size() >= 0x8006 && data[0x8001] == 0x43 && data[0x8002] == 0x44 && data[0x8003] == 0x30) ||
+                       (data.size() >= 16 * 2352 + 32 && disc::raw_sync(data.subspan(16 * 2352)));
+    if (cd001) g.guard("iso", [&] { digest_iso(g, data); });
     if (text) return g.text;
     std::uint64_t hash = 1469598103934665603ull;
     for (char c : g.text) hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
