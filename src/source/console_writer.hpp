@@ -16,6 +16,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <map>
 #include <string>
 #include <string_view>
@@ -82,6 +84,23 @@ struct Banked {
     std::vector<Variant> variants;
 };
 
+// ---- the cart6502 shape's part of a description ----
+struct ChipTable {
+    std::string read, write;          // the knowledge hardware sections of a chip's read and write names (the same one for a chip that has one)
+};
+struct CartShape {
+    std::string ext;                  // the cartridge's extension, for the prologue ({ext}) and the rebuilt file
+    std::string prologue;             // the dialect block ahead of the code ({stem}, {ext})
+    std::string bank_block;           // the dialect block that opens a bank ({offset}, {window}); "" an `.org` of the window
+    std::string part = "BANK{bank}";  // the L2 part a bank is
+    std::uint32_t tail = 0;           // the bytes at the end of each bank that are data
+    std::vector<std::string> tail_lines;   // how they are said: {wN} the word at N (by its label), {bN} the byte at N
+    unsigned equ_digits = 0;          // the digits of an `.equ` (0: 2 for a zero-page address, else 4)
+    std::uint32_t data_floor = 0;     // an operand below this is never a data label
+    bool whole = false;               // the source is written in the neutral text and said in the dialect at the end (else line by line)
+    std::vector<ChipTable> chips;
+};
+
 // A platform's description (config/platforms/<name>.json).
 struct Description {
     std::string name;        // the file's name: what reconstruct() is asked for
@@ -93,10 +112,25 @@ struct Description {
     std::string fixed;       // the knowledge table of the fixed addresses outside the program ("" none)
     std::vector<HeadLine> head;
     Banked banked;           // (the banked shape's)
+    CartShape cart;          // (the cart6502 shape's)
 };
 
 // The description of `name`. UsageError when there is none.
 const Description& describe(std::string_view name);
+
+// (cart6502) The banks of a 6502 cartridge as flow sees them: flow addresses are bank << 16 | the address in the bank's window.
+struct CartBank {
+    std::uint32_t offset = 0, size = 0;   // in the image
+    std::uint32_t window = 0;             // the address its first byte shows at
+    Bytes memory;                         // the address space with the bank in its window, as flow decodes it
+};
+struct Cart {
+    std::vector<CartBank> banks;
+    std::function<bool(std::size_t bank, std::uint32_t address)> inside;                      // an address the bank shows
+    std::function<bool(std::size_t bank, std::uint32_t address, std::uint32_t size)> fits;    // an instruction there lies in the bank
+    std::function<std::optional<std::uint32_t>(std::uint32_t address)> fold;                  // a target in the window (a mirror folded in)
+    std::function<std::uint32_t(std::size_t bank, std::uint32_t address)> offset;             // the image offset of an address
+};
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
 struct Loaded {
@@ -106,6 +140,7 @@ struct Loaded {
     Values values;
     std::vector<std::uint32_t> starts;   // (banked) where flow starts, in the order the format found them
     Bytes memory;                        // (banked) the address space at power-on that flow decodes
+    Cart cart;                           // (cart6502)
 };
 
 // The program in `file`, as the platform's loader reads it (IoError when the file cannot be read, FormatError when it is not the platform's).

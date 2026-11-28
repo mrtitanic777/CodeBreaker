@@ -1,0 +1,27 @@
+{
+  "platform": "atari2600",
+  "title": "Atari 2600",
+  "description": "A raw cartridge of 2 or 4 KB banks, each seen in the window its reset vector names; flow from every bank's reset and IRQ vectors (the start bank's unprefixed). The TIA's registers by their read and write names and the RIOT's, written in DASM.",
+  "machine": {
+    "family": "6502",
+    "container": "raw cartridge (.a26, .bin)",
+    "cpu": {"language": "6502:LE:16:6507:default", "bits": 8, "endian": "little", "decoder": "m6502", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P"],
+    "toolchain": "CodeBreaker's own assembler (dasm syntax), or dasm"
+  },
+  "shape": "cart6502",
+  "dialect": "dasm",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Atari 2600, {size} bytes, bank switching {scheme}, {banks} bank{banked?s|}"
+  ],
+  "cart": {
+    "ext": "a26",
+    "prologue": "prologue",
+    "bank_block": "bank",
+    "part": "BANK{bank}",
+    "tail": 4,
+    "tail_lines": ["        .half {w0},{w2}"],
+    "chips": [{"read": "tia_read", "write": "tia_write"}, {"read": "riot", "write": "riot"}]
+  }
+}

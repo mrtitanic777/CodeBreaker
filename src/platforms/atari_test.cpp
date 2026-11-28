@@ -1,6 +1,5 @@
 // The Atari 2600 and 7800 platform records, and the registry telling their files apart from the other 6502 machines'.
 #include "core/testing.hpp"
-#include "platforms/atari2600.hpp"
 #include "platforms/atari7800.hpp"
 #include "platforms/nes.hpp"
 
@@ -26,13 +25,13 @@ void check_atari(const Platform& p, Id id, std::string_view name, std::string_vi
 
 }  // namespace
 
-CB_TEST("platforms.atari2600.descriptor", [] { check_atari(atari2600(), Id::Machine, "atari2600", "Atari 2600", "raw cartridge (.a26, .bin)"); });
+CB_TEST("platforms.atari2600.descriptor", [] { check_atari(described("atari2600"), Id::Machine, "atari2600", "Atari 2600", "raw cartridge (.a26, .bin)"); });
 
 CB_TEST("platforms.atari7800.descriptor", [] { check_atari(atari7800(), Id::Machine, "atari7800", "Atari 7800", "A78 cartridge (.a78)"); });
 
 CB_TEST("platforms.atari.registry_tells_the_6502_machines_apart", [] {
     // (a registered machine is recognised by the probe its lane gives: engine/lane_registry.hpp)
-    Platform a7800 = atari7800(), a2600 = atari2600(), nes_platform = nes();
+    Platform a7800 = atari7800(), a2600 = described("atari2600"), nes_platform = nes();
     nes_platform.recognise = [](const std::filesystem::path& p) { return p.extension() == ".nes"; };
     a7800.recognise = [](const std::filesystem::path& p) { return p.extension() == ".a78"; };
     a2600.recognise = [](const std::filesystem::path& p) { return p.extension() == ".a26"; };

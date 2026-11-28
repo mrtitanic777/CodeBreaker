@@ -12,9 +12,8 @@
 #include "engine/machine_lanes.hpp"
 #include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/atari5200.hpp"
 #include "formats/atari5200.hpp"
-#include "source/atari5200_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -123,7 +122,7 @@ vl::Effects a5200_effects(const stdfs::path& path, std::uint32_t entry, const vl
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::atari5200_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("atari5200", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -151,7 +150,7 @@ vl::ImageLaneSpec atari5200_lane_spec() {
 void register_atari5200_lane() {
     register_lane({
         .name = "atari5200",
-        .platform = platforms::atari5200,
+        .platform = [] { return platforms::described("atari5200"); },
         .probe = [](const stdfs::path& p) { return formats::atari5200::probe(p); },
         .make_spec = atari5200_lane_spec,
         .detectors = {{.priority = 270, .detect = formats::detect::info_atari5200}},

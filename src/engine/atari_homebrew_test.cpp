@@ -10,7 +10,6 @@
 #include "engine/machine_atari2600.hpp"
 #include "engine/machine_atari7800.hpp"
 #include "formats/atari2600.hpp"
-#include "source/atari2600_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;

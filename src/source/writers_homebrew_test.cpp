@@ -4,8 +4,6 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "source/atari2600_writer.hpp"
-#include "source/atari5200_writer.hpp"
 #include "source/console_writer.hpp"
 #include "source/lynx_writer.hpp"
 #include "source/pce_writer.hpp"
@@ -78,12 +76,12 @@ CB_TEST("source.writers.homebrew.z80_family", [] {
 // (the 6502 family's, through the 6502, 65C02, HuC6280 and 65816 descriptions: the Atari 2600 and 5200, the Lynx, the PC Engine and the SNES --
 // the SNES's register widths ride on `.context` lines. The NES and the Atari 7800 have no program here: their tests write one of their own.)
 CB_TEST("source.writers.homebrew.m6502_family", [] {
-    const auto a2600 = [](const std::filesystem::path& f, const std::filesystem::path& d) { return atari2600_writer::reconstruct(f, d); };
+    const auto a2600 = console("atari2600");
     rebuild("atari2600-flappyboot/boot.bin", 1, a2600);
     rebuild("atari2600-kibalchish/kibalchish_NTSC.a26", 1, a2600);
     rebuild("atari2600-legendary-spear/LegendarySpear_NTSC.bin", 1, a2600);
     rebuild("atari2600-pipes/pipe2600.bin", 2, a2600);
-    rebuild("atari5200/culomin5200.a52", 1, [](const std::filesystem::path& f, const std::filesystem::path& d) { return atari5200_writer::reconstruct(f, d); });
+    rebuild("atari5200/culomin5200.a52", 1, console("atari5200"));
     // (the Lynx's BS93 objects need no boot ROM; its cartridges, which do, are rebuilt by engine/lynx_homebrew_test on the one emulator)
     const auto lynx = [](const std::filesystem::path& f, const std::filesystem::path& d) { return lynx_writer::reconstruct(f, d); };
     for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o"}) rebuild(std::string("lynx/") + name, 0, lynx);

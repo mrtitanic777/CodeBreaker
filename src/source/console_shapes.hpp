@@ -14,4 +14,8 @@ namespace cb::source::console_writer {
 image_writer::Written write_banked(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                    std::string_view file_name, const std::filesystem::path& folder);
 
+// The `cart6502` shape (console_cart6502.cpp).
+image_writer::Written write_cart6502(const Description& d, const Loaded& program, const std::vector<std::string>& head, std::string_view file_name,
+                                     const std::filesystem::path& folder);
+
 }  // namespace cb::source::console_writer

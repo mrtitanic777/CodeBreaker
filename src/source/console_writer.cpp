@@ -56,6 +56,23 @@ std::vector<HardwareTable> tables_of(const nlohmann::ordered_json& j) {
     return out;
 }
 
+CartShape cart_of(const nlohmann::ordered_json& j) {
+    CartShape c;
+    c.ext = text_of(j, "ext");
+    c.prologue = text_of(j, "prologue");
+    c.bank_block = text_of(j, "bank_block");
+    if (j.contains("part")) c.part = text_of(j, "part");
+    c.tail = number_of(j, "tail", 0);
+    c.tail_lines = texts_of(j, "tail_lines");
+    c.equ_digits = number_of(j, "equ_digits", 0);
+    c.data_floor = number_of(j, "data_floor", 0);
+    c.whole = j.value("whole", false);
+    if (const auto it = j.find("chips"); it != j.end()) {
+        for (const auto& chip : *it) c.chips.push_back({text_of(chip, "read"), text_of(chip, "write")});
+    }
+    return c;
+}
+
 Banked banked_of(const nlohmann::ordered_json& j) {
     Banked b;
     b.cpu = text_of(j, "cpu");
@@ -122,6 +139,7 @@ Description read_description(std::string_view name) {
         }
     }
     if (const auto banked = j.find("banked"); banked != j.end()) d.banked = banked_of(*banked);
+    if (const auto cart = j.find("cart"); cart != j.end()) d.cart = cart_of(*cart);
     return d;
 }
 
@@ -239,11 +257,10 @@ image_writer::Written write(const Description& description, const Loaded& progra
     values.insert_or_assign("stem", stem);
     const std::vector<std::string> head = head_lines(description, values);
     if (description.shape == "z80-block") return write_z80_block(description, program, head, stem, folder);
-    if (description.shape == "banked") {
-        std::vector<std::string> comment;
-        for (const std::string& line : head) comment.push_back(line.empty() ? std::string() : "; " + line);
-        return write_banked(description, program, comment, values, file_name, folder);
-    }
+    std::vector<std::string> comment;   // (the shapes below write the head as comment lines, an empty template an empty line)
+    for (const std::string& line : head) comment.push_back(line.empty() ? std::string() : "; " + line);
+    if (description.shape == "banked") return write_banked(description, program, comment, values, file_name, folder);
+    if (description.shape == "cart6502") return write_cart6502(description, program, comment, file_name, folder);
     throw UsageError(std::format("console platform {} names the shape {}, which the writer does not have", description.name, description.shape));
 }
 

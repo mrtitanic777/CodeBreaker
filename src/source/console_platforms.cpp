@@ -5,9 +5,12 @@
 #include "source/console_writer.hpp"
 
 #include <format>
+#include <memory>
 
 #include "core/error.hpp"
 #include "source/isa.hpp"
+#include "formats/atari2600.hpp"
+#include "formats/atari5200.hpp"
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
@@ -105,9 +108,51 @@ Loaded load_sms(const std::filesystem::path& file) {
     return l;
 }
 
+Loaded load_atari2600(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const formats::atari2600::Rom>(formats::atari2600::read(file));
+    Loaded l;
+    l.image = rom->data;
+    const bool banked = rom->bank_count() > 1;
+    for (std::size_t b = 0; b < rom->bank_count(); ++b) {
+        l.cart.banks.push_back({static_cast<std::uint32_t>(b * rom->bank_size), rom->bank_size, rom->window, rom->memory(b)});
+        // each bank's reset and IRQ vectors (the start bank's unprefixed)
+        const std::string prefix = banked && b != rom->start_bank() ? std::format("bank{}_", b) : "";
+        for (const auto& [vector, label] : {std::pair{rom->vectors[b].reset, "reset"}, std::pair{rom->vectors[b].irq, "irq"}}) {
+            if (const auto folded = rom->fold(vector)) {
+                const std::uint32_t at = static_cast<std::uint32_t>(b) << 16 | *folded;
+                l.starts.push_back(at);
+                l.entries.try_emplace(at, prefix + label);
+            }
+        }
+    }
+    l.cart.inside = [rom](std::size_t, std::uint32_t a) { return a >= rom->window && a < rom->window + rom->bank_size; };
+    l.cart.fits = [rom](std::size_t, std::uint32_t a, std::uint32_t size) { return a + size <= rom->window + rom->bank_size; };
+    l.cart.fold = [rom](std::uint32_t a) { return rom->fold(a); };
+    l.cart.offset = [rom](std::size_t b, std::uint32_t a) { return rom->offset(b, a); };
+    l.values = {{"scheme", std::string(formats::atari2600::to_string(rom->scheme))}, {"banks", Num(rom->bank_count())}, {"banked", Num{banked}}};
+    return l;
+}
+
+Loaded load_atari5200(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const formats::atari5200::Rom>(formats::atari5200::read(file));
+    Loaded l;
+    l.image = rom->data;
+    l.cart.banks.push_back({0, static_cast<std::uint32_t>(rom->data.size()), rom->base, rom->memory()});
+    l.starts = {rom->start};
+    l.entries = {{rom->start, "start"}};
+    l.cart.inside = [rom](std::size_t, std::uint32_t a) { return rom->offset(a).has_value(); };
+    l.cart.fits = [rom](std::size_t, std::uint32_t a, std::uint32_t size) { return rom->offset(a) && rom->offset(a + size - 1); };
+    l.cart.fold = [rom](std::uint32_t a) { return rom->offset(a) ? std::optional<std::uint32_t>(a) : std::nullopt; };
+    l.cart.offset = [rom](std::size_t, std::uint32_t a) { return *rom->offset(a); };
+    l.values = {{"base", Num{rom->base}}, {"flag_a", Num{rom->flag_a}}, {"flag_b", Num{rom->flag_b}}, {"start", Num{rom->start}}};
+    return l;
+}
+
 using Loader = Loaded (*)(const std::filesystem::path&);
 
 constexpr std::pair<std::string_view, Loader> kLoaders[] = {
+    {"atari2600", load_atari2600},
+    {"atari5200", load_atari5200},
     {"coleco", load_coleco},
     {"cpc", load_cpc},
     {"gb", load_gb},

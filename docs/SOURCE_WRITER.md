@@ -13,6 +13,7 @@ recipe. That part is a description, not code.
 config/platforms/<platform>.json             what the platform is, as data (the machine's facts and its writer's)
 src/source/console_writer.{hpp,cpp}           the one writer: reads the description, runs the shape it names
 src/source/console_banked.cpp                 the banked shape (the processor a CPU trait: Z80, SM83)
+src/source/console_cart6502.cpp               the cart6502 shape (6502 cartridges: read and write register names, data at the end)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -83,3 +84,7 @@ engine.
   fields, the interrupt vectors, a write into ROM space is the bank controller's) and Master System / Game Gear / SG-1000 (Z80, WLA-DX:
   the Game Gear's ports and the SG-1000's missing mapper as `variants` by system). Their goldens and the five homebrew samples are
   byte-identical.
+- 2026-11-27: `cart6502` shape (a 6502 cartridge of banks seen in a window, flow addresses bank << 16 | address, its last bytes data as
+  templates, each chip's read and write register names): Atari 2600 and 5200 moved, their platform facts into their files too. The 5200
+  writes its source in the neutral text and says it in DASM at the end (`whole`); the 2600 says each line as it goes. The two are not
+  the same text (data rows break differently around strings), so `whole` stays a description field until one way is chosen.

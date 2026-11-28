@@ -2,7 +2,7 @@
 //
 //     engine::register_atari2600_lane();     // once, before a LaneKit is made (register_atari_lanes() does it with the other Atari machines)
 //
-// The lane is one verify/lanes/image_lane: a cartridge (formats/atari2600) is written back as dasm source (source/atari2600_writer) and rebuilt; one
+// The lane is one verify/lanes/image_lane: a cartridge (formats/atari2600) is written back as dasm source (source/console_writer, config/platforms/atari2600.json) and rebuilt; one
 // that comes back identical is the original, an edited one has each function run beside the original's in the 6502 interpreter (emulate/m6502) over the
 // 2600's memory: the 6507's 13 address lines, the 128 bytes of RAM and their mirrors (the stack is in them), the TIA and RIOT as logged devices
 // (their registers answer as an idle console: no collisions, no fire button pressed, the timer run out) and the cartridge's bank switches (a touch of

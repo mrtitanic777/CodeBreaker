@@ -1,16 +1,25 @@
 // Tests of the Atari 2600 writer over small programs of its own, written out byte by byte: the source it writes, built again by CodeBreaker's
 // dasm-syntax assembler, is the cartridge it came from.
 
-#include "source/atari2600_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/dialect.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/atari2600.hpp"
 #include "core/text.hpp"
 #include "source/m6502_source.hpp"
 
-namespace cb::source::atari2600_writer {
+namespace cb::source::console_writer::atari2600_test {
 namespace {
+
+// `data` kept in `folder` as `name` and written beside it by the platform's writer (config/platforms/atari2600.json).
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), data);
+    return console_writer::reconstruct("atari2600", folder / std::string(name), folder);
+}
+
 
 // reset at $F000: SEI CLD LDX #$FF TXS LDA #0; clear: STA $00,X DEX BNE clear;
 // main at $F00C: LDA #$0E, STA COLUBK, STA.w WSYNC, JSR sub, JMP main; sub at $F01C: LDA INTIM, RTS; vectors at $FFC
@@ -26,9 +35,9 @@ Bytes program() {
 
 std::string source_of(const image_writer::Written& r) { return fs::read_text(r.source); }
 
-CB_TEST("source.atari2600_writer.the_program_comes_back_as_source_that_builds_the_same_rom", [] {
+CB_TEST("source.console_writer.atari2600.the_program_comes_back_as_source_that_builds_the_same_rom", [] {
     fs::ScopedTempDir dir("cb_a2600");
-    const image_writer::Written r = write(formats::atari2600::parse(program()), "demo.a26", dir.path());
+    const image_writer::Written r = write(program(), "demo.a26", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0xF000, "reset"}, {0xF01C, "sub_F01C"}}));
@@ -42,9 +51,9 @@ CB_TEST("source.atari2600_writer.the_program_comes_back_as_source_that_builds_th
     }
 });
 
-CB_TEST("source.atari2600_writer.an_edited_source_builds_a_different_rom", [] {
+CB_TEST("source.console_writer.atari2600.an_edited_source_builds_a_different_rom", [] {
     fs::ScopedTempDir dir("cb_a2600_edit");
-    const image_writer::Written r = write(formats::atari2600::parse(program()), "demo.a26", dir.path());
+    const image_writer::Written r = write(program(), "demo.a26", dir.path());
     std::string s = source_of(r);
     const std::size_t at = s.find("LDA #$0E");
     CB_CHECK(at != std::string::npos);
@@ -56,7 +65,7 @@ CB_TEST("source.atari2600_writer.an_edited_source_builds_a_different_rom", [] {
     CB_CHECK(edited == expected);
 });
 
-CB_TEST("source.atari2600_writer.banked_cartridges_write_each_bank_and_name_by_bank", [] {
+CB_TEST("source.console_writer.atari2600.banked_cartridges_write_each_bank_and_name_by_bank", [] {
     // two 4 KB banks (F8): each starts SEI; JMP $F00B, with a RTS at $F00B; bank 1 has a distinct byte in its data
     Bytes rom;
     for (std::size_t b = 0; b < 2; ++b) {
@@ -71,7 +80,7 @@ CB_TEST("source.atari2600_writer.banked_cartridges_write_each_bank_and_name_by_b
         rom.insert(rom.end(), bank.begin(), bank.end());
     }
     fs::ScopedTempDir dir("cb_a2600_f8");
-    const image_writer::Written r = write(formats::atari2600::parse(rom), "f8.a26", dir.path());
+    const image_writer::Written r = write(rom, "f8.a26", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK_EQ(r.image_bytes, 0x2000u);
     CB_CHECK_EQ(r.functions.at(0x0000F000), "bank0_reset");
@@ -81,7 +90,7 @@ CB_TEST("source.atari2600_writer.banked_cartridges_write_each_bank_and_name_by_b
     CB_CHECK(s.find("        RORG $F000") != std::string::npos);
 });
 
-CB_TEST("source.atari2600_writer.a_two_kilobyte_cartridge_and_a_mirrored_operand", [] {
+CB_TEST("source.console_writer.atari2600.a_two_kilobyte_cartridge_and_a_mirrored_operand", [] {
     Bytes rom(0x800, 0xFF);
     // reset $F800: JMP $1804 (a mirror of $F804: left as written, still followed); $F804: RTS
     const Bytes code = {0x4C, 0x04, 0x18, 0xEA, 0x60};
@@ -91,7 +100,7 @@ CB_TEST("source.atari2600_writer.a_two_kilobyte_cartridge_and_a_mirrored_operand
     rom[0x7FE] = 0x00;
     rom[0x7FF] = 0xF8;
     fs::ScopedTempDir dir("cb_a2600_2k");
-    const image_writer::Written r = write(formats::atari2600::parse(rom), "two.a26", dir.path());
+    const image_writer::Written r = write(rom, "two.a26", dir.path());
     CB_CHECK(r.linked && r.same);
     const std::string s = source_of(r);
     CB_CHECK(s.find("        RORG $F800") != std::string::npos);
@@ -100,4 +109,4 @@ CB_TEST("source.atari2600_writer.a_two_kilobyte_cartridge_and_a_mirrored_operand
 });
 
 }  // namespace
-}  // namespace cb::source::atari2600_writer
+}  // namespace cb::source::console_writer::atari2600_test

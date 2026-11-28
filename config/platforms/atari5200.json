@@ -1,0 +1,29 @@
+{
+  "platform": "atari5200",
+  "title": "Atari 5200",
+  "description": "A raw cartridge of up to 32 KB ending at $BFFF, flow from its start address; the last four bytes are its header (two flag bytes and the start). GTIA, ANTIC and POKEY by their read and write names, written in DASM.",
+  "machine": {
+    "family": "6502",
+    "container": "raw cartridge (.a52, .bin)",
+    "cpu": {"language": "6502:LE:16:Sally:default", "bits": 8, "endian": "little", "decoder": "m6502", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P"],
+    "toolchain": "CodeBreaker's own assembler (dasm syntax), or dasm"
+  },
+  "shape": "cart6502",
+  "dialect": "dasm",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "cartridge: {size} bytes at ${base:04X}, flags ${flag_a:02X} ${flag_b:02X}, start ${start:04X}"
+  ],
+  "cart": {
+    "ext": "a52",
+    "prologue": "prologue",
+    "part": "ROM",
+    "tail": 4,
+    "tail_lines": ["        .byte ${b0:02X}, ${b1:02X}", "        .half {w2}"],
+    "equ_digits": 4,
+    "data_floor": "0x0100",
+    "whole": true,
+    "chips": [{"read": "gtia_read", "write": "gtia_write"}, {"read": "antic_read", "write": "antic_write"}, {"read": "pokey_read", "write": "pokey_write"}]
+  }
+}

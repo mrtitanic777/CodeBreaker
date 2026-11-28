@@ -11,9 +11,8 @@
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
 #include "engine/pcode_cpu.hpp"
-#include "platforms/atari2600.hpp"
 #include "formats/atari2600.hpp"
-#include "source/atari2600_writer.hpp"
+#include "source/console_writer.hpp"
 
 namespace cb::engine {
 
@@ -110,7 +109,7 @@ vl::Effects a2600_effects(const stdfs::path& path, std::uint32_t entry, const vl
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::atari2600_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("atari2600", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -140,7 +139,7 @@ vl::ImageLaneSpec atari2600_lane_spec() {
 void register_atari2600_lane() {
     register_lane({
         .name = "atari2600",
-        .platform = platforms::atari2600,
+        .platform = [] { return platforms::described("atari2600"); },
         .probe = [](const stdfs::path& p) { return formats::atari2600::probe(p); },
         .make_spec = atari2600_lane_spec,
     });
