@@ -395,6 +395,24 @@ void CSharpOutputVisitor::write_embedded_statement(Statement* embedded_statement
 }
 
 void CSharpOutputVisitor::write_method_body(BlockStatement* body, BraceStyle style, bool) {
+    // (not upstream) `=> expr;` for a body of one `return expr;` or one expression statement its declaration asks to be written so
+    auto* entity = body != nullptr ? as<EntityDeclaration>(body->parent()) : nullptr;
+    Statement* only = entity != nullptr && entity->is_expression_bodied() && body->statements().count() == 1 ? body->statements()[0] : nullptr;
+    Expression* value = nullptr;
+    if (auto* ret = as<ReturnStatement>(only)) value = ret->expression();
+    else if (auto* es = as<ExpressionStatement>(only)) value = es->expression();
+    if (value != nullptr) {
+        start_node(body);
+        start_node(only);
+        space();
+        write_token(Tokens::arrow);
+        space();
+        value->accept_visitor(*this);
+        semicolon();
+        end_node(only);
+        end_node(body);
+        return;
+    }
     if (body == nullptr) {
         semicolon();
     } else {

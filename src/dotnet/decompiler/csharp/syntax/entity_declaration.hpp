@@ -37,6 +37,11 @@ public:
     // Whether all of `mod` is in the modifiers.
     bool has_modifier(Modifiers mod) const { return has_flag(modifiers_, mod); }
 
+    // Not upstream: a body that is one `return expr;` is written `=> expr;` (the C# back end's plain lowering, l2_syntax_builder, asks
+    // for it where the source wrote it so; ILSpy's builders never set it). Not a slot: matching and the transforms do not see it.
+    bool is_expression_bodied() const { return expression_bodied_; }
+    void set_expression_bodied(bool value) { expression_bodied_ = value; }
+
     // The declared name (empty if there is no name token).
     virtual std::string name() const {
         Identifier* token = get_child(Slots::identifier);
@@ -60,6 +65,7 @@ protected:
 
 private:
     Modifiers modifiers_ = Modifiers::None;
+    bool expression_bodied_ = false;
 };
 
 }  // namespace cb::dotnet::decompiler::csharp::syntax
