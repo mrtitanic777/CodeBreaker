@@ -9,8 +9,12 @@
 #include "core/random_file.hpp"
 #include "core/text.hpp"
 #include "formats/disc_image.hpp"
+#include "formats/format_builtin.hpp"
 
 namespace cb::formats::iso9660 {
+
+namespace eng = cb::formats::engine;
+
 namespace {
 
 constexpr std::string_view kReader = "iso9660";
@@ -20,11 +24,6 @@ constexpr std::size_t kRootRecordAt = 156;     // in a volume descriptor
 constexpr std::size_t kVolumeSizeAt = 80;      // in a volume descriptor (both-endian, 4 bytes)
 constexpr std::uint8_t kFlagDirectory = 0x02;
 constexpr std::uint8_t kFlagMultiExtent = 0x80;
-
-std::uint32_t le32(ByteView b, std::size_t at) {
-    return static_cast<std::uint32_t>(b[at]) | static_cast<std::uint32_t>(b[at + 1]) << 8 |
-           static_cast<std::uint32_t>(b[at + 2]) << 16 | static_cast<std::uint32_t>(b[at + 3]) << 24;
-}
 
 void put_both32(ByteSpan b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) {
@@ -48,9 +47,18 @@ struct Record {
 struct Tree {
     bool joliet = false;
     std::uint64_t descriptor_at = 0;   // where its volume descriptor is
-    Bytes descriptor;
+    std::string system, volume, created;   // its descriptor's fields as stored (the volume identifier is UCS-2 in a Joliet one)
+    std::uint32_t block_size = 0;
     Record root;
 };
+
+// A descriptor's sector, or a directory's bytes, as iso9660.fmt reads it.
+eng::Tree iso_tree(ByteView bytes, std::string_view root) {
+    eng::ReadOptions options;
+    options.root = std::string(root);
+    options.keep_source = false;   // only read from
+    return eng::builtin().read("iso9660", bytes, options);
+}
 
 // A name as the volume stores it, as text: Joliet names are UCS-2, big-endian.
 std::string decode_name(ByteView raw, bool joliet) {
@@ -107,20 +115,22 @@ struct Volume::Impl {
         return out;
     }
 
-    // The record that starts at `at` in a directory's bytes (`dir_at`: where those bytes are in the image).
-    std::optional<Record> record_in(ByteView dir, std::size_t at, std::uint64_t dir_at, bool joliet) const {
-        const std::size_t length = dir[at];
+    // The record of a slot of a directory's bytes (`size` of them; `dir_at`: where they are in the image); nullopt for the zero that pads a sector.
+    std::optional<Record> record_in(const eng::Node& slot, std::size_t size, std::uint64_t dir_at, bool joliet) const {
+        const std::size_t at = slot.offset, length = slot.u("length");
         if (length == 0)
             return std::nullopt;
-        if (length < 34 || at + length > dir.size() || 33u + dir[at + 32] > length)
+        const eng::Node* body = slot.child("body");
+        if (length < 34 || at + length > size || !body || 33u + body->u("name_length") > length)
             bad(dir_at + at, "a directory record that does not fit");
         Record r;
         r.at = dir_at + at;
-        r.extent = le32(dir, at + 2) + dir[at + 1];   // past the extended attribute record
-        r.size = le32(dir, at + 10);
-        r.flags = dir[at + 25];
-        std::copy_n(dir.begin() + static_cast<std::ptrdiff_t>(at + 18), r.recorded.size(), r.recorded.begin());
-        const ByteView raw = dir.subspan(at + 33, dir[at + 32]);
+        r.extent = static_cast<std::uint32_t>(body->u("extent") + body->u("ext_attr"));   // past the extended attribute record
+        r.size = static_cast<std::uint32_t>(body->u("size"));
+        r.flags = static_cast<std::uint8_t>(body->u("flags"));
+        const std::string& recorded = body->get("recorded").text;
+        std::copy_n(recorded.begin(), r.recorded.size(), r.recorded.begin());
+        const ByteView raw = as_bytes(body->get("name").text);
         if (raw.size() == 1 && raw[0] <= 1) {   // "." and ".."
             r.name = raw[0] == 0 ? "." : "..";
             return r;
@@ -136,16 +146,11 @@ struct Volume::Impl {
             bad(dir.at, std::format("{} is not a directory", dir.name));
         const std::uint64_t at = std::uint64_t{dir.extent} * kSectorSize;
         const Bytes bytes = read_at(at, dir.size);
+        const eng::Tree records = iso_tree(bytes, "Directory");
         std::vector<Record> out;
-        std::size_t pos = 0;
-        while (pos < bytes.size()) {
-            const std::optional<Record> r = record_in(bytes, pos, at, tree.joliet);
-            if (!r) {
-                pos = (pos / kSectorSize + 1) * kSectorSize;
-                continue;
-            }
-            pos += bytes[pos];
-            if (r->name != "." && r->name != "..")
+        for (const eng::Node& slot : records.root.get("slots").children) {
+            const std::optional<Record> r = record_in(slot, bytes.size(), at, tree.joliet);
+            if (r && r->name != "." && r->name != "..")
                 out.push_back(*r);
         }
         return out;
@@ -180,30 +185,39 @@ struct Volume::Impl {
         for (std::size_t i = 0; i < kMaxDescriptors; ++i) {
             const std::uint64_t at = (kFirstDescriptor + i) * kSectorSize;
             const Bytes d = bytes_at(at, kSectorSize);
-            if (d.size() < kSectorSize || d[1] != 'C' || d[2] != 'D' || d[3] != '0' || d[4] != '0' || d[5] != '1')
+            if (d.size() < kSectorSize)
                 break;
-            if (d[0] == 255)
+            const eng::Tree tree = iso_tree(d, "Descriptor");
+            const eng::Node& v = tree.root;
+            if (v.get("standard").text != "CD001")
+                break;
+            const std::uint64_t type = v.u("type");
+            if (type == 255)
                 break;   // the terminator
-            if (d[0] == 0 && as_text(ByteView(d).subspan(7, 23)) == "EL TORITO SPECIFICATION") boot_catalog = le32(d, 71);
-            const bool primary = d[0] == 1;
+            if (type == 0 && v.get("boot_system").text == "EL TORITO SPECIFICATION") boot_catalog = static_cast<std::uint32_t>(v.u("boot_catalog"));
+            const bool primary = type == 1;
             // a supplementary descriptor is Joliet's when its escape sequence is one of UCS-2's three levels
-            const bool joliet = d[0] == 2 && d[88] == '%' && d[89] == '/' && (d[90] == '@' || d[90] == 'C' || d[90] == 'E');
+            const std::string& escapes = v.get("escapes").text;
+            const bool joliet = type == 2 && escapes[0] == '%' && escapes[1] == '/' && (escapes[2] == '@' || escapes[2] == 'C' || escapes[2] == 'E');
             if (!primary && !joliet)
                 continue;
             Tree t;
             t.joliet = joliet;
             t.descriptor_at = at;
-            t.descriptor = d;
-            const std::optional<Record> root = record_in(d, kRootRecordAt, at, joliet);
+            t.system = v.get("system").text;
+            t.volume = v.get("volume").text;
+            t.created = v.get("created").text;
+            t.block_size = static_cast<std::uint32_t>(v.u("block_size"));
+            const std::optional<Record> root = record_in(v.get("root"), kSectorSize, at, joliet);
             if (!root || !root->directory())
                 bad(at + kRootRecordAt, "no root directory");
             t.root = *root;
             t.root.at = at + kRootRecordAt;
             if (primary) {
-                trees.insert(trees.begin(), t);
-                sectors = le32(d, kVolumeSizeAt);
+                sectors = static_cast<std::uint32_t>(v.u("blocks"));
+                trees.insert(trees.begin(), std::move(t));
             } else {
-                trees.push_back(t);
+                trees.push_back(std::move(t));
             }
         }
         if (trees.empty() || trees.front().joliet)
@@ -297,27 +311,25 @@ Bytes Volume::read(std::string_view file, Names tree) const {
 Info Volume::info(Names tree) const {
     const Impl& v = *impl_;
     const Tree& t = tree_of(v.trees, tree);
-    const Bytes& p = v.trees.front().descriptor;
-    const auto text_of = [](ByteView field) {
-        std::string s(as_text(field));
+    const Tree& p = v.trees.front();
+    const auto text_of = [](std::string_view field) {
+        std::string s(field);
         while (!s.empty() && (s.back() == ' ' || s.back() == 0)) s.pop_back();
         return s;
     };
     Info i;
-    i.system = text_of(ByteView(p).subspan(8, 32));
-    i.label = text_of(ByteView(p).subspan(40, 32));
-    i.created = text_of(ByteView(p).subspan(813, 16));
+    i.system = text_of(p.system);
+    i.label = text_of(p.volume);
+    i.created = text_of(p.created);
     if (t.joliet) {
-        const ByteView raw = ByteView(t.descriptor).subspan(40, 32);
-        std::string label = decode_name(raw, true);
+        std::string label = decode_name(as_bytes(t.volume), true);
         while (!label.empty() && label.back() == ' ') label.pop_back();
         i.tree_label = label;
     } else {
         i.tree_label = i.label;
     }
     i.blocks = v.sectors;
-    const std::uint32_t block = static_cast<std::uint32_t>(p[128] | p[129] << 8);
-    i.block_size = block != 0 ? block : 2048;
+    i.block_size = p.block_size != 0 ? p.block_size : 2048;
     i.has_joliet = v.trees.size() > 1;
     i.root_sector = t.root.extent;
     i.root_size = t.root.size;

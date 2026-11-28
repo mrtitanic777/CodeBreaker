@@ -1,0 +1,61 @@
+# iso9660.fmt -- an ISO 9660 volume's structures (formats/iso9660): a volume descriptor (one 2048-byte sector from
+# sector 16 on: the primary one, a supplementary one -- Joliet's when its escape sequence says UCS-2 --, an El Torito boot
+# record, the terminator) and a directory's records. The reader reads each descriptor's sector and each directory's
+# bytes through these; which descriptors make the volume and what a record that does not fit means are the reader's.
+#
+# Numbers are stored both-endian; the little-endian half is the one read.
+
+format iso9660
+endian le
+
+# The image (what a probe reads): a cooked one, whose first volume descriptor is at sector 16.
+struct File {
+    magic      @ 0x8001 : bytes(5) == "CD001"
+    descriptor @ 0x8000 : Descriptor
+}
+
+struct Descriptor {
+    type         : u8
+    standard     : str(5)            # "CD001"
+    version      : u8
+    boot_system  @ $start + 7   : str(23)     # a boot record's: "EL TORITO SPECIFICATION"
+    boot_catalog @ $start + 71  : u32         # ... and its catalog's sector
+    system       @ $start + 8   : str(32)
+    volume       @ $start + 40  : str(32)     # the volume identifier (UCS-2 big-endian in a Joliet descriptor)
+    blocks       @ $start + 80  : u32         # the volume's size in logical blocks
+    escapes      @ $start + 88  : str(3)      # a supplementary descriptor's escape sequence ("%/@", "%/C", "%/E": Joliet)
+    block_size   @ $start + 128 : u16
+    root         @ $start + 156 : Slot
+    created      @ $start + 813 : str(16)
+}
+
+# A directory's bytes: its records; a zero length byte pads the rest of the sector.
+struct Directory {
+    slots : Slot[while $pos < $end]
+}
+
+# A record: its length (the record's bytes, this byte included), then the rest of it; or a zero that pads the sector
+# out. A record whose length is too small or runs past the directory is the reader's error (its body is not read).
+struct Slot {
+    length : u8
+    if length == 0 {
+        pad : bytes(min(align($pos, 2048), $end) - $pos)
+    } else {
+        body : RecordBody size(min(length - 1, $remaining)) try
+    }
+}
+
+struct RecordBody {
+    ext_attr    : u8         # the extended attribute record's length in sectors (the data start past it)
+    extent      : u32
+    extent_be   : u32be
+    size        : u32
+    size_be     : u32be
+    recorded    : str(7)     # years since 1900, month, day, hour, minute, second, zone
+    flags       : u8         # 2: a directory, 0x80: a further extent follows
+    unit_size   : u8
+    gap         : u8
+    volume_seq  : u32
+    name_length : u8
+    name        : str(min(name_length, $remaining))
+}
