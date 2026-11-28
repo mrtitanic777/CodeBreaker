@@ -1,6 +1,5 @@
 // The SH-2 machines' descriptors: the Sega 32X and the Saturn, recorded field by field.
 #include "core/testing.hpp"
-#include "platforms/saturn.hpp"
 #include "platforms/sega32x.hpp"
 
 namespace cb::platforms {
@@ -35,7 +34,7 @@ CB_TEST("platforms.sega32x.descriptor", [] {
 });
 
 CB_TEST("platforms.saturn.descriptor", [] {
-    check_sh2_machine(saturn(), Id::Machine, "saturn", "Sega Saturn", "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program");
+    check_sh2_machine(described("saturn"), Id::Machine, "saturn", "Sega Saturn", "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program");
 });
 
 }  // namespace

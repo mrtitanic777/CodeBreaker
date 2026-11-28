@@ -14,9 +14,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_a64.hpp"
 #include "formats/read.hpp"
-#include "platforms/nswitch.hpp"
+#include "platforms/package.hpp"
 #include "formats/nro.hpp"
-#include "source/switch_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -206,7 +206,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::switch_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("switch", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -239,7 +239,7 @@ vl::ImageLaneSpec switch_lane_spec() {
 void register_switch_lane() {
     register_lane({
         .name = "switch",
-        .platform = platforms::nswitch,
+        .platform = [] { return platforms::described("switch"); },
         .probe = [](const stdfs::path& p) { return formats::nro::probe(p); },
         .make_spec = switch_lane_spec,
     });

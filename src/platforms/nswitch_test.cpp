@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/nswitch.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.nswitch.descriptor", [] {
-    const Platform p = nswitch();
+    const Platform p = described("switch");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "switch");
     CB_CHECK_EQ(p.title, "Nintendo Switch");

@@ -1,0 +1,25 @@
+{
+  "platform": "switch",
+  "title": "Nintendo Switch",
+  "description": "A homebrew .nro, a .nso or the AArch64 ELF devkitA64 links: the loaded image written whole in address order (console_switch.cpp), an address an offset in the image; flow from the entry, the dynamic symbols, what the relocations point at and the text's unreached prologues, adrp pairs over labels, relocated words as .quad of their targets, the NRO header and MOD0 field by field, its assets as an .incbin, an svc's Horizon kernel call named. A NRO comes back byte for byte, a NSO or ELF as its loaded image.",
+  "machine": {
+    "family": "AArch64",
+    "container": "homebrew executable (.nro), NSO executable (.nso), or the AArch64 ELF devkitA64 links (.elf)",
+    "cpu": {"language": "AARCH64:LE:64:v8A", "bits": 64, "endian": "little", "decoder": "a64",
+            "registers": ["X0", "X1", "X19", "X20", "X21", "X22", "X23", "X24", "X25", "X26", "X27", "X28", "SP"], "stack": "SP"},
+    "results": ["X0", "X1", "X19", "X20", "X21", "X22", "X23", "X24", "X25", "X26", "X27", "X28", "SP"],
+    "toolchain": "CodeBreaker's own assembler (GNU as AArch64 syntax), or devkitA64's GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Nintendo Switch {nro?NRO|{nso?NSO|ELF}}, {size} bytes, entry 0x{entry:06X}; AArch64, loaded at 0 (position independent)",
+    "addresses in this file are offsets in the image; a word the loader relocates is its target's label",
+    "",
+    {"line": "{note}", "when": "note"}
+  ],
+  "executable": {
+    "container": "switch",
+    "built": "{stem}.built.{nro?nro|bin}"
+  }
+}

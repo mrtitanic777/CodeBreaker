@@ -1,0 +1,25 @@
+{
+  "platform": "n3ds",
+  "title": "Nintendo 3DS",
+  "description": "A .3dsx, or the ARM ELF devkitARM links it from: the file written whole in file order in ARM state (console_n3ds.cpp), an address a file offset; flow from the entry, the ELF's symbols and the code a 3DSX's relocation table points at, a relocated word as its target's label plus the loader's difference, the system's addresses by name, an svc's Horizon kernel call named.",
+  "machine": {
+    "family": "arm",
+    "container": "3DSX homebrew executable (.3dsx), or the ARM ELF it is linked from (.elf)",
+    "cpu": {"language": "ARM:LE:32:v6", "bits": 32, "endian": "little", "decoder": "arm",
+            "registers": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"], "stack": "SP"},
+    "results": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"],
+    "toolchain": "CodeBreaker's own assembler, or devkitARM's GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Nintendo 3DS {x3dsx?3DSX|ELF}, {size} bytes, entry 0x{entry:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
+    "addresses in this file are file offsets; a pointer word is its target's label plus the difference the loader's layout makes",
+    ""
+  ],
+  "executable": {
+    "container": "n3ds",
+    "prologue": ["        .syntax unified", "        .arm", ""],
+    "built": "{stem}.built.{x3dsx?3dsx|elf}"
+  }
+}

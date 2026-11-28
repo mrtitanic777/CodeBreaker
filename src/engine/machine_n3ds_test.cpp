@@ -6,7 +6,7 @@
 #include "engine/machine_lanes.hpp"
 #include "engine/machine_n3ds.hpp"
 #include "formats/n3ds.hpp"
-#include "source/n3ds_writer.hpp"
+#include "source/console_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;

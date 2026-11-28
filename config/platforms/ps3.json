@@ -1,0 +1,27 @@
+{
+  "platform": "ps3",
+  "title": "PlayStation 3",
+  "description": "A PSL1GHT ELF or an unencrypted SELF: the loadable segments end to end as one image written whole (console_ps3.cpp), an address an image offset; flow from the entry function and the function descriptors the data holds, the imports' descriptors named from their NIDs, an sc's lv2 system call named, the VMX instructions as .long with the disassembler's text. Rebuilt as the plain ELF the program's layout makes.",
+  "machine": {
+    "family": "powerpc",
+    "container": "PSL1GHT ELF (.elf), or an unencrypted SELF holding one",
+    "cpu": {"language": "PowerPC:BE:64:default", "bits": 64, "endian": "big", "decoder": "powerpc",
+            "registers": ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+                          "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",
+                          "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15",
+                          "f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23", "f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31"], "stack": "r1"},
+    "results": ["r1", "r3", "r4", "f1", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as (PSL1GHT's powerpc64-ps3-elf)"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "PlayStation 3 {self?SELF|ELF}, image {size} bytes in {segments} segments; the processor is the Cell's PPU (64-bit PowerPC, big-endian, VMX), entry at 0x{entry:X}, TOC 0x{toc:X}",
+    "addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned; a pointer is its target's label",
+    ""
+  ],
+  "executable": {
+    "container": "ps3",
+    "built": "{stem}.built.elf"
+  }
+}

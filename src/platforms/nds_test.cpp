@@ -1,4 +1,4 @@
-#include "platforms/nds.hpp"
+#include "platforms/package.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -8,7 +8,7 @@
 namespace cb::platforms {
 
 CB_TEST("platforms.nds.descriptor", [] {
-    const Platform p = nds();
+    const Platform p = described("nds");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "nds");
     CB_CHECK_EQ(p.title, "Nintendo DS");

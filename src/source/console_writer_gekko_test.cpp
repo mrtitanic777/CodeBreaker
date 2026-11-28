@@ -1,8 +1,9 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// Tests of the GameCube, Wii and Wii U writer over small programs of its own (source/gekko_test_images.hpp). The writer is held to what it is
+// Tests of the GameCube, Wii and Wii U programs on the console writer (config/platforms/gamecube.json, wii.json, wiiu.json; console_gekko.cpp) over small programs of its own (source/gekko_test_images.hpp). The writer is held to what it is
 // for -- the source it writes, built again, is the program it came from, byte for byte -- and to what the source says: the header field by
 // field, functions found by calls, by their prologue and through a table, hardware registers by name, addresses built with @ha / @l.
-#include "source/gekko_writer.hpp"
+#include "formats/ppc_program.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/dialect.hpp"
 #include "core/fs.hpp"
@@ -10,7 +11,7 @@
 #include "source/gekko_test_images.hpp"
 #include "source/risc_source.hpp"
 
-namespace gw = cb::source::gekko_writer;
+namespace cw = cb::source::console_writer;
 namespace gt = cb::source::gekko_test;
 using std::string;
 
@@ -22,12 +23,12 @@ string source_of(const cb::source::image_writer::Written& r) { return cb::fs::re
 
 cb::source::image_writer::Written write_to(cb::fs::ScopedTempDir& dir, const char* name, const cb::Bytes& bytes) {
     cb::fs::write_file(dir.path() / name, bytes);
-    return gw::reconstruct(dir.path() / name, dir.path() / "out");
+    return cw::reconstruct(std::string_view(name).ends_with(".rpx") ? "wiiu" : "gamecube", dir.path() / name, dir.path() / "out");
 }
 
 }  // namespace
 
-CB_TEST("source.gekko_writer.a_dol_builds_back_into_itself", [] {
+CB_TEST("source.console_writer.gekko.a_dol_builds_back_into_itself", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const cb::source::image_writer::Written r = write_to(dir, "game.dol", gt::dol());
     CB_CHECK(r.notes.empty());
@@ -45,7 +46,7 @@ CB_TEST("source.gekko_writer.a_dol_builds_back_into_itself", [] {
     CB_CHECK_EQ(r.image_bytes, gt::dol().size());
 });
 
-CB_TEST("source.gekko_writer.the_source_says_what_the_dol_holds", [] {
+CB_TEST("source.console_writer.gekko.the_source_says_what_the_dol_holds", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const string text = source_of(write_to(dir, "game.dol", gt::dol()));
     // the header, a line to each table: offsets in the file, addresses as the labels of the sections, sizes as the difference of two labels
@@ -80,7 +81,7 @@ CB_TEST("source.gekko_writer.the_source_says_what_the_dol_holds", [] {
     CB_CHECK(contains(text, ".long sub_80003190, sub_80003150"));
 });
 
-CB_TEST("source.gekko_writer.an_elf_builds_back_into_itself", [] {
+CB_TEST("source.console_writer.gekko.an_elf_builds_back_into_itself", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const cb::source::image_writer::Written r = write_to(dir, "game.elf", gt::elf());
     CB_CHECK(r.notes.empty());
@@ -99,7 +100,7 @@ CB_TEST("source.gekko_writer.an_elf_builds_back_into_itself", [] {
     CB_CHECK(contains(text, "bl sub_80003150"));
 });
 
-CB_TEST("source.gekko_writer.an_rpx_is_written_decompressed", [] {
+CB_TEST("source.console_writer.gekko.an_rpx_is_written_decompressed", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const cb::Bytes rpx = gt::elf(true);
     const cb::source::image_writer::Written r = write_to(dir, "game.rpx", rpx);
@@ -116,14 +117,14 @@ CB_TEST("source.gekko_writer.an_rpx_is_written_decompressed", [] {
     CB_CHECK(contains(text, ".short 0xFE01, 0x0014    # type, machine"));
 });
 
-CB_TEST("source.gekko_writer.refuses_what_is_not_a_program", [] {
+CB_TEST("source.console_writer.gekko.refuses_what_is_not_a_program", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     cb::fs::write_file(dir.path() / "junk.dol", cb::Bytes(300, 0x41));
-    CB_CHECK_THROWS_AS(cb::FormatError, gw::reconstruct(dir.path() / "junk.dol", dir.path() / "out"));
+    CB_CHECK_THROWS_AS(cb::FormatError, cw::reconstruct("gamecube", dir.path() / "junk.dol", dir.path() / "out"));
 });
 
 // What is edited in the source comes out edited in the program: a changed instruction is one byte of the rebuilt file.
-CB_TEST("source.gekko_writer.the_source_can_be_edited_and_built", [] {
+CB_TEST("source.console_writer.gekko.the_source_can_be_edited_and_built", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const cb::source::image_writer::Written r = write_to(dir, "game.dol", gt::dol());
     string text = source_of(r);

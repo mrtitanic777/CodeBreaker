@@ -1,7 +1,25 @@
 // cb-unity: alone
-// source/n3ds_writer.cpp -- a Nintendo 3DS program as assembly source that builds back into it (n3ds_writer.hpp).
+// source/console_n3ds.cpp -- the executable shape's container `n3ds` (console_executable.cpp): a Nintendo 3DS program (a `.3dsx`, or the ARM ELF devkitARM links it from) as assembly source that builds back into it
+// (config/platforms/n3ds.json).
+//
+//     r.source           app.s (GNU as syntax, `.syntax unified`, ARM state: what devkitARM's gcc makes of homebrew)
+//     r.same             the source, built, is the file byte for byte
+//     r.functions        {file offset: name}
+//
+// The file is written whole, in file order, an address being the byte's offset in the file (a 3DSX: its header, relocation headers, code, read-only data,
+// data, the relocation tables and the icon and RomFS after them; an ELF: its headers, segments, symbols and debug information). Code is what flow reaches
+// (decompile/arm, `Arch::V6K`: the ARMv6K integer set and the VFP) from the entry point, the symbols of an ELF, and the code a 3DSX's relocation table
+// says is pointed at (a jump table's cases, a callback, a virtual function); the rest is data: strings as `.ascii`, runs as `.fill`, bytes. A word the
+// relocation table patches (a literal-pool address, a vtable entry) is written as its target's label (`D_<offset>`, `sub_<offset>`) plus the difference
+// between the loaded address and the file offset, so the source says what the pointer points at; an instruction whose text would not assemble back to its
+// bits stays a `.word` with the text as a comment. A software interrupt is followed by a comment naming the Horizon kernel's call (`@ svcSendSyncRequest`).
+//
+// It builds with CodeBreaker's own assembler (the one assembler, ARMv6K). The rebuilt file is kept beside the source as <stem>.built.3dsx or .built.elf.
+//
+// The head and the rebuilt file's name are the description's.
 
-#include "source/n3ds_writer.hpp"
+#include "source/console_shapes.hpp"
+#include "formats/n3ds.hpp"
 #include "knowledge/package.hpp"
 
 #include <algorithm>
@@ -18,7 +36,7 @@
 #include "source/risc_source.hpp"
 #include "verify/stage_timer.hpp"
 
-namespace cb::source::n3ds_writer {
+namespace cb::source::console_writer::n3ds_code {
 
 namespace da = decompile::arm;
 namespace iw = image_writer;
@@ -149,33 +167,20 @@ private:
 
 std::string signed_hex(std::int64_t v) { return v < 0 ? std::format("- 0x{:X}", -v) : std::format("+ 0x{:X}", v); }
 
-}  // namespace
-
+// The system addresses programs load into registers (the kernel's configuration page, the thread-local storage, the I/O and GPU register windows).
 const std::map<std::uint32_t, std::string>& hardware() {
     // config/knowledge/n3ds/registers.json
     static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("n3ds", "hardware");
     return table;
 }
 
-std::string_view svc_name(std::uint32_t number) {
-    static const char* const names[0x4C] = {
-        "",                    "ControlMemory",      "QueryMemory",       "ExitProcess",        "GetProcessAffinityMask", "SetProcessAffinityMask", "GetProcessIdealProcessor",
-        "SetProcessIdealProcessor", "CreateThread",  "ExitThread",        "SleepThread",        "GetThreadPriority",   "SetThreadPriority",    "GetThreadAffinityMask",
-        "SetThreadAffinityMask",    "GetThreadIdealProcessor", "SetThreadIdealProcessor", "GetCurrentProcessorNumber", "Run", "CreateMutex", "ReleaseMutex",
-        "CreateSemaphore",     "ReleaseSemaphore",   "CreateEvent",       "SignalEvent",        "ClearEvent",          "CreateTimer",          "SetTimer",
-        "CancelTimer",         "ClearTimer",         "CreateMemoryBlock", "MapMemoryBlock",     "UnmapMemoryBlock",    "CreateAddressArbiter", "ArbitrateAddress",
-        "CloseHandle",         "WaitSynchronization1", "WaitSynchronizationN", "SignalAndWait", "DuplicateHandle",     "GetSystemTick",        "GetHandleInfo",
-        "GetSystemInfo",       "GetProcessInfo",     "GetThreadInfo",     "ConnectToPort",      "SendSyncRequest1",    "SendSyncRequest2",     "SendSyncRequest3",
-        "SendSyncRequest4",    "SendSyncRequest",    "OpenProcess",       "OpenThread",         "GetProcessId",        "GetProcessIdOfThread", "GetThreadId",
-        "GetResourceLimit",    "GetResourceLimitLimitValues", "GetResourceLimitCurrentValues", "GetThreadContext", "Break", "OutputDebugString", "ControlProcessMemory",
-        "MapProcessMemory",    "UnmapProcessMemory", "CreateCodeSet",     "RandomStub",         "CreateProcess",       "TerminateProcess",     "SetProcessResourceLimits",
-        "CreateResourceLimit", "SetResourceLimitValues", "AddCodeSegment", "Backdoor",          "KernelSetState"};
-    return number < 0x4C ? std::string_view(names[number]) : std::string_view();
-}
+}  // namespace
 
-iw::Written write(const formats::n3ds::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
+iw::Written write(const Description& description, const Loaded& loaded, const Values& values, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
+    const formats::n3ds::Program& program = *loaded.contained.n3ds;
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const std::string stem = std::get<std::string>(values.at("stem"));
     const ByteView file = program.file;
     const N3dsFlow flow(file, program);
     std::optional<verify::StageTimer> stage;   // (CB_PROFILE: where the writer's time goes)
@@ -277,25 +282,19 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
         std::string line = risc_source::code("arm11", insn.bytes(), at, by_value, operands);
         if (line.starts_with(".byte")) line = std::format(".word 0x{:08x}  ; {}", insn.word, dialect::find("gas-arm").instruction(risc_source::read_text("arm11", insn.bytes(), at).value_or("?")));
         if (insn.op == da::Op::Swi) {
-            const std::string_view svc = svc_name(insn.imm);
+            const std::string_view svc = formats::n3ds::svc_name(insn.imm);
             if (!svc.empty()) line += std::format("  ; svc{}", svc);
         }
         written_lines[item] = std::move(line);
     });
     for (std::size_t item = 0; item < to_write.size(); ++item) instruction_text.emplace_hint(instruction_text.end(), to_write[item]->first, std::move(written_lines[item]));
 
-    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("; Nintendo 3DS {}, {} bytes, entry 0x{:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
-                                                 program.kind == formats::n3ds::Kind::X3dsx ? "3DSX" : "ELF", file.size(), program.entry),
-                                     "; addresses in this file are file offsets; a pointer word is its target's label plus the difference the loader's layout makes",
-                                     "",
-                                     "        .syntax unified",
-                                     "        .arm",
-                                     ""};
+    std::vector<std::string> head = head_comment(description, values);
+    head.insert(head.end(), description.executable.prologue.begin(), description.executable.prologue.end());
     for (const auto& [name, value] : equates) head.push_back(std::format("        .equ {}, 0x{:08X}", name, value));
     if (!equates.empty()) head.push_back("");
     stage.emplace("n3ds.emit");
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    translate::l2::Assembly out(head, "gas", file_name);
     out.part("image", "segment", std::nullopt, file.size());
 
     N3dsListing listing(out, file, code, instruction_text, labels, words);
@@ -306,13 +305,8 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     stage.emplace("n3ds.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), file.size());
-    const char* extension = program.kind == formats::n3ds::Kind::X3dsx ? ".built.3dsx" : ".built.elf";
-    iw::assembled(r, [&] { return risc_source::assemble("arm11", dialect::find("gas-arm").parse(source), folder); }, program.file, folder / (stem + extension));
+    iw::assembled(r, [&] { return risc_source::assemble("arm11", dialect::find("gas-arm").parse(source), folder); }, program.file, folder / fill(description.executable.built, values));
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(formats::n3ds::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::n3ds_writer
+}  // namespace cb::source::console_writer::n3ds_code

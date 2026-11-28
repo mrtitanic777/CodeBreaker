@@ -1,0 +1,38 @@
+{
+  "platform": "saturn",
+  "title": "Sega Saturn",
+  "description": "A disc's boot sectors (IP.BIN at $06002000) and its first program, one source for the SH-2 (source/sh2_writer), each under its own .org: the header field by field, flow from the four area-code entries, the initial program and the first program's start, the Saturn's and the SH7604's registers by name, work RAM, video and sound memory as var_ equates. The lane runs a disc of its own holding the rebuilt system area and program.",
+  "machine": {
+    "family": "superh",
+    "container": "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program",
+    "cpu": {"language": "SuperH:BE:32:SH-2", "bits": 32, "endian": "big", "decoder": "sh2",
+            "registers": ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15",
+                          "PR", "MACH", "MACL", "SR", "GBR", "VBR"], "stack": "R15"},
+    "results": ["R0", "R1", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "PR", "MACH", "MACL", "SR", "GBR"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Saturn disc \"{title}\" ({product}, areas {areas}): IP.BIN of {ip} bytes at 0x06002000, first program {first?{first}|(none)} of {first_size} bytes at 0x{load:08X}"
+  ],
+  "executable": {
+    "container": "sh2",
+    "registers": "hardware",
+    "chip_registers": true,
+    "built": "{stem}.built.bin",
+    "ram": [["0x00200000", "0x00300000"], ["0x06000000", "0x06100000"], ["0x05A00000", "0x05A80000"], ["0x05C00000", "0x05CC0000"],
+            ["0x05E00000", "0x05E80000"], ["0x05F00000", "0x05F01000"]],
+    "fields": [
+      {"at": "0x00", "size": 16, "what": "hardware ID"}, {"at": "0x10", "size": 16, "what": "maker ID"},
+      {"at": "0x20", "size": 10, "what": "product number"}, {"at": "0x2A", "size": 6, "what": "version"},
+      {"at": "0x30", "size": 8, "what": "release date"}, {"at": "0x38", "size": 8, "what": "device information"},
+      {"at": "0x40", "size": 10, "what": "area symbols"}, {"at": "0x4A", "size": 6, "what": "(padding)"},
+      {"at": "0x50", "size": 16, "what": "compatible peripherals"}, {"at": "0x60", "size": 112, "what": "game title"},
+      {"at": "0xD0", "size": 16, "what": "(reserved)"}, {"at": "0xE0", "size": 4, "what": "IP size", "as": "long"},
+      {"at": "0xE4", "size": 4, "what": "(reserved)", "as": "long"}, {"at": "0xE8", "size": 4, "what": "master SH-2 stack pointer", "as": "long"},
+      {"at": "0xEC", "size": 4, "what": "slave SH-2 stack pointer", "as": "long"}, {"at": "0xF0", "size": 4, "what": "first program: load address", "as": "long"},
+      {"at": "0xF4", "size": 4, "what": "first program: size (0: the whole file)", "as": "long"}, {"at": "0xF8", "size": 8, "what": "(reserved)"}
+    ]
+  }
+}

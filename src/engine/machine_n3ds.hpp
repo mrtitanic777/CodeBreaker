@@ -2,7 +2,7 @@
 //
 //     engine::register_n3ds_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A 3DS homebrew `.3dsx` or its ARM ELF (formats/n3ds) is written back as GNU as source (source/n3ds_writer) and rebuilt; one that comes back identical is
+// A 3DS homebrew `.3dsx` or its ARM ELF (formats/n3ds) is written back as GNU as source (source/console_writer: config/platforms/n3ds.json) and rebuilt; one that comes back identical is
 // the original, an edited one has each function run beside the original's in CodeBreaker's ARM interpreter (emulate/arm, `System::N3ds`: the ARM11's
 // ARMv6K integer set; the VFP and Thumb-2 are decoded and written but not run). The memory is the process's as the loader leaves it: the segments at
 // $00100000 (the absolute relocations applied), a heap at $08000000, the stack, and, as logged devices, the I/O and GPU register windows ($1EC00000), video

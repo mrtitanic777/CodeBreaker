@@ -1,21 +1,34 @@
-// Tests of the Nintendo DS writer over a small ROM of its own (nds_test_image.hpp: an ARMv5TE program and an ARM7TDMI program, the name table, the
+// Tests of the Nintendo DS on the console writer (config/platforms/nds.json, console_nds.cpp) over a small ROM of its own (nds_test_image.hpp: an ARMv5TE program and an ARM7TDMI program, the name table, the
 // allocation table, a banner and a file). The writer is held to what it is for: the source it writes, built again, is the ROM it came from, with
 // both programs read in their own instruction set.
-#include "source/nds_writer.hpp"
+#include "formats/nds.hpp"
+#include "source/console_writer.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "knowledge/package.hpp"
 #include "source/nds_test_image.hpp"
 
-namespace cb::source::nds_writer {
+namespace cb::source::console_writer {
 namespace {
 
 bool has(const std::string& text, std::string_view part) { return text.find(part) != std::string::npos; }
 
-CB_TEST("source.nds_writer.the_rom_comes_back_as_source_that_builds_the_same_file", [] {
+// The ROM written to a file in `dir` and back as source.
+image_writer::Written write_rom(const fs::ScopedTempDir& dir, const Bytes& image, const char* name) {
+    fs::write_file(dir.path() / name, image);
+    return reconstruct("nds", dir.path() / name, dir.path() / "out");
+}
+
+// The console's registers as the writer names them (config/knowledge/nds/registers.json).
+std::map<std::uint32_t, std::string> hardware(formats::nds::Cpu cpu) {
+    return knowledge::standard().hardware_names("nds", cpu == formats::nds::Cpu::Arm9 ? "arm9" : "arm7");
+}
+
+CB_TEST("source.console_writer.nds.the_rom_comes_back_as_source_that_builds_the_same_file", [] {
     fs::ScopedTempDir dir("cb_nds");
     const Bytes image = nds_test::test_rom();
-    const image_writer::Written r = write(formats::nds::parse(image), "demo.nds", dir.path());
+    const image_writer::Written r = write_rom(dir, image, "demo.nds");
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK_EQ(r.image_bytes, image.size());
@@ -34,9 +47,9 @@ CB_TEST("source.nds_writer.the_rom_comes_back_as_source_that_builds_the_same_fil
     CB_CHECK_EQ(seven, std::size_t{2});
 });
 
-CB_TEST("source.nds_writer.both_programs_and_the_file_system_are_written_as_what_they_are", [] {
+CB_TEST("source.console_writer.nds.both_programs_and_the_file_system_are_written_as_what_they_are", [] {
     fs::ScopedTempDir dir("cb_nds");
-    const image_writer::Written r = write(formats::nds::parse(nds_test::test_rom()), "demo.nds", dir.path());
+    const image_writer::Written r = write_rom(dir, nds_test::test_rom(), "demo.nds");
     const std::string source = fs::read_text(r.source);
     // each program has its own instruction set and its own names
     CB_CHECK(has(source, "        .cpu arm946e-s"));
@@ -72,16 +85,16 @@ CB_TEST("source.nds_writer.both_programs_and_the_file_system_are_written_as_what
     CB_CHECK(has(source, ".word banner"));
 });
 
-CB_TEST("source.nds_writer.whatever_a_rom_holds_it_comes_back_as_itself", [] {
+CB_TEST("source.console_writer.nds.whatever_a_rom_holds_it_comes_back_as_itself", [] {
     fs::ScopedTempDir dir("cb_nds");
     Bytes edited = nds_test::test_rom();
     edited[0x4000] ^= 1;   // the first byte of the ARM9 program
-    const image_writer::Written r = write(formats::nds::parse(edited), "edited.nds", dir.path());
+    const image_writer::Written r = write_rom(dir, edited, "edited.nds");
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.built && fs::read_file(*r.built) == edited);
 });
 
-CB_TEST("source.nds_writer.the_hardware_names_differ_between_the_processors", [] {
+CB_TEST("source.console_writer.nds.the_hardware_names_differ_between_the_processors", [] {
     CB_CHECK_EQ(hardware(formats::nds::Cpu::Arm9).at(0x04000000), std::string("REG_DISPCNT"));
     CB_CHECK_EQ(hardware(formats::nds::Cpu::Arm9).at(0x04001000), std::string("REG_DISPCNT_SUB"));
     CB_CHECK_EQ(hardware(formats::nds::Cpu::Arm9).at(0x04000280), std::string("REG_DIVCNT"));
@@ -93,4 +106,4 @@ CB_TEST("source.nds_writer.the_hardware_names_differ_between_the_processors", []
 });
 
 }  // namespace
-}  // namespace cb::source::nds_writer
+}  // namespace cb::source::console_writer

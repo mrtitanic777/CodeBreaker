@@ -1,7 +1,26 @@
 // cb-unity: alone
-// source/switch_writer.cpp -- a Nintendo Switch program as AArch64 source that builds back into it (switch_writer.hpp).
+// source/console_switch.cpp -- the executable shape's container `switch` (console_executable.cpp): a Nintendo Switch program (a homebrew `.nro`, a `.nso`, or the AArch64 ELF devkitA64 links) as GNU as AArch64 source that builds back into it
+// (config/platforms/switch.json).
+//
+//     r.source           app.s (GNU as syntax: what devkitA64's gcc makes of homebrew)
+//     r.same             the source, built, is the program: for a NRO the file byte for byte, for a NSO or an ELF the loaded image (the container is not written back)
+//     r.functions        {address: name}   (an address is an offset in the image: a NRO's file offset)
+//
+// The image is written whole, in address order. Code is what flow reaches (decompile/a64) from the entry point, the dynamic symbols, the code the relocation tables say is
+// pointed at (a callback, a virtual function, an init-array entry) and, past those, the unreached stretches of the text segment that begin like a function (a prologue of
+// `stp x29, x30, [sp, #-N]!`, `sub sp, sp, #N` ...); the rest is data: strings as `.ascii` / `.asciz`, runs as `.fill`, words and bytes. An `adrp` and the instruction that
+// completes its address (`add x0, x0, #lo12`, `ldr x1, [x0, #lo12]`) are written with the name of what they address: `adrp x0, D_0012A0` and `add x0, x0, :lo12:D_0012A0`.
+// A word the dynamic relocations patch (R_AARCH64_RELATIVE: a vtable entry, a function pointer in the global offset table) is written as `.quad <target's label>`, and the
+// relocation table's own entries as `.quad` of the label of the word they patch, the relocation type and the label of what it points at. A NRO's header is written field by
+// field, its MOD0 block as words, and its asset section (icon, control data, RomFS) is kept in <stem>.assets.bin beside the source and written as `.incbin`.
+// An instruction whose text would not assemble to its bits stays a `.word` with the text as a comment, and a `svc` is followed by a comment naming the Horizon kernel call.
+//
+// It builds with CodeBreaker's own assembler (build/a64_asm). The rebuilt image is kept beside the source as <stem>.built.nro (or .built.bin for the loaded image of a NSO or ELF).
+//
+// The head and the rebuilt file's name are the description's.
 
-#include "source/switch_writer.hpp"
+#include "source/console_shapes.hpp"
+#include "formats/nro.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -17,7 +36,7 @@
 #include "verify/stage_timer.hpp"
 #include "emulate/a64.hpp"
 
-namespace cb::source::switch_writer {
+namespace cb::source::console_writer::switch_code {
 
 namespace da = decompile::a64;
 namespace iw = image_writer;
@@ -260,9 +279,11 @@ bool prologue(const da::Insn& i) {
 
 }  // namespace
 
-iw::Written write(const nro::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
+iw::Written write(const Description& description, const Loaded& loaded, const Values& values, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
+    const nro::Program& program = *loaded.contained.nswitch;
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const std::string stem = std::get<std::string>(values.at("stem"));
     const ByteView flat = program.flat;
     const SwitchFlow flow(flat, program);
     const std::uint32_t size = static_cast<std::uint32_t>(flat.size());
@@ -474,16 +495,11 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     });
     for (std::size_t item = 0; item < to_write.size(); ++item) instruction_text.emplace_hint(instruction_text.end(), to_write[item]->first, std::move(written_lines[item]));
 
-    std::vector<std::string> head = {std::format("// {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("// Nintendo Switch {}, {} bytes, entry 0x{:06X}; AArch64, loaded at 0 (position independent)",
-                                                 program.kind == nro::Kind::Nro ? "NRO" : program.kind == nro::Kind::Nso ? "NSO" : "ELF", size, program.entry),
-                                     "// addresses in this file are offsets in the image; a word the loader relocates is its target's label",
-                                     ""};
-    if (!program.note.empty()) head.push_back("// " + program.note);
+    std::vector<std::string> head = head_comment(description, values, "// ");
     for (const auto& [a, v] : equates) head.push_back(std::format("        .equ {}, 0x{:X}", kBss(a), v));
     if (!equates.empty()) head.push_back("");
     stage.emplace("switch.emit");
-    translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
+    translate::l2::Assembly out(head, "gnu-as", file_name);
     out.part("image", "segment", std::nullopt, size);
 
     SwitchListing listing({&out, flat, &program, &code, &instruction_text, &labels, &words, &rela_entries, folder, stem});
@@ -494,7 +510,6 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     const std::string source = iw::text(out) + "\n";
     stage.emplace("switch.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), size);
-    const char* extension = program.kind == nro::Kind::Nro ? ".built.nro" : ".built.bin";
     iw::assembled(
         r,
         [&] {
@@ -502,13 +517,9 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
             if (image.base != 0) throw build::AsmError("the image starts at the wrong address");
             return std::move(image.data);
         },
-        flat, folder / (stem + extension));
+        flat, folder / fill(description.executable.built, values));
     if (program.kind != nro::Kind::Nro && r.same) r.notes.push_back("the image is the loaded program: the " + std::string(program.kind == nro::Kind::Nso ? "NSO" : "ELF") + " container is not written back");
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(nro::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::switch_writer
+}  // namespace cb::source::console_writer::switch_code

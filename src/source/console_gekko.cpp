@@ -1,7 +1,39 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// source/gekko_writer.cpp -- a Nintendo GameCube, Wii or Wii U program as assembly source that builds back into it (gekko_writer.hpp).
+// source/console_gekko.cpp -- the executable shape's container `gekko` (console_executable.cpp): a Nintendo GameCube, Wii or Wii U program (a DOL,
+// an ELF, an RPX) as assembly source that builds back into it (config/platforms/gamecube.json, wii.json, wiiu.json).
+//
+//     r.source                  game.s (GNU as syntax: powerpc-eabi-as -mregnames, as devkitPPC's assembler reads it)
+//     r.same                    the source, built, is the program byte for byte (a Wii U RPX: the decompressed file, formats/ppc_elf)
+//     r.functions               {address: name}
+//
+// What a program holds, and how it is written (all of it is in the one source, in file order, each part at the address it is loaded at):
+//
+//     a DOL      its 256-byte header as words: the sections' file offsets, their load addresses (the labels `text0`, `data3` ...), their
+//                sizes (`text0_end - text0`), the bss area and the entry point (a function's label); then each section
+//     an ELF     the ELF header field by field, the program header table and the section header table a row to a line; each section
+//                (code for the executable ones, data for the others) at its address; what no section holds (padding, the symbol and
+//                string tables, debugging information) as data
+//     an RPX     the same, from the decompressed file
+//
+// Code is what the flow from the entry point reaches (decompile/ppc: no delay slots, every instruction four bytes): a `bl` target is a
+// function, so is the code after a return that begins as a function does (`stwu r1,-N(r1)`) and the code a pointer in the program names;
+// the blocks after an unconditional branch that a pointer names are a jump table's cases. Every byte flow reaches is an instruction, every
+// other byte data: strings, words (a word that holds an address in the program is that label), runs of one value as `.space`/`.fill`, the
+// rest `.byte`. A function that an ELF's symbol table names has that name; others are `sub_<address>`, jump targets `L_<address>`,
+// data `D_<address>`.
+//
+// An address the code builds (a `lis` with an `addi`, `ori` or a load or store's offset) is written `name@ha` and `name@l`, over a label of the
+// program, an `.equ var_<address>` for memory the program does not hold (its bss), or the name of a hardware register
+// (formats/gekko_map: VI_DPV, DI_STATUS, IPC_PPCCTRL ...). Every instruction's text is assembled and compared with its word; one that would
+// not come back is written as `.long`, so the source is the program whatever the analysis guessed.
+//
+// It builds with CodeBreaker's own assembler (build/mips_asm's directive layer over decompile/ppc, big-endian).
+//
+// The head and the rebuilt file's name are the description's; the head may name `functions`, what flow found.
 
-#include "source/gekko_writer.hpp"
+#include "source/console_shapes.hpp"
+
+#include "formats/ppc_program.hpp"
 
 #include <algorithm>
 #include <format>
@@ -21,7 +53,7 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
-namespace cb::source::gekko_writer {
+namespace cb::source::console_writer::gekko_code {
 
 namespace dp = decompile::ppc;
 namespace pp = formats::ppc_program;
@@ -299,10 +331,11 @@ DataItem data_item(ByteView buf, std::size_t off, std::size_t limit, std::uint32
 
 }  // namespace
 
-iw::Written write(const pp::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
+iw::Written write(const Description& description, const Loaded& loaded, Values values, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-    const std::string base_name = std::filesystem::path(file_name).filename().string();
+    const pp::Program& program = *loaded.contained.gekko;
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const std::string stem = std::get<std::string>(values.at("stem"));
     const ByteView file = program.file;
     const Space space(program);
     const pp::Console console = program.console;
@@ -468,20 +501,8 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
     };
 
     // the source ----------------------------------------------------------------------------------------------------------------
-    const std::string kind = std::string(pp::kind_text(program.kind));
-    std::vector<std::string> head = {
-        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("; {} {}{}: {} ({}), entry 0x{:08X}, {} bytes, {} functions", pp::console_text(console), kind,
-                    program.kind == pp::Kind::Rpx && program.elf && program.elf->inflated_sections != 0 ? " (decompressed)" : "", pp::cpu_text(console), "PowerPC 750 family", program.entry,
-                    file.size(), functions.size()),
-        "; assemble with powerpc-eabi-as -mregnames, or with CodeBreaker's own assembler",
-        std::format("; loaded: {}", [&] {
-            std::vector<std::string> parts;
-            for (const formats::ppc_segment::Segment& s : program.segments) parts.push_back(std::format("{} at 0x{:08X} ({} bytes)", s.name, s.address, s.size));
-            return text::join(parts, ", ");
-        }()),
-        ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    values.insert_or_assign("functions", static_cast<std::int64_t>(functions.size()));
+    translate::l2::Assembly out(head_comment(description, values), "gas", file_name);
 
     std::map<const pp::Region*, std::string> region_labels;   // for a DOL: the labels its header's addresses and sizes are written with
     for (const pp::Region& r : program.regions) {
@@ -615,15 +636,8 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
     std::size_t code_total = 0;
     code_total = code.size() * 4;
     iw::Written w = iw::finish(folder, stem + ".s", source, functions, code_total, file.size());
-    const std::string extension = program.kind == pp::Kind::Dol ? ".dol" : program.kind == pp::Kind::Rpx ? ".rpx" : ".elf";
-    iw::assembled(w, [&] { return risc_source::assemble("ppc", dialect::find("gas-ppc").parse(source), folder); }, file, folder / (stem + ".built" + extension), "program");
+    iw::assembled(w, [&] { return risc_source::assemble("ppc", dialect::find("gas-ppc").parse(source), folder); }, file, folder / fill(description.executable.built, values), "program");
     return w;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    const std::optional<pp::Program> program = pp::read(file);
-    if (!program) throw FormatError("gekko", 0, "not a GameCube, Wii or Wii U program (a DOL, an ELF or an RPX)");
-    return write(*program, file.filename().string(), folder);
-}
-
-}  // namespace cb::source::gekko_writer
+}  // namespace cb::source::console_writer::gekko_code

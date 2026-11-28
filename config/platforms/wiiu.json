@@ -1,0 +1,25 @@
+{
+  "platform": "wiiu",
+  "title": "Nintendo Wii U",
+  "description": "An Espresso RPX or RPL, decompressed, written whole in file order, each part at the address it is loaded at (console_gekko.cpp): the header and tables field by field, flow from the entry, bl targets, functions after another's end and what pointers name, lis pairs as @ha/@l over labels, var_ equates and the hardware's names (formats/gekko_map), an instruction that would not come back as .long.",
+  "machine": {
+    "family": "powerpc",
+    "container": "RPX executable (.rpx), RPL library (.rpl): an ELF with compressed sections",
+    "cpu": {"language": "PowerPC:BE:32:default", "bits": 32, "endian": "big", "decoder": "powerpc",
+            "registers": ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31", "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23", "f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31"], "stack": "r1"},
+    "results": ["r1", "r3", "r4", "f1", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as (wut)"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "{console} {kind}{decompressed? (decompressed)|}: {cpu} (PowerPC 750 family), entry 0x{entry:08X}, {size} bytes, {functions} functions",
+    "assemble with powerpc-eabi-as -mregnames, or with CodeBreaker's own assembler",
+    "loaded: {loaded}",
+    ""
+  ],
+  "executable": {
+    "container": "gekko",
+    "built": "{stem}.built.{dol?dol|{rpx?rpx|elf}}"
+  }
+}

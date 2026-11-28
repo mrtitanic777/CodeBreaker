@@ -15,11 +15,11 @@
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
 #include "platforms/sega32x.hpp"
-#include "platforms/saturn.hpp"
+#include "platforms/package.hpp"
 #include "formats/genesis.hpp"
 #include "formats/saturn.hpp"
 #include "formats/sega32x.hpp"
-#include "source/saturn_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/sega32x_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
@@ -311,7 +311,7 @@ vl::Effects saturn_effects(const stdfs::path& path, std::uint32_t entry, const v
     return outcome(run, watched);
 }
 
-vl::Written saturn_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::saturn_writer::reconstruct(module, out)); }
+vl::Written saturn_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("saturn", module, out)); }
 
 }  // namespace sh2_lane_detail
 
@@ -368,7 +368,7 @@ void register_sh2_lanes() {
     });
     register_lane({
         .name = "saturn",
-        .platform = platforms::saturn,
+        .platform = [] { return platforms::described("saturn"); },
         .probe = [](const stdfs::path& p) { return formats::saturn::probe(p); },
         .make_spec = saturn_lane_spec,
         .detectors = {{.priority = 390, .detect = formats::detect::info_saturn}},

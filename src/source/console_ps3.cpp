@@ -1,7 +1,23 @@
 // cb-unity: alone
-// source/ps3_writer.cpp -- a PlayStation 3 program as assembly source that builds back into it (ps3_writer.hpp).
+// source/console_ps3.cpp -- the executable shape's container `ps3` (console_executable.cpp): a PlayStation 3 homebrew program (a PSL1GHT ELF, or an
+// unencrypted SELF holding one) as assembly source that builds back into it.
+//
+//     r.source           app.s (GNU as syntax: the 64-bit PowerPC instructions of the PPU, `.long` words for the VMX instructions the table does not say)
+//     r.same             the source, built, is the program's image byte for byte (the loadable segments end to end; compared as the plain ELF
+//                        formats::ps3::Program::to_elf makes of it, which is also what the lane keeps as `<stem>.built.elf` and runs beside the original)
+//     r.functions        {image offset: name}
+//
+// The image is written whole, an address being the byte's offset in the image. Code is what flow reaches from the entry function and from the function descriptors
+// the data holds (a doubleword that is the address of code followed by the program's TOC: the `.opd` of the PowerPC64 ABI), so a function only called through a
+// pointer is found; every other byte is data (strings as `.ascii`, runs as `.fill`, bytes). A descriptor's code address is written as its function's label plus the
+// difference between the loaded address and the offset. An imported function's descriptor is named from its NID (`ioPadInit`, or `<library>_<NID>`), an `sc` is
+// followed by a comment naming the lv2 system call (`# lv2 sys_ppu_thread_exit`, from the `li r11, N` before it), and a vector (VMX) instruction is a `.long` with
+// the disassembler's text as a comment. SPU programs inside the image stay data. The head and the rebuilt file's name are the description's
+// (config/platforms/ps3.json).
+//
+// It builds with CodeBreaker's own assembler (build/mips_asm's directive layer, big-endian, over decompile/ppc with its 64-bit rows).
 
-#include "source/ps3_writer.hpp"
+#include "source/console_shapes.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -12,10 +28,11 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "decompile/ppc.hpp"
+#include "formats/ps3.hpp"
 #include "platforms/decoder.hpp"
 #include "source/isa_ppc.hpp"
 
-namespace cb::source::ps3_writer {
+namespace cb::source::console_writer::ps3_code {
 
 namespace dp = decompile::ppc;
 namespace iw = image_writer;
@@ -159,9 +176,11 @@ std::string vector_text(std::uint32_t word, std::uint32_t pc) {
 
 }  // namespace
 
-iw::Written write(const formats::ps3::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
+iw::Written write(const Description& description, const Loaded& loaded, const Values& values, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
+    const formats::ps3::Program& program = *loaded.contained.ps3;
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const std::string stem = std::get<std::string>(values.at("stem"));
     const ByteView image = program.image;
     const Ps3Flow flow(image, program);
 
@@ -248,12 +267,7 @@ iw::Written write(const formats::ps3::Program& program, std::string_view file_na
         instruction_text[at] = std::move(line);
     }
 
-    std::vector<std::string> head = {std::format("# {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("# PlayStation 3 {}, image {} bytes in {} segments; the processor is the Cell's PPU (64-bit PowerPC, big-endian, VMX), entry at 0x{:X}, TOC 0x{:X}",
-                                                 program.self ? "SELF" : "ELF", image.size(), program.segments.size(), program.entry_code, program.toc),
-                                     "# addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned; a pointer is its target's label",
-                                     ""};
-    translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
+    translate::l2::Assembly out(head_comment(description, values, "# "), "gnu-as", file_name);
     out.part("image", "segment", std::nullopt, image.size());
 
     Ps3Listing listing(out, image, code, instruction_text, labels, words);
@@ -264,12 +278,8 @@ iw::Written write(const formats::ps3::Program& program, std::string_view file_na
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
     const build::mips_asm::Assembler assembler(isa::ppc64_encoder(), build::mips_asm::ByteOrder::Big);
     const Bytes original = program.to_elf(image);
-    iw::assembled(r, [&] { return program.to_elf(assembler.build(source)); }, original, folder / (stem + ".built.elf"));
+    iw::assembled(r, [&] { return program.to_elf(assembler.build(source)); }, original, folder / fill(description.executable.built, values));
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(formats::ps3::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::ps3_writer
+}  // namespace cb::source::console_writer::ps3_code

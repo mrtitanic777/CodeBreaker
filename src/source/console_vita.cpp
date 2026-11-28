@@ -1,7 +1,22 @@
 // cb-unity: alone
-// source/vita_writer.cpp -- a PlayStation Vita program as assembly source that builds back into it (vita_writer.hpp).
+// source/console_vita.cpp -- the executable shape's container `vita` (console_executable.cpp): a PlayStation Vita homebrew program (an unencrypted SELF such as a `.vpk`'s eboot.bin, or the ELF inside it) as assembly source that builds back into it
+// (config/platforms/vita.json).
+//
+//     r.source           eboot.s (GNU as syntax, `.syntax unified`, `.thumb`: what VitaSDK's gcc makes of homebrew)
+//     r.same             the source, built, is the program's image byte for byte (the loadable segments inflated and laid end to end; compared as the plain ELF
+//                        formats::vita::Program::to_elf makes of it, which is also what the lane keeps as `<stem>.built.velf` and runs beside the original)
+//     r.functions        {image offset: name}
+//
+// The image is written whole, an address being the byte's offset in the image. Code is what flow reaches in Thumb state (decompile/arm, `Arch::V7A`) from the module's
+// start and stop functions and from what they call; an instruction inside an IT block is written as it decodes, with a comment naming the condition that applies;
+// the instructions the tables do not say (most of Thumb-2's 32-bit integer set and NEON) are written as `.word` with the disassembler's text as a comment, so the
+// source is the program whatever the analysis guessed. An imported function's stub is named from its NID (`sceCtrlPeekBufferPositive`, or `<library>_<NID>`), so a
+// call reads `bl sceCtrlPeekBufferPositive`; a pointer-sized literal that holds an address of the program is written as its label.
+//
+// The head and the rebuilt file's name are the description's.
 
-#include "source/vita_writer.hpp"
+#include "source/console_shapes.hpp"
+#include "formats/vita.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -19,7 +34,7 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
-namespace cb::source::vita_writer {
+namespace cb::source::console_writer::vita_code {
 
 namespace da = decompile::arm;
 namespace iw = image_writer;
@@ -178,9 +193,11 @@ std::string clean(std::string_view s) {
 
 }  // namespace
 
-iw::Written write(const formats::vita::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
+iw::Written write(const Description& description, const Loaded& loaded, const Values& values, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
+    const formats::vita::Program& program = *loaded.contained.vita;
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const std::string stem = std::get<std::string>(values.at("stem"));
     const ByteView image = program.image;
     const VitaFlow flow(image, program);
 
@@ -285,15 +302,9 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
         instruction_text[at] = std::move(line);
     }
 
-    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("; PlayStation Vita {} {}, image {} bytes in {} segments; the processor is the Cortex-A9 (ARMv7-A, Thumb-2, VFP, NEON)",
-                                                 program.self ? "SELF" : "ELF", program.module_name, image.size(), program.segments.size()),
-                                     "; addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned",
-                                     "",
-                                     "        .syntax unified",
-                                     "        .thumb",
-                                     ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    std::vector<std::string> head = head_comment(description, values);
+    head.insert(head.end(), description.executable.prologue.begin(), description.executable.prologue.end());
+    translate::l2::Assembly out(head, "gas", file_name);
     out.part("image", "segment", std::nullopt, image.size());
 
     VitaListing listing(out, image, code, instruction_text, labels, words);
@@ -303,12 +314,8 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
     const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
     const Bytes original = program.to_elf(image);
-    iw::assembled(r, [&] { return program.to_elf(risc_source::assemble("armv7", dialect::find("gas-arm").parse(source), folder)); }, original, folder / (stem + ".built.velf"));
+    iw::assembled(r, [&] { return program.to_elf(risc_source::assemble("armv7", dialect::find("gas-arm").parse(source), folder)); }, original, folder / fill(description.executable.built, values));
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(formats::vita::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::vita_writer
+}  // namespace cb::source::console_writer::vita_code

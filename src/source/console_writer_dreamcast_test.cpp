@@ -1,17 +1,18 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// source/dreamcast_writer_test.cpp -- a Dreamcast disc written as GNU as source for the SH-4 and built again: IP.BIN's header field by field, the
+// source/console_writer_dreamcast_test.cpp -- a Dreamcast disc written as GNU as source for the SH-4 and built again: IP.BIN's header field by field, the
 // physical addresses and the cache bits of the program's pointers, the machine's registers by name, the FPU's instructions, little-endian data, a scrambled
 // program written descrambled and put back scrambled in the disc the lane runs.
-#include "source/dreamcast_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include <algorithm>
 #include <iostream>
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "knowledge/package.hpp"
 #include "source/dreamcast_test_programs.hpp"
 
-namespace dw = cb::source::dreamcast_writer;
+namespace cw = cb::source::console_writer;
 namespace dc = cb::formats::dreamcast;
 namespace t = cb::source::dreamcast_test;
 using cb::Bytes;
@@ -29,10 +30,10 @@ void keep(const cb::source::image_writer::Written& r, std::string_view name) {
 
 }  // namespace
 
-CB_TEST("source.dreamcast_writer.a_disc_comes_back_identical_and_readable", [] {
+CB_TEST("source.console_writer.dreamcast.a_disc_comes_back_identical_and_readable", [] {
     cb::fs::ScopedTempDir dir("cb_dc_writer");
     cb::fs::write_file(dir.path() / "game.iso", t::iso(false));
-    const cb::source::image_writer::Written r = dw::reconstruct(dir.path() / "game.iso", dir.path() / "out");
+    const cb::source::image_writer::Written r = cw::reconstruct("dreamcast", dir.path() / "game.iso", dir.path() / "out");
     keep(r, "dreamcast");
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
@@ -68,11 +69,11 @@ CB_TEST("source.dreamcast_writer.a_disc_comes_back_identical_and_readable", [] {
     CB_CHECK(has(source, "        .long 0x12345678"));                              // data is little-endian: the longword reads as written
 });
 
-CB_TEST("source.dreamcast_writer.a_scrambled_program_is_written_descrambled_and_put_back", [] {
+CB_TEST("source.console_writer.dreamcast.a_scrambled_program_is_written_descrambled_and_put_back", [] {
     cb::fs::ScopedTempDir dir("cb_dc_writer");
     const Bytes program = t::assemble(t::big_source());
     cb::fs::write_file(dir.path() / "game.iso", t::iso(program, true));
-    const cb::source::image_writer::Written r = dw::reconstruct(dir.path() / "game.iso", dir.path() / "out");
+    const cb::source::image_writer::Written r = cw::reconstruct("dreamcast", dir.path() / "game.iso", dir.path() / "out");
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
     std::cout << "big program: " << r.functions.size() << " functions\n";
@@ -88,8 +89,8 @@ CB_TEST("source.dreamcast_writer.a_scrambled_program_is_written_descrambled_and_
     CB_CHECK(rebuilt.program == program);
 });
 
-CB_TEST("source.dreamcast_writer.hardware_names_the_machines_registers", [] {
-    const auto& h = dw::hardware();
+CB_TEST("source.console_writer.dreamcast.hardware_names_the_machines_registers", [] {
+    const auto h = cb::knowledge::standard().hardware_names("dreamcast", "hardware");   // (config/knowledge/dreamcast/registers.json)
     CB_CHECK_EQ(h.at(0x005F8000), "PVR_ID");
     CB_CHECK_EQ(h.at(0x005F810C), "PVR_SPG_STATUS");
     CB_CHECK_EQ(h.at(0x005F6900), "SB_ISTNRM");

@@ -12,7 +12,7 @@
 #include "engine/machine_sh2.hpp"
 #include "formats/saturn.hpp"
 #include "formats/sega32x.hpp"
-#include "source/saturn_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/sega32x_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
@@ -103,7 +103,7 @@ CB_TEST("source.sega32x.homebrew.the_roq_player", [] {
 // The Saturn: Save Game Copier (GPL-3.0), built with Jo Engine and the Saturn SDK's GCC; three releases.
 CB_TEST("source.saturn.homebrew.save_game_copier", [] {
     for (const char* version : {"3.7.1", "3.7.0", "3.6.18"})
-        rebuilds_and_is_judged(std::string("saturn/save-game-copier-") + version + "/game.iso", 20, saturn_writer::reconstruct, engine::saturn_lane_spec(), program_offset_on_disc);
+        rebuilds_and_is_judged(std::string("saturn/save-game-copier-") + version + "/game.iso", 20, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("saturn", f, d); }, engine::saturn_lane_spec(), program_offset_on_disc);
 });
 
 }  // namespace

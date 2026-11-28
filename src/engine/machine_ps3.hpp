@@ -2,7 +2,7 @@
 //
 //     engine::register_ps3_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A PS3 homebrew ELF or unencrypted SELF (formats/ps3) is written back as GNU as source (source/ps3_writer) and rebuilt; one that comes back identical is the
+// A PS3 homebrew ELF or unencrypted SELF (formats/ps3) is written back as GNU as source (source/console_writer: config/platforms/ps3.json) and rebuilt; one that comes back identical is the
 // original, an edited one has each function run beside the original's in the PowerPC interpreter the Xbox 360 and GameCube lanes share (emulate/powerpc: 64-bit
 // registers, the 64-bit rotates and doubleword loads and stores) over the process's memory (the segments at their addresses, r2 set to the program's TOC). The VMX
 // instructions are decoded for their length and text, and the interpreter stops at them as unsupported. A call into an imported function lands on its unpatched

@@ -11,9 +11,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/nds.hpp"
+#include "platforms/package.hpp"
 #include "formats/nds.hpp"
-#include "source/nds_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -112,7 +112,7 @@ vl::Effects nds_effects(const stdfs::path& path, std::uint32_t entry, const vl::
 }
 
 vl::Written nds_written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::nds_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("nds", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -144,7 +144,7 @@ vl::ImageLaneSpec nds_lane_spec() {
 void register_nds_lane() {
     register_lane({
         .name = "nds",
-        .platform = platforms::nds,
+        .platform = [] { return platforms::described("nds"); },
         .probe = [](const stdfs::path& p) { return formats::nds::probe(p); },
         .make_spec = nds_lane_spec,
         .program_extensions = {".nds"},
