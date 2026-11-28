@@ -81,14 +81,17 @@ struct NsoSegment {
 }
 
 # An AArch64 ELF64: elf.fmt's identification and file header, the program headers and section headers at the header's
-# entry sizes (each where phoff + phentsize * i says; one not wholly in the file is not in the tree) and, as a part, the
-# entries of each symbol table that lie in the file.
+# entry sizes (each where phoff + phentsize * i says; those wholly in the file) and, as a part, the entries of each symbol
+# table that lie in the file.
 struct Aarch64Elf {
     let is64 = 1
     ident    : Ident
     header   : Header
-    segments : PhdrAt[header.phnum]
-    sections : ShdrAt[header.shoff != 0 && header.shentsize >= 64 ? header.shnum : 0]
+    # (only the headers wholly in the file: a table's entries lie in order, so they are its first ones)
+    let ph_fit = header.phoff >= 0 && header.phoff + 56 <= $size ? (header.phentsize == 0 ? header.phnum : min(header.phnum, ($size - 56 - header.phoff) / header.phentsize + 1)) : 0
+    let sh_fit = header.shoff != 0 && header.shentsize >= 64 && header.shoff >= 0 && header.shoff + 64 <= $size ? min(header.shnum, ($size - 64 - header.shoff) / header.shentsize + 1) : 0
+    segments : PhdrAt[ph_fit]
+    sections : ShdrAt[sh_fit]
 }
 
 struct PhdrAt {

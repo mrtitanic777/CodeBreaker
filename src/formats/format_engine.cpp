@@ -201,11 +201,53 @@ struct Expr;
 using ExprP = std::shared_ptr<const Expr>;
 struct Expr {
     enum class Op { Num, Text, Name, Special, Unary, Binary, Cond, Call, Member, Index };
+    // What a Unary, Binary, Special or Call is, decided once when the description is parsed (`code`).
+    enum Code : std::uint8_t {
+        None,
+        Neg, Not, BitNot,
+        Add, Sub, Mul, Div, Mod, Shl, Shr, BitAnd, BitOr, BitXor, Eq, Ne, Lt, Le, Gt, Ge, And, Or,
+        Pos, Start, End, Remaining, Size, Index, Var,
+        Xlat, Scan, Count, At, Ends, Peek8, Peek16, Peek32, Peek16be, Peek32be, PeekBad, Sum8, Printable, Min, Max, Align, OtherCall,
+    };
     Op op = Op::Num;
+    Code code = None;
     std::int64_t num = 0;
     std::string name;          // a Name, a Special, a Member, a Call's function; a Unary/Binary's operator
     std::vector<ExprP> kids;
 };
+
+// The code of an operator, a special name or a built-in function.
+Expr::Code expr_code(Expr::Op op, std::string_view n) {
+    using C = Expr::Code;
+    switch (op) {
+        case Expr::Op::Unary: return n == "-" ? C::Neg : n == "!" ? C::Not : C::BitNot;
+        case Expr::Op::Binary: {
+            static constexpr std::pair<std::string_view, C> ops[] = {
+                {"+", C::Add}, {"-", C::Sub}, {"*", C::Mul}, {"/", C::Div}, {"%", C::Mod}, {"<<", C::Shl}, {">>", C::Shr}, {"&", C::BitAnd},
+                {"|", C::BitOr}, {"^", C::BitXor}, {"==", C::Eq}, {"!=", C::Ne}, {"<", C::Lt}, {"<=", C::Le}, {">", C::Gt}, {"&&", C::And}, {"||", C::Or}};
+            for (const auto& [text, code] : ops)
+                if (n == text) return code;
+            return C::Ge;
+        }
+        case Expr::Op::Special: {
+            static constexpr std::pair<std::string_view, C> names[] = {
+                {"pos", C::Pos}, {"start", C::Start}, {"end", C::End}, {"remaining", C::Remaining}, {"size", C::Size}, {"index", C::Index}};
+            for (const auto& [text, code] : names)
+                if (n == text) return code;
+            return C::Var;
+        }
+        case Expr::Op::Call: {
+            static constexpr std::pair<std::string_view, C> fns[] = {
+                {"xlat", C::Xlat}, {"scan", C::Scan}, {"count", C::Count}, {"at", C::At}, {"ends", C::Ends}, {"peek8", C::Peek8}, {"peek16", C::Peek16},
+                {"peek32", C::Peek32}, {"peek16be", C::Peek16be}, {"peek32be", C::Peek32be}, {"sum8", C::Sum8}, {"printable", C::Printable},
+                {"min", C::Min}, {"max", C::Max}, {"align", C::Align}};
+            for (const auto& [text, code] : fns)
+                if (n == text) return code;
+            return n.starts_with("peek") ? C::PeekBad : C::OtherCall;
+        }
+        default: return C::None;
+    }
+}
 
 struct Literal {
     bool is_text = false;
@@ -727,6 +769,7 @@ private:
     ExprP make(Expr::Op op, std::string name = {}, std::vector<ExprP> kids = {}, std::int64_t num = 0) {
         auto e = std::make_shared<Expr>();
         e->op = op, e->name = std::move(name), e->kids = std::move(kids), e->num = num;
+        e->code = expr_code(op, e->name);
         return e;
     }
 
@@ -962,46 +1005,50 @@ private:
             case Expr::Op::Name: return lookup(e.name, c);
             case Expr::Op::Special: {
                 const Scope& s = *c.sc;
-                if (e.name == "pos") return {s64(*s.pos), nullptr};
-                if (e.name == "start") return {s64(s.start), nullptr};
-                if (e.name == "end") return {s64(s.end), nullptr};
-                if (e.name == "remaining") return {s64(s.end > *s.pos ? s.end - *s.pos : 0), nullptr};
-                if (e.name == "size") return {s64(data_.size()), nullptr};
-                if (e.name == "index") return {s64(s.index), nullptr};
+                switch (e.code) {
+                    case Expr::Pos: return {s64(*s.pos), nullptr};
+                    case Expr::Start: return {s64(s.start), nullptr};
+                    case Expr::End: return {s64(s.end), nullptr};
+                    case Expr::Remaining: return {s64(s.end > *s.pos ? s.end - *s.pos : 0), nullptr};
+                    case Expr::Size: return {s64(data_.size()), nullptr};
+                    case Expr::Index: return {s64(s.index), nullptr};
+                    default: break;
+                }
                 auto var = opt_.vars.find(e.name);   // a variable the caller gave; 0 when it did not
                 return {var == opt_.vars.end() ? 0 : var->second, nullptr};
             }
             case Expr::Op::Text: fail(here, "a string is only meant as an argument of scan()");
             case Expr::Op::Unary: {
                 const std::int64_t v = num(e.kids[0]);
-                if (e.name == "-") return {s64(0 - u(v)), nullptr};
-                if (e.name == "!") return {v == 0 ? 1 : 0, nullptr};
+                if (e.code == Expr::Neg) return {s64(0 - u(v)), nullptr};
+                if (e.code == Expr::Not) return {v == 0 ? 1 : 0, nullptr};
                 return {~v, nullptr};
             }
             case Expr::Op::Cond: return num(e.kids[0]) ? eval(*e.kids[1], c) : eval(*e.kids[2], c);
             case Expr::Op::Binary: {
-                const std::string& op = e.name;
-                if (op == "&&") return {num(e.kids[0]) != 0 && num(e.kids[1]) != 0 ? 1 : 0, nullptr};
-                if (op == "||") return {num(e.kids[0]) != 0 || num(e.kids[1]) != 0 ? 1 : 0, nullptr};
+                if (e.code == Expr::And) return {num(e.kids[0]) != 0 && num(e.kids[1]) != 0 ? 1 : 0, nullptr};
+                if (e.code == Expr::Or) return {num(e.kids[0]) != 0 || num(e.kids[1]) != 0 ? 1 : 0, nullptr};
                 const std::int64_t a = num(e.kids[0]), b = num(e.kids[1]);
-                if (op == "+") return {s64(u(a) + u(b)), nullptr};
-                if (op == "-") return {s64(u(a) - u(b)), nullptr};
-                if (op == "*") return {s64(u(a) * u(b)), nullptr};
-                if (op == "/" || op == "%") {
-                    if (b == 0) fail(here, "division by zero");
-                    return {op == "/" ? a / b : a % b, nullptr};
+                switch (e.code) {
+                    case Expr::Add: return {s64(u(a) + u(b)), nullptr};
+                    case Expr::Sub: return {s64(u(a) - u(b)), nullptr};
+                    case Expr::Mul: return {s64(u(a) * u(b)), nullptr};
+                    case Expr::Div:
+                    case Expr::Mod:
+                        if (b == 0) fail(here, "division by zero");
+                        return {e.code == Expr::Div ? a / b : a % b, nullptr};
+                    case Expr::Shl: return {b < 0 || b >= 64 ? 0 : s64(u(a) << b), nullptr};
+                    case Expr::Shr: return {b < 0 || b >= 64 ? 0 : a >> b, nullptr};
+                    case Expr::BitAnd: return {a & b, nullptr};
+                    case Expr::BitOr: return {a | b, nullptr};
+                    case Expr::BitXor: return {a ^ b, nullptr};
+                    case Expr::Eq: return {a == b, nullptr};
+                    case Expr::Ne: return {a != b, nullptr};
+                    case Expr::Lt: return {a < b, nullptr};
+                    case Expr::Le: return {a <= b, nullptr};
+                    case Expr::Gt: return {a > b, nullptr};
+                    default: return {a >= b, nullptr};
                 }
-                if (op == "<<") return {b < 0 || b >= 64 ? 0 : s64(u(a) << b), nullptr};
-                if (op == ">>") return {b < 0 || b >= 64 ? 0 : a >> b, nullptr};
-                if (op == "&") return {a & b, nullptr};
-                if (op == "|") return {a | b, nullptr};
-                if (op == "^") return {a ^ b, nullptr};
-                if (op == "==") return {a == b, nullptr};
-                if (op == "!=") return {a != b, nullptr};
-                if (op == "<") return {a < b, nullptr};
-                if (op == "<=") return {a <= b, nullptr};
-                if (op == ">") return {a > b, nullptr};
-                return {a >= b, nullptr};
             }
             case Expr::Op::Member: {
                 const Val base = eval(*e.kids[0], c);
@@ -1025,6 +1072,22 @@ private:
                     for (std::size_t k = 0; k < e.kids.size(); ++k) args.emplace_back(fn->params[k], num(e.kids[k]));
                     Ctx inner{c.sc, c.under, &args};
                     return {scalar(eval(*fn->body, inner), here), nullptr};
+                }
+                const Expr::Code fc = e.code;
+                if (fc == Expr::Min || fc == Expr::Max) {   // (the most used: a field cut to what remains)
+                    if (e.kids.size() != 2) fail(here, f + " takes two arguments");
+                    const std::int64_t a = num(e.kids[0]), b = num(e.kids[1]);
+                    return {fc == Expr::Min ? std::min(a, b) : std::max(a, b), nullptr};
+                }
+                if (fc == Expr::Peek8 || fc == Expr::Peek16 || fc == Expr::Peek32 || fc == Expr::Peek16be || fc == Expr::Peek32be) {
+                    if (e.kids.size() != 1) fail(here, f + " takes one argument (an offset)");
+                    const std::int64_t at = num(e.kids[0]);
+                    const bool be = fc == Expr::Peek16be || fc == Expr::Peek32be;
+                    const unsigned width = fc == Expr::Peek8 ? 1 : fc == Expr::Peek16 || fc == Expr::Peek16be ? 2 : 4;
+                    if (at < 0 || u(at) > data_.size() || width > data_.size() - u(at)) return {-1, nullptr};
+                    std::int64_t v = 0;
+                    for (unsigned k = 0; k < width; ++k) v |= static_cast<std::int64_t>(data_[u(at) + k]) << (8 * (be ? width - 1 - k : k));
+                    return {v, nullptr};
                 }
                 if (f == "xlat") {   // xlat(array, v, from, len, to)
                     if (e.kids.size() != 5) fail(here, "xlat(array, value, from, len, to)");
@@ -1129,6 +1192,7 @@ private:
         n.kind = Kind::Struct;
         n.type = def.name;
         n.offset = at;
+        n.children.reserve(def.body.size());   // (one node a statement, most often: no growth as the fields come)
         std::uint64_t pos = at;
         Scope sc{&n, parent, at, end, &pos, index};
         run(def.body, n, sc);
@@ -1264,6 +1328,7 @@ private:
         Node node;
         std::uint64_t window_size = 0;
         bool windowed = false;
+        bool missing = false;   // a `try` field that could not be read
         // The cursor a condition sees as $pos is the one after the last element read.
         const std::uint64_t saved_pos = *sc.pos;
         auto cond = [&](const ExprP& e, const Node* under) {
@@ -1295,6 +1360,12 @@ private:
                 end = std::min(end, at + window_size);
             }
             c = at;
+            // a number of a `try` field that is not in the data: given up without an exception (the common case of a
+            // table read tolerantly past the file's end)
+            if (f.tolerant && f.arr == Arr::None && f.type.k == TypeRef::K::Int && (at > end || f.type.width > end - at)) {
+                missing = true;
+                goto given_up;
+            }
             switch (f.arr) {
                 case Arr::None:
                     node = read_value(f, f.name, c, end, sc, 0);
@@ -1307,6 +1378,7 @@ private:
                         if (c > end || count > end - c) throw TruncatedError(fmt(), c, count, c > end ? 0 : end - c);
                         fail(at, "'" + f.name + "' claims " + std::to_string(count) + " elements");
                     }
+                    node.children.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(count, 4096)));
                     for (std::uint64_t i = 0; i < count; ++i)
                         if (!element(i, end)) break;
                     break;
@@ -1334,9 +1406,16 @@ private:
                     }
                     break;
             }
+        given_up:;
         } catch (const FormatError&) {
+            if (!f.tolerant) {
+                *sc.pos = saved_pos;
+                throw;
+            }
+            missing = true;
+        }
+        if (missing) {
             *sc.pos = saved_pos;
-            if (!f.tolerant) throw;
             // not in the tree (a number that cannot be read is 0: a Let, with no bytes behind it); a fixed-size field of
             // the sequence still takes its place
             if (f.arr == Arr::None && f.type.k == TypeRef::K::Int) {
@@ -1380,7 +1459,29 @@ const std::string& Registry::add_text(std::string_view text, std::string_view or
     std::shared_ptr<Format> f = Parser(text, origin).parse();
     const std::string name = f->name;
     formats_[name] = std::move(f);
+    make_chains();
     return formats_.find(name)->second->name;
+}
+
+void Registry::make_chains() {
+    chains_.clear();
+    for (const auto& [name, format] : formats_) {
+        std::vector<const Format*> chain;   // the format, then what it `use`s (depth first, each once)
+        std::set<std::string, std::less<>> seen;
+        bool whole = true;
+        std::function<void(const std::string&)> add = [&](const std::string& n) {
+            if (!seen.insert(n).second) return;
+            auto f = formats_.find(n);
+            if (f == formats_.end()) {
+                whole = false;
+                return;
+            }
+            chain.push_back(f->second.get());
+            for (const std::string& u : f->second->uses) add(u);
+        };
+        add(name);
+        if (whole) chains_.emplace(name, std::move(chain));
+    }
 }
 
 void Registry::add_file(const std::filesystem::path& file) { add_text(fs::read_text(file), fs::to_text(file)); }
@@ -1409,15 +1510,19 @@ Tree Registry::read(std::string_view format, ByteView data, const ReadOptions& o
     auto it = formats_.find(format);
     if (it == formats_.end()) throw NotFoundError(std::filesystem::path(std::string(format)), 0, "no format description named this");
     std::vector<const Format*> chain;   // the format, then what it `use`s (depth first, each once)
-    std::set<std::string> seen;
-    std::function<void(const std::string&)> add = [&](const std::string& name) {
-        if (!seen.insert(name).second) return;
-        auto f = formats_.find(name);
-        if (f == formats_.end()) throw NotFoundError(std::filesystem::path(name), 0, "a description `use`s a format that is not loaded");
-        chain.push_back(f->second.get());
-        for (const std::string& u : f->second->uses) add(u);
-    };
-    add(it->first);
+    if (const auto known = chains_.find(format); known != chains_.end()) {
+        chain = known->second;
+    } else {
+        std::set<std::string> seen;
+        std::function<void(const std::string&)> add = [&](const std::string& name) {
+            if (!seen.insert(name).second) return;
+            auto f = formats_.find(name);
+            if (f == formats_.end()) throw NotFoundError(std::filesystem::path(name), 0, "a description `use`s a format that is not loaded");
+            chain.push_back(f->second.get());
+            for (const std::string& u : f->second->uses) add(u);
+        };
+        add(it->first);
+    }
     Tree tree;
     tree.format = it->first;
     if (options.keep_source) tree.source.assign(data.begin(), data.end());

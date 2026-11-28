@@ -177,6 +177,9 @@ public:
 
 private:
     std::map<std::string, std::shared_ptr<const Format>, std::less<>> formats_;
+    // Each format and what it `use`s, depth first (made when a description is added; one that uses a format not loaded has none).
+    std::map<std::string, std::vector<const Format*>, std::less<>> chains_;
+    void make_chains();
 };
 
 }  // namespace cb::formats::engine

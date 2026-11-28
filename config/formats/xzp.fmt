@@ -20,7 +20,7 @@ struct File {
         count   @ 0x14 : u16
         entries @ 0x16 : V3Entry[count] try
     } else {
-        entries @ 0x17 : V1Entry[while $pos + 9 <= $size] try
+        entries @ 0x17 : V1Entry[while $pos + 9 <= $size && $pos + 9 < base] try   # (an entry at the base or past it has no name: the table ends)
     }
 }
 
