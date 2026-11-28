@@ -188,3 +188,5 @@ tests only what it changes.
   Atari 2600, 5200 and 7800 (`cart6502`); written source byte-identical on their tests, goldens and homebrew samples. Next: the Lynx, the NES, the PC Engine and the SNES, then `vectored`, then `executable`.
 - 2026-11-28: item 7: the NES and the Atari Lynx on the `segmented` shape (ca65 segments placed by ld65); the source and the linker
   configuration byte-identical to the old writers' on every Lynx sample and the NES test programs. Next: the PC Engine and the SNES.
+- 2026-11-28: item 7: the PC Engine and the SNES on `segmented`, the bank mapping and the register widths as the loader's flow (SegmentCode);
+  byte-identical on 72 homebrew programs. Next: the `vectored` shape (Genesis first).

@@ -1,10 +1,19 @@
-// source/pce_writer.cpp -- a PC Engine / TurboGrafx-16 HuCard as assembly source that builds back into it (pce_writer.hpp).
+// source/console_pce.cpp -- the console writer's PC Engine (config/platforms/pce.json): a HuCard on the `segmented` shape, with the flow the
+// shape cannot do alone (console_writer.hpp: SegmentCode). The HuC6280 maps 8 KB banks into eight pages through its MPRs, so flow tracks
+// `LDA #n` and `TAM #mask` through the code: an address is `bank << 16 | logical address`, and each bank is linked at the page flow first
+// found it mapped at (bank 0 at $E000; another bank never found mapped at $4000). Code is what flow reaches from the vectors (RESET, NMI,
+// IRQ1, IRQ2, TIMER); a jump into a page whose mapping is not known from the code that reaches it is not followed. Function starts are
+// `reset`, `nmi`, `irq1`, `irq2`, `timer` or `sub_<bank><address>`; jump targets `L_<bank><address>`; a data address an instruction names
+// `D_<bank><address>`. The chips' registers carry the hardware names, the zero page (the RAM at $2000) `zp_20`, the ten vector bytes are
+// `.word irq2, irq1, timer, nmi, reset`. An instruction whose text does not assemble back into its own bytes is written as `.byte` data.
 
-#include "source/pce_writer.hpp"
+#include "source/console_shapes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <map>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
@@ -12,10 +21,12 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/huc6280.hpp"
+#include "formats/pce.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/m6502_source.hpp"
 
-namespace cb::source::pce_writer {
+namespace cb::source::console_writer::pce_code {
 
 namespace hu = decompile::huc6280;
 namespace iw = image_writer;
@@ -24,7 +35,8 @@ namespace pce = formats::pce;
 namespace {
 
 // The PC Engine's source is ca65's, with .res fills and string rows (config/dialects/ca65-res.json).
-const dialect::Dialect& ca65() { static const dialect::Dialect& d = dialect::find("ca65-res"); return d; }
+const dialect::Dialect* g_said = nullptr;   // (the description's dialect, set by follow(): config/dialects/ca65-res.json)
+const dialect::Dialect& ca65() { return *g_said; }
 
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
@@ -299,139 +311,132 @@ private:
 };
 
 
-// The ld65 configuration: where each segment of the source loads (config/dialects/ca65-res.json reads it back).
-std::string link_config(const pce::Rom& rom, const PceFlow& flow) {
-    std::vector<std::string> cfg = {"MEMORY {"};
-    if (!rom.header.empty()) cfg.push_back(std::format("    HEADER: start = $0000, size = ${:04X}, fill = yes, file = %O;", pce::kHeaderSize));
-    for (std::size_t b = 0; b < rom.bank_count(); ++b) cfg.push_back(std::format("    BANK{}: start = ${:04X}, size = ${:04X}, fill = yes, file = %O;", b, flow.base_or_default(b), pce::kBankSize));
-    cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
-    if (!rom.header.empty()) cfg.push_back("    HEADER: load = HEADER, type = ro;");
-    for (std::size_t b = 0; b < rom.bank_count(); ++b) cfg.push_back(std::format("    BANK{}: load = BANK{}, type = ro;", b, b));
-    cfg.push_back("}");
-    return text::join(cfg, "\n") + "\n";
-}
 
-}  // namespace
+// The PC Engine's code: flow through the banks as the code maps them (the bank's page decided where flow first finds it).
+class PceCode final : public SegmentCode {
+public:
+    explicit PceCode(std::shared_ptr<const pce::Rom> rom) : rom_(std::move(rom)), flow_(*rom_) {}
 
-iw::Written write(const pce::Rom& rom, std::string_view file_name, const std::filesystem::path& folder) {
-    fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-    const PceFlow flow(rom);
-
-    // the vectors are the entries, each with the mapping a reset leaves
-    std::vector<std::uint32_t> entries;
-    iw::Names names;
-    const pce::Vectors& v = rom.vectors;
-    for (const auto& [vector, label] : {std::pair{v.reset, "reset"}, std::pair{v.nmi, "nmi"}, std::pair{v.irq1, "irq1"}, std::pair{v.irq2, "irq2"}, std::pair{v.timer, "timer"}}) {
-        if (vector < pce::kResetBase) continue;
-        const std::uint32_t at = flow_of(0, vector);
-        flow.seed(at, initial_state());
-        if (std::find(entries.begin(), entries.end(), at) == entries.end()) entries.push_back(at);
-        names.try_emplace(at, label);
-    }
-    const iw::Walked<Insn> walked = iw::walk<Insn>(flow, entries);
-    const std::map<std::uint32_t, Insn>& walked_code = walked.code;
-    const iw::Functions functions = iw::name_functions(walked.starts, names, kSub);
-
-    // a bank an instruction names data in is shown at the page it was named through
-    for (const auto& entry : walked_code) {
-        for (const auto& [value, written] : address_operands(entry.second.i)) {
-            (void)written;
-            flow.locate(entry.second.before, value, true);
+    void follow(const Description& d) override {
+        g_said = &dialect::find(d.dialect);
+        const pce::Rom& rom = *rom_;
+        const PceFlow& flow = flow_;
+        // the vectors are the entries, each with the mapping a reset leaves
+        std::vector<std::uint32_t> entries;
+        iw::Names names;
+        const pce::Vectors& v = rom.vectors;
+        for (const auto& [vector, label] : {std::pair{v.reset, "reset"}, std::pair{v.nmi, "nmi"}, std::pair{v.irq1, "irq1"}, std::pair{v.irq2, "irq2"}, std::pair{v.timer, "timer"}}) {
+            if (vector < pce::kResetBase) continue;
+            const std::uint32_t at = flow_of(0, vector);
+            flow.seed(at, initial_state());
+            if (std::find(entries.begin(), entries.end(), at) == entries.end()) entries.push_back(at);
+            names.try_emplace(at, label);
         }
-    }
+        const iw::Walked<Insn> walked = iw::walk<Insn>(flow, entries);
+        functions_ = iw::name_functions(walked.starts, names, kSub);
 
-    // where a line can start: any byte of a bank not inside an instruction
-    std::map<std::uint32_t, Insn> code = walked_code;
-    std::set<std::uint32_t> demoted;
-    const auto line_starts = [&](const std::map<std::uint32_t, Insn>& c, const std::set<std::uint32_t>& gone) {
+        // a bank an instruction names data in is shown at the page it was named through
+        for (const auto& entry : walked.code) {
+            for (const auto& [value, written] : address_operands(entry.second.i)) {
+                (void)written;
+                flow.locate(entry.second.before, value, true);
+            }
+        }
+
+        // where a line can start: any byte of a bank not inside an instruction
+        code_ = walked.code;
         std::set<std::uint32_t> inside;
-        for (const auto& [at, insn] : c) {
-            if (gone.contains(at)) continue;
+        for (const auto& [at, insn] : code_) {
             for (std::uint32_t a = at + 1; a < at + insn.i.size; ++a) inside.insert(a);
         }
-        std::set<std::uint32_t> lines;
+        std::set<std::uint32_t> line_at;
         for (std::size_t b = 0; b < rom.bank_count(); ++b) {
             const std::uint32_t base = flow.base_or_default(b);
             for (std::uint32_t off = 0; off < pce::kBankSize; ++off) {
-                if (!inside.contains(static_cast<std::uint32_t>(b * pce::kBankSize + off))) lines.insert(flow_of(b, base + off));
+                if (!inside.contains(static_cast<std::uint32_t>(b * pce::kBankSize + off))) line_at.insert(flow_of(b, base + off));
             }
         }
-        return lines;
-    };
-    const std::set<std::uint32_t> line_at = line_starts(code, demoted);
-    iw::Names labels = iw::make_labels(walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kLocal);
-    for (const auto& entry : code) {   // data an instruction names, where a line starts
-        for (const auto& [value, written] : address_operands(entry.second.i)) {
-            (void)written;
-            if (const auto at = flow.exact(entry.second.before, value); at && line_at.contains(*at)) labels.try_emplace(*at, std::format("D_{:06X}", *at));
+        labels_ = iw::make_labels(walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kLocal);
+        for (const auto& entry : code_) {   // data an instruction names, where a line starts
+            for (const auto& [value, written] : address_operands(entry.second.i)) {
+                (void)written;
+                if (const auto at = flow.exact(entry.second.before, value); at && line_at.contains(*at)) labels_.try_emplace(*at, std::format("D_{:06X}", *at));
+            }
+        }
+        for (const auto& entry : code_) {
+            if (std::uint16_t byte = 0; zero_page_byte(entry.second.i, byte)) zero_page_[byte] = std::format("zp_{:02X}", byte);
+        }
+
+        // the text of each instruction; one that does not assemble back into its bytes is data
+        naming_ = std::make_unique<Naming>(Naming{flow_, labels_, zero_page_, &hardware_});
+        for (const auto& entry : code_) (void)insn_names(*naming_, entry.second);   // (collects the hardware names used)
+        naming_->equates = nullptr;
+        for (const auto& [offset, insn] : code_) {
+            const std::uint32_t bank = offset / pce::kBankSize;
+            const std::uint32_t logical = flow.base_or_default(bank) + offset % pce::kBankSize;
+            if (const auto text = m6502_source::described(m6502_source::Cpu::Huc6280, ByteView(rom.data).subspan(offset, insn.i.size), logical)) described_[offset] = *text;
+            else if (const std::string forced = insn.i.mode == hu::Mode::Abs && insn.i.operand[0] < 0x100
+                                                    ? ca65().forced_absolute(insn.i.mnemonic, std::format("0x{:x}", insn.i.operand[0]))
+                                                    : std::string();
+                     !forced.empty())
+                described_[offset] = forced;   // (the absolute form of a zero-page address: `STA a:x` in ca65's, which the description's text cannot say)
+            else demoted_.insert(offset);
+        }
+        for (const auto& entry : code_) {
+            if (!demoted_.contains(entry.first)) code_total_ += entry.second.i.size;
         }
     }
-    decompile::AddressLabels zero_page;
-    for (const auto& entry : code) {
-        if (std::uint16_t byte = 0; zero_page_byte(entry.second.i, byte)) zero_page[byte] = std::format("zp_{:02X}", byte);
+    iw::Functions functions() const override { return functions_; }
+    std::size_t code_bytes() const override { return code_total_; }
+    std::vector<std::string> names() const override {
+        std::vector<std::string> lines;
+        for (const auto& [value, label] : hardware_) lines.push_back(ca65().line(m6502_source::equ(label, value, 4), 14));
+        if (!hardware_.empty()) lines.push_back("");
+        for (const auto& [byte, label] : zero_page_) lines.push_back(ca65().line(m6502_source::equ(label, byte, 2), 14));
+        if (!zero_page_.empty()) lines.push_back("");
+        return lines;
+    }
+    std::uint32_t linked_at(const Piece& piece) const override { return flow_.base_or_default(bank_of(piece)); }
+    void write(translate::l2::Assembly& out, const Piece& piece) override {
+        const std::size_t b = bank_of(piece);
+        PceListing listing(*rom_, b, flow_.base_or_default(b), code_, demoted_, described_, *naming_, out);
+        iw::emit<Insn>(out, static_cast<std::uint32_t>(b * pce::kBankSize), static_cast<std::uint32_t>((b + 1) * pce::kBankSize), labels_, functions_, listing);
     }
 
-    // the text of each instruction; one that does not assemble back into its bytes is data
-    std::set<std::pair<std::uint32_t, std::string>> hardware;
-    Naming naming{flow, labels, zero_page, &hardware};
-    for (const auto& entry : code) (void)insn_names(naming, entry.second);   // (collects the hardware names used)
-    naming.equates = nullptr;
-    std::map<std::uint32_t, std::string> described;   // by file offset: the description's text of an instruction that builds back into its bytes
-    for (const auto& [offset, insn] : code) {
-        const std::uint32_t bank = offset / pce::kBankSize;
-        const std::uint32_t logical = flow.base_or_default(bank) + offset % pce::kBankSize;
-        if (const auto text = m6502_source::described(m6502_source::Cpu::Huc6280, ByteView(rom.data).subspan(offset, insn.i.size), logical)) described[offset] = *text;
-        else if (const std::string forced = insn.i.mode == hu::Mode::Abs && insn.i.operand[0] < 0x100
-                                                ? ca65().forced_absolute(insn.i.mnemonic, std::format("0x{:x}", insn.i.operand[0]))
-                                                : std::string();
-                 !forced.empty())
-            described[offset] = forced;   // (the absolute form of a zero-page address: `STA a:x` in ca65's, which the description's text cannot say)
-        else demoted.insert(offset);
-    }
-    std::size_t code_total = 0;
-    for (const auto& entry : code) {
-        if (!demoted.contains(entry.first)) code_total += entry.second.i.size;
-    }
+private:
+    std::size_t bank_of(const Piece& piece) const { return (piece.offset - rom_->header.size()) / pce::kBankSize; }
 
-    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("; PC Engine / TurboGrafx-16 HuCard: {} banks of 8 KB{}", rom.bank_count(), rom.header.empty() ? "" : ", with a 512-byte copier header"),
-                                     "; each BANKn segment is one 8 KB bank, linked at the address the code that maps it expects",
-                                     "", "        .setcpu \"HuC6280\"", ""};
-    for (const auto& [value, label] : hardware) head.push_back(ca65().line(m6502_source::equ(label, value, 4), 14));
-    if (!hardware.empty()) head.push_back("");
-    for (const auto& [byte, label] : zero_page) head.push_back(ca65().line(m6502_source::equ(label, byte, 2), 14));
-    if (!zero_page.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "ca65", std::string(file_name));
+    std::shared_ptr<const pce::Rom> rom_;
+    PceFlow flow_;
+    iw::Functions functions_;
+    std::map<std::uint32_t, Insn> code_;
+    iw::Names labels_;
+    decompile::AddressLabels zero_page_;
+    std::set<std::pair<std::uint32_t, std::string>> hardware_;
+    std::unique_ptr<Naming> naming_;
+    std::set<std::uint32_t> demoted_;
+    std::map<std::uint32_t, std::string> described_;
+    std::size_t code_total_ = 0;
+};
 
-    if (!rom.header.empty()) {
-        out.part("HEADER", "segment", std::nullopt, pce::kHeaderSize);
-        out.extend(ca65().block("segment", {{"name", "HEADER"}}));
-        out.extend(iw::commented(ca65().data_lines(rom.header), "the copier header"));
-        out.append("");
-    }
-    for (std::size_t b = 0; b < rom.bank_count(); ++b) {
-        out.part(std::format("BANK{}", b), "segment", std::nullopt, pce::kBankSize);
-        out.extend(ca65().block("segment", {{"name", std::format("BANK{}", b)}}));
-        PceListing listing(rom, b, flow.base_or_default(b), code, demoted, described, naming, out);
-        iw::emit<Insn>(out, static_cast<std::uint32_t>(b * pce::kBankSize), static_cast<std::uint32_t>((b + 1) * pce::kBankSize), labels, functions, listing);
-        out.append("");
-    }
-    const std::string source = ca65().print(iw::text(out) + "\n");   // (said in ca65's)
+}  // namespace
 
-    const std::string config = link_config(rom, flow);
-    const std::filesystem::path config_path = folder / (stem + ".cfg");
-    fs::write_file(config_path, as_bytes(config));
-    iw::Written r = iw::finish(folder, stem + ".s", source, functions, code_total, rom.data.size());
-    r.config = config_path;
-    Bytes original = rom.header;
-    original.insert(original.end(), rom.data.begin(), rom.data.end());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::Huc6280, ca65().parse(source, {config, folder}), folder); }, original, folder / (stem + ".built.pce"));
-    return r;
+Loaded load_pce_file(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const pce::Rom>(pce::read(file));
+    Loaded l;
+    l.image = rom->header;
+    l.image.insert(l.image.end(), rom->data.begin(), rom->data.end());
+    Segments& s = l.segments;
+    const std::uint32_t header = static_cast<std::uint32_t>(rom->header.size());
+    if (header) s.pieces.push_back({"HEADER", "HEADER", "copier", 0, header, 0, false});
+    for (std::size_t b = 0; b < rom->bank_count(); ++b) {
+        const std::string name = std::format("BANK{}", b);
+        s.pieces.push_back({name, name, "", header + static_cast<std::uint32_t>(b * pce::kBankSize), static_cast<std::uint32_t>(pce::kBankSize), 0, true});
+    }
+    s.code = std::make_shared<PceCode>(rom);
+    s.measured = rom->data.size();
+    l.values = {{"banks", static_cast<std::int64_t>(rom->bank_count())}, {"copier", static_cast<std::int64_t>(header != 0)}};
+    return l;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(pce::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::pce_writer
+}  // namespace cb::source::console_writer::pce_code

@@ -13,9 +13,10 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_w65816.hpp"
 #include "formats/read.hpp"
-#include "platforms/snes.hpp"
 #include "formats/snes.hpp"
-#include "source/snes_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_snes.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -88,11 +89,11 @@ vl::Effects snes_effects(const stdfs::path& path, std::uint32_t entry, const vl:
     options.a = static_cast<std::uint16_t>(at(state, "a"));
     options.x = static_cast<std::uint16_t>(at(state, "x"));
     options.y = static_cast<std::uint16_t>(at(state, "y"));
-    options.native = (entry & source::snes_writer::kStartsNative) != 0;
-    options.m16 = (entry & source::snes_writer::kStartsWith16BitAccumulator) != 0;
-    options.x16 = (entry & source::snes_writer::kStartsWith16BitIndex) != 0;
+    options.native = (entry & source::console_writer::snes_code::kStartsNative) != 0;
+    options.m16 = (entry & source::console_writer::snes_code::kStartsWith16BitAccumulator) != 0;
+    options.x16 = (entry & source::console_writer::snes_code::kStartsWith16BitIndex) != 0;
     options.max_steps = kSteps;
-    const emulate::w65816::Run run = emulate::pcode_cpu::run(machine, entry & source::snes_writer::kAddressMask, options);
+    const emulate::w65816::Run run = emulate::pcode_cpu::run(machine, entry & source::console_writer::snes_code::kAddressMask, options);
     std::vector<std::string> io;
     for (const emulate::w65816::Access& x : run.io) {
         io.push_back(x.text());
@@ -104,7 +105,7 @@ vl::Effects snes_effects(const stdfs::path& path, std::uint32_t entry, const vl:
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::snes_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("snes", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -134,7 +135,7 @@ vl::ImageLaneSpec snes_lane_spec() {
 void register_snes_lane() {
     register_lane({
         .name = "snes",
-        .platform = platforms::snes,
+        .platform = [] { return platforms::described("snes"); },
         .probe = [](const stdfs::path& p) { return formats::snes::probe(p); },
         .make_spec = snes_lane_spec,
         .detectors = {{.priority = 230, .detect = formats::detect::info_snes}},

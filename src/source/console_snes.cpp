@@ -1,10 +1,24 @@
-// source/snes_writer.cpp -- a Super Nintendo cartridge as assembly source that builds back into it (snes_writer.hpp).
+// source/console_snes.cpp -- the console writer's Super Nintendo (config/platforms/snes.json): a cartridge on the `segmented` shape, with the
+// flow the shape cannot do alone (console_writer.hpp: SegmentCode). The register widths change an instruction's length, so flow tracks them:
+// from the reset vector (emulation mode, 8 bits) through `REP`, `SEP`, and `CLC; XCE` (which sets or clears emulation mode when the carry is
+// known there), each instruction is decoded under the widths the path that reached it left, and one that takes an immediate of the
+// register's width gets a `.a8` / `.a16` / `.i8` / `.i16` before it when the assembler's last setting differs. The first path to arrive at an
+// address decides the widths there. Entries are the vectors (RESET in emulation mode; NMI, IRQ, COP, BRK, ABORT in native mode, 8 bits
+// assumed); calls are followed (JSL, JSR, the branches and JMP and JML to a constant), and a function is every call target. A function's
+// address carries the state it starts in (console_snes.hpp).
+//
+// Banks are linked at the address the code runs at: LoROM at $nn8000 (the mirror, $00 or $80, that more of the program's long addresses use),
+// HiROM at $C0nn0000. The 64-byte internal header is written as its fields. Function starts are `reset`, `nmi`, `irq`, `cop`, `brk`, `abort`,
+// `emu_...` or `sub_<address>`; jump targets `L_<address>`; a data address an instruction names `D_<address>`; the chips' registers have their
+// hardware names, the direct page `dp_20`. A 16-bit operand that names a label of another bank is written `.loword(label)`. An instruction
+// whose text does not assemble back into its own bytes is written as `.byte` data; the SPC700 sound program is data.
 
-#include "source/snes_writer.hpp"
+#include "source/console_snes.hpp"
 
 #include <algorithm>
 #include <format>
 #include <map>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
@@ -12,11 +26,13 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/w65816.hpp"
+#include "formats/snes.hpp"
+#include "source/console_shapes.hpp"
 #include "source/described_source.hpp"
 #include "source/dialect.hpp"
 #include "source/m6502_source.hpp"
 
-namespace cb::source::snes_writer {
+namespace cb::source::console_writer::snes_code {
 
 namespace w = decompile::w65816;
 namespace iw = image_writer;
@@ -228,11 +244,9 @@ bool direct_page_byte(const w::Insn& i, std::uint32_t& out) {
 
 std::string word_list(const std::vector<std::string>& words) { return "        .half " + text::join(words, ","); }
 
-// The Super Nintendo's source is ca65's (config/dialects/ca65-65816.json).
-const dialect::Dialect& ca65() {
-    static const dialect::Dialect& d = dialect::find("ca65-65816");
-    return d;
-}
+// The Super Nintendo's source is ca65's: the description's dialect (config/dialects/ca65-65816.json), set by follow().
+const dialect::Dialect* g_said = nullptr;
+const dialect::Dialect& ca65() { return *g_said; }
 
 // An instruction the description reads in a way its bytes do not come back from, written as ca65 writes it: a long operand in bank 0 (or a named one)
 // as `f:`, an absolute operand below $100 as `a:`. Empty when it is not one of these.
@@ -373,23 +387,6 @@ private:
     translate::l2::Assembly& out_;
 };
 
-// The ld65 configuration: where each segment of the source loads (config/dialects/ca65-65816.json reads it back).
-std::string link_config(const snes::Rom& rom, bool high) {
-    std::vector<std::string> cfg = {"MEMORY {"};
-    if (!rom.copier_header.empty()) cfg.push_back(std::format("    HEADER: start = $000000, size = ${:04X}, fill = yes, file = %O;", snes::kCopierHeaderSize));
-    const std::size_t banks = rom.bank_count();
-    for (std::size_t b = 0; b < banks; ++b) {
-        const std::uint32_t start = rom.address_of(static_cast<std::uint32_t>(b * rom.bank_size()), high);
-        const std::size_t size = std::min(rom.bank_size(), rom.data.size() - b * rom.bank_size());
-        cfg.push_back(std::format("    BANK{}: start = ${:06X}, size = ${:04X}, fill = yes, file = %O;", b, start, size));
-    }
-    cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
-    if (!rom.copier_header.empty()) cfg.push_back("    HEADER: load = HEADER, type = ro;");
-    for (std::size_t b = 0; b < banks; ++b) cfg.push_back(std::format("    BANK{}: load = BANK{}, type = ro;", b, b));
-    cfg.push_back("}");
-    return text::join(cfg, "\n") + "\n";
-}
-
 // The code flow finds from the vectors with the long addresses written as the mirror `high` says.
 struct Found {
     iw::Walked<Insn> walked;
@@ -424,141 +421,153 @@ Found find_code(const snes::Rom& rom, const SnesFlow& flow) {
     return f;
 }
 
+
+// The SNES's code: flow with the register widths and the emulation flag it follows, the long addresses in the mirror more of
+// the program's own long operands use.
+class SnesCode final : public SegmentCode {
+public:
+    explicit SnesCode(std::shared_ptr<const snes::Rom> rom) : rom_(std::move(rom)) {}
+
+    void follow(const Description& d) override {
+        g_said = &dialect::find(d.dialect);
+        const snes::Rom& rom = *rom_;
+        // LoROM's long addresses are written in one of two mirrors, $00 or $80: the one more of the program's own long operands use
+        if (rom.mapping == snes::Mapping::LoRom) {
+            const SnesFlow probe(rom, false);
+            const Found first = find_code(rom, probe);
+            std::size_t high_votes = 0, low_votes = 0;
+            for (const auto& entry : first.walked.code) {
+                const w::Insn& i = entry.second.i;
+                if (i.mode != w::Mode::Long && i.mode != w::Mode::LongX) continue;
+                const std::uint32_t bank = i.operand >> 16;
+                if (bank >= 0x7E && bank <= 0x7F) continue;
+                (bank >= 0x80 ? high_votes : low_votes) += 1;
+            }
+            high_ = high_votes > low_votes;
+        }
+        flow_ = std::make_unique<SnesFlow>(rom, high_);
+        const SnesFlow& flow = *flow_;
+        const bool high = high_;
+        Found found = find_code(rom, flow);
+        iw::Names names = found.names;
+        functions_ = iw::name_functions(found.walked.starts, names, kSub);
+
+        // where a line can start: any byte not inside an instruction
+        std::set<std::uint32_t> inside;
+        for (const auto& [offset, insn] : found.walked.code) {
+            for (std::uint32_t k = 1; k < insn.i.size; ++k) inside.insert(offset + k);
+        }
+        std::set<std::uint32_t> line_at;
+        for (std::uint32_t offset = 0; offset < rom.data.size(); ++offset) {
+            if (!inside.contains(offset)) line_at.insert(rom.address_of(offset, high));
+        }
+        labels_ = iw::make_labels(found.walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kLocal);
+        code_ = found.walked.code;
+        // data an instruction names where a line starts (a 16-bit operand is in the instruction's own bank)
+        for (const auto& entry : code_) {
+            const w::Insn& i = entry.second.i;
+            std::uint32_t full = 0;
+            switch (i.mode) {
+                case w::Mode::Abs: if (i.target || i.mnemonic == "PEA") continue; full = (i.at & 0xFF0000) | i.operand; break;
+                case w::Mode::AbsX:
+                case w::Mode::AbsY:
+                case w::Mode::AbsIndX:
+                case w::Mode::AbsIndL: full = (i.at & 0xFF0000) | i.operand; break;
+                case w::Mode::Long:
+                case w::Mode::LongX: full = i.operand; break;
+                default: continue;
+            }
+            if (is_hardware(full & 0xFFFF) && (full >> 16 == 0 || i.mode == w::Mode::Abs || i.mode == w::Mode::AbsX || i.mode == w::Mode::AbsY)) continue;
+            if (const auto offset = rom.offset(full)) {
+                const std::uint32_t canonical = rom.address_of(*offset, high);
+                const bool in_header = *offset >= rom.header_offset && *offset < rom.header_offset + snes::kInternalHeaderSize;   // (the header is written as its fields)
+                if (line_at.contains(canonical) && !in_header) labels_.try_emplace(canonical, std::format("D_{:06X}", canonical));
+            }
+        }
+        for (const auto& entry : code_) {
+            if (std::uint32_t byte = 0; direct_page_byte(entry.second.i, byte)) direct_page_[byte] = std::format("dp_{:02X}", byte);
+        }
+
+        // the text of each instruction; one that does not assemble back into its bytes is data
+        naming_ = std::make_unique<Naming>(Naming{rom, high, labels_, direct_page_, &hardware_});
+        for (const auto& entry : code_) (void)insn_names(*naming_, entry.second);   // (collects the hardware names used)
+        naming_->equates = nullptr;
+        for (const auto& [offset, insn] : code_) {
+            const w::Insn& i = insn.i;
+            if (!forced_text(insn, insn_names(*naming_, insn)).empty()) continue;   // (ca65's `f:` and `a:` say what the description's text does not)
+            if (const auto text = m6502_source::described(m6502_source::Cpu::W65816, ByteView(rom.data).subspan(offset, i.size), i.at, m6502_source::widths(i.m16, i.x16))) described_[offset] = *text;
+            else demoted_.insert(offset);
+        }
+        for (const auto& entry : code_) {
+            if (!demoted_.contains(entry.first)) code_total_ += entry.second.i.size;
+        }
+        // the functions as the lane runs them: with the state each starts in
+        for (const auto& [at, label] : functions_) {
+            const State s = flow.state_at(at).value_or(State{});
+            std::uint32_t key = at & kAddressMask;
+            if (!s.e && s.m16) key |= kStartsWith16BitAccumulator;
+            if (!s.e && s.x16) key |= kStartsWith16BitIndex;
+            if (!s.e) key |= kStartsNative;
+            with_state_[key] = label;
+        }
+        assembler_.m16 = assembler_.x16 = false;   // the widths the `.context` the assembler is at gives: 8 bits until said
+    }
+    iw::Functions functions() const override { return with_state_; }
+    std::size_t code_bytes() const override { return code_total_; }
+    std::vector<std::string> names() const override {
+        std::vector<std::string> lines;
+        for (const auto& [value, label] : hardware_) lines.push_back(m6502_source::equ(label, value, 4));
+        if (!hardware_.empty()) lines.push_back("");
+        for (const auto& [byte, label] : direct_page_) lines.push_back(m6502_source::equ(label, byte, 2));
+        if (!direct_page_.empty()) lines.push_back("");
+        return lines;
+    }
+    std::uint32_t linked_at(const Piece& piece) const override { return rom_->address_of(static_cast<std::uint32_t>(first_of(piece)), high_); }
+    void write(translate::l2::Assembly& out, const Piece& piece) override {
+        const std::size_t first = first_of(piece);
+        const std::size_t last = std::min(rom_->data.size(), first + rom_->bank_size());
+        SnesListing listing(*rom_, high_, first, code_, demoted_, described_, *naming_, assembler_, out);
+        iw::emit<Insn>(out, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(last), labels_, functions_, listing);
+    }
+
+private:
+    std::size_t first_of(const Piece& piece) const { return piece.offset - rom_->copier_header.size(); }   // (the bank's first ROM offset)
+
+    std::shared_ptr<const snes::Rom> rom_;
+    bool high_ = false;
+    std::unique_ptr<SnesFlow> flow_;
+    iw::Functions functions_, with_state_;
+    std::map<std::uint32_t, Insn> code_;
+    iw::Names labels_;
+    decompile::AddressLabels direct_page_;
+    std::map<std::uint32_t, std::string> hardware_;
+    std::unique_ptr<Naming> naming_;
+    std::set<std::uint32_t> demoted_;
+    std::map<std::uint32_t, std::string> described_;
+    std::size_t code_total_ = 0;
+    State assembler_;
+};
+
 }  // namespace
 
-iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::filesystem::path& folder) {
-    fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-
-    // LoROM's long addresses are written in one of two mirrors, $00 or $80: the one more of the program's own long operands use
-    bool high = false;
-    if (rom.mapping == snes::Mapping::LoRom) {
-        const SnesFlow probe(rom, false);
-        const Found first = find_code(rom, probe);
-        std::size_t high_votes = 0, low_votes = 0;
-        for (const auto& entry : first.walked.code) {
-            const w::Insn& i = entry.second.i;
-            if (i.mode != w::Mode::Long && i.mode != w::Mode::LongX) continue;
-            const std::uint32_t bank = i.operand >> 16;
-            if (bank >= 0x7E && bank <= 0x7F) continue;
-            (bank >= 0x80 ? high_votes : low_votes) += 1;
-        }
-        high = high_votes > low_votes;
+Loaded load_snes_file(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const snes::Rom>(snes::read(file));
+    Loaded l;
+    l.image = rom->copier_header;
+    l.image.insert(l.image.end(), rom->data.begin(), rom->data.end());
+    Segments& s = l.segments;
+    const std::uint32_t header = static_cast<std::uint32_t>(rom->copier_header.size());
+    if (header) s.pieces.push_back({"HEADER", "HEADER", "copier", 0, header, 0, false});
+    for (std::size_t b = 0; b < rom->bank_count(); ++b) {
+        const std::size_t first = b * rom->bank_size();
+        const std::string name = std::format("BANK{}", b);
+        s.pieces.push_back({name, name, "", header + static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(std::min(rom->bank_size(), rom->data.size() - first)), 0, true});
     }
-    const SnesFlow flow(rom, high);
-    Found found = find_code(rom, flow);
-    const std::map<std::uint32_t, Insn>& walked_code = found.walked.code;
-    iw::Names names = found.names;
-    const iw::Functions functions = iw::name_functions(found.walked.starts, names, kSub);
-
-    // where a line can start: any byte not inside an instruction
-    std::set<std::uint32_t> inside;
-    for (const auto& [offset, insn] : walked_code) {
-        for (std::uint32_t k = 1; k < insn.i.size; ++k) inside.insert(offset + k);
-    }
-    std::set<std::uint32_t> line_at;
-    for (std::uint32_t offset = 0; offset < rom.data.size(); ++offset) {
-        if (!inside.contains(offset)) line_at.insert(rom.address_of(offset, high));
-    }
-    iw::Names labels = iw::make_labels(found.walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kLocal);
-    std::map<std::uint32_t, Insn> code = walked_code;
-    // data an instruction names where a line starts (a 16-bit operand is in the instruction's own bank)
-    for (const auto& entry : code) {
-        const w::Insn& i = entry.second.i;
-        std::uint32_t full = 0;
-        switch (i.mode) {
-            case w::Mode::Abs: if (i.target || i.mnemonic == "PEA") continue; full = (i.at & 0xFF0000) | i.operand; break;
-            case w::Mode::AbsX:
-            case w::Mode::AbsY:
-            case w::Mode::AbsIndX:
-            case w::Mode::AbsIndL: full = (i.at & 0xFF0000) | i.operand; break;
-            case w::Mode::Long:
-            case w::Mode::LongX: full = i.operand; break;
-            default: continue;
-        }
-        if (is_hardware(full & 0xFFFF) && (full >> 16 == 0 || i.mode == w::Mode::Abs || i.mode == w::Mode::AbsX || i.mode == w::Mode::AbsY)) continue;
-        if (const auto offset = rom.offset(full)) {
-            const std::uint32_t canonical = rom.address_of(*offset, high);
-            const bool in_header = *offset >= rom.header_offset && *offset < rom.header_offset + snes::kInternalHeaderSize;   // (the header is written as its fields)
-            if (line_at.contains(canonical) && !in_header) labels.try_emplace(canonical, std::format("D_{:06X}", canonical));
-        }
-    }
-    decompile::AddressLabels direct_page;
-    for (const auto& entry : code) {
-        if (std::uint32_t byte = 0; direct_page_byte(entry.second.i, byte)) direct_page[byte] = std::format("dp_{:02X}", byte);
-    }
-
-    // the text of each instruction; one that does not assemble back into its bytes is data
-    std::map<std::uint32_t, std::string> hardware;
-    Naming full_naming{rom, high, labels, direct_page, &hardware};
-    for (const auto& entry : code) (void)insn_names(full_naming, entry.second);   // (collects the hardware names used)
-    full_naming.equates = nullptr;
-    std::set<std::uint32_t> demoted;
-    std::map<std::uint32_t, std::string> described;   // by ROM offset: the description's text of an instruction that builds back into its bytes, under its widths
-    for (const auto& [offset, insn] : code) {
-        const w::Insn& i = insn.i;
-        if (!forced_text(insn, insn_names(full_naming, insn)).empty()) continue;   // (ca65's `f:` and `a:` say what the description's text does not)
-        if (const auto text = m6502_source::described(m6502_source::Cpu::W65816, ByteView(rom.data).subspan(offset, i.size), i.at, m6502_source::widths(i.m16, i.x16))) described[offset] = *text;
-        else demoted.insert(offset);
-    }
-    std::size_t code_total = 0;
-    for (const auto& entry : code) {
-        if (!demoted.contains(entry.first)) code_total += entry.second.i.size;
-    }
-
-    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("; Super Nintendo cartridge \"{}\": {}, {} bytes of ROM in {} banks{}", rom.title, snes::to_string(rom.mapping), rom.data.size(), rom.bank_count(),
-                                                 rom.copier_header.empty() ? "" : ", with a 512-byte copier header"),
-                                     "; each BANKn segment is one bank, linked at the address the code runs at; the SPC700 sound program is data", "",
-                                     "        .p816", ""};
-    for (const auto& [value, label] : hardware) head.push_back(m6502_source::equ(label, value, 4));
-    if (!hardware.empty()) head.push_back("");
-    for (const auto& [byte, label] : direct_page) head.push_back(m6502_source::equ(label, byte, 2));
-    if (!direct_page.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "ca65", std::string(file_name));
-
-    if (!rom.copier_header.empty()) {
-        out.part("HEADER", "segment", std::nullopt, snes::kCopierHeaderSize);
-        out.extend(ca65().block("segment", {{"name", "HEADER"}}));
-        out.extend(iw::commented(m6502_source::data_lines(rom.copier_header), "the copier header"));
-        out.append("");
-    }
-    State assembler;   // the widths the `.context` the assembler is at gives: 8 bits until said
-    assembler.m16 = assembler.x16 = false;
-    for (std::size_t b = 0; b < rom.bank_count(); ++b) {
-        const std::size_t first = b * rom.bank_size();
-        const std::size_t last = std::min(rom.data.size(), first + rom.bank_size());
-        out.part(std::format("BANK{}", b), "segment", std::nullopt, last - first);
-        out.extend(ca65().block("segment", {{"name", std::format("BANK{}", b)}}));
-        SnesListing listing(rom, high, first, code, demoted, described, full_naming, assembler, out);
-        iw::emit<Insn>(out, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(last), labels, functions, listing);
-        out.append("");
-    }
-    const std::string source = ca65().print(iw::text(out) + "\n");   // (said in ca65's: config/dialects/ca65-65816.json)
-    const std::string config = link_config(rom, high);
-    const std::filesystem::path config_path = folder / (stem + ".cfg");
-    fs::write_file(config_path, as_bytes(config));
-
-    // the functions as the lane runs them: with the state each starts in
-    iw::Functions with_state;
-    for (const auto& [at, label] : functions) {
-        const State s = flow.state_at(at).value_or(State{});
-        std::uint32_t key = at & kAddressMask;
-        if (!s.e && s.m16) key |= kStartsWith16BitAccumulator;
-        if (!s.e && s.x16) key |= kStartsWith16BitIndex;
-        if (!s.e) key |= kStartsNative;
-        with_state[key] = label;
-    }
-    iw::Written r = iw::finish(folder, stem + ".s", source, with_state, code_total, rom.data.size());
-    r.config = config_path;
-    Bytes original = rom.copier_header;
-    original.insert(original.end(), rom.data.begin(), rom.data.end());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::W65816, ca65().parse(source, {config, folder}), folder); }, original, folder / (stem + ".built.sfc"));
-    return r;
+    s.code = std::make_shared<SnesCode>(rom);
+    s.measured = rom->data.size();
+    l.values = {{"title", rom->title}, {"mapping", std::string(snes::to_string(rom->mapping))}, {"rom_bytes", static_cast<std::int64_t>(rom->data.size())},
+                {"banks", static_cast<std::int64_t>(rom->bank_count())}, {"copier", static_cast<std::int64_t>(header != 0)}};
+    return l;
 }
 
-iw::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
-    return write(snes::read(file), file.filename().string(), folder);
-}
-
-}  // namespace cb::source::snes_writer
+}  // namespace cb::source::console_writer::snes_code

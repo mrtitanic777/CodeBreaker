@@ -1,5 +1,7 @@
-// The Super Nintendo writer: a cartridge comes back as ca65 source that builds the same file, the register widths followed through the code.
-#include "source/snes_writer.hpp"
+// The Super Nintendo on the console writer (config/platforms/snes.json, the segmented shape with console_snes.cpp's flow): a cartridge comes
+// back as ca65 source that builds the same file, the register widths followed through the code.
+#include "source/console_snes.hpp"
+#include "source/console_writer.hpp"
 
 #include <algorithm>
 
@@ -8,8 +10,14 @@
 #include "core/text.hpp"
 #include "formats/snes_test_image.hpp"
 
-namespace cb::source::snes_writer {
+namespace cb::source::console_writer::snes_test {
 namespace {
+
+using namespace snes_code;
+
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("snes", file, folder);
+}
 
 bool has_line(const std::string& source, std::string_view line) {
     for (const std::string_view l : text::lines(source)) {
@@ -21,8 +29,8 @@ bool has_line(const std::string& source, std::string_view line) {
 constexpr std::uint32_t kNative8 = kStartsNative;
 constexpr std::uint32_t kNativeWideIndex = kStartsNative | kStartsWith16BitIndex;
 
-CB_TEST("source.snes_writer.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
-    fs::ScopedTempDir dir("cb_snes_writer");
+CB_TEST("source.console_writer.snes.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
+    fs::ScopedTempDir dir("cb_snes_cw");
     const Bytes file = formats::snes_test_image::cartridge();
     fs::write_file(dir.path() / "demo.sfc", file);
     const image_writer::Written r = reconstruct(dir.path() / "demo.sfc", dir.path() / "out");
@@ -71,8 +79,8 @@ CB_TEST("source.snes_writer.a_cartridge_comes_back_as_source_that_builds_the_sam
     CB_CHECK(fs::read_text(*r.config).find("BANK0: start = $008000, size = $8000, fill = yes") != std::string::npos);
 });
 
-CB_TEST("source.snes_writer.a_copier_header_is_a_segment_of_its_own", [] {
-    fs::ScopedTempDir dir("cb_snes_writer_header");
+CB_TEST("source.console_writer.snes.a_copier_header_is_a_segment_of_its_own", [] {
+    fs::ScopedTempDir dir("cb_snes_cw_header");
     const Bytes file = formats::snes_test_image::cartridge(true);
     fs::write_file(dir.path() / "demo.smc", file);
     const image_writer::Written r = reconstruct(dir.path() / "demo.smc", dir.path() / "out");
@@ -82,8 +90,8 @@ CB_TEST("source.snes_writer.a_copier_header_is_a_segment_of_its_own", [] {
     CB_CHECK(fs::read_text(*r.config).find("HEADER: start = $000000, size = $0200") != std::string::npos);
 });
 
-CB_TEST("source.snes_writer.a_hirom_cartridge_is_written_at_c0", [] {
-    fs::ScopedTempDir dir("cb_snes_writer_hirom");
+CB_TEST("source.console_writer.snes.a_hirom_cartridge_is_written_at_c0", [] {
+    fs::ScopedTempDir dir("cb_snes_cw_hirom");
     const Bytes file = formats::snes_test_image::hirom();
     fs::write_file(dir.path() / "demo.sfc", file);
     const image_writer::Written r = reconstruct(dir.path() / "demo.sfc", dir.path() / "out");
@@ -97,8 +105,8 @@ CB_TEST("source.snes_writer.a_hirom_cartridge_is_written_at_c0", [] {
     CB_CHECK(fs::read_text(*r.config).find("BANK0: start = $C00000, size = $10000, fill = yes") != std::string::npos);
 });
 
-CB_TEST("source.snes_writer.the_mirror_the_long_addresses_use_is_the_one_written", [] {
-    fs::ScopedTempDir dir("cb_snes_writer_mirror");
+CB_TEST("source.console_writer.snes.the_mirror_the_long_addresses_use_is_the_one_written", [] {
+    fs::ScopedTempDir dir("cb_snes_cw_mirror");
     Bytes file = formats::snes_test_image::cartridge();
     file[0x13 + 3] = file[0x1A + 3] = file[0x43 + 3] = 0x80;   // JSL $808040, JML $80801A and LDA $809000,X: the long addresses are in the $80 mirror
     fs::write_file(dir.path() / "demo.sfc", file);
@@ -111,11 +119,11 @@ CB_TEST("source.snes_writer.the_mirror_the_long_addresses_use_is_the_one_written
     CB_CHECK(fs::read_text(*r.config).find("BANK0: start = $808000") != std::string::npos);
 });
 
-CB_TEST("source.snes_writer.a_file_that_is_not_a_cartridge_is_refused", [] {
-    fs::ScopedTempDir dir("cb_snes_writer_bad");
+CB_TEST("source.console_writer.snes.a_file_that_is_not_a_cartridge_is_refused", [] {
+    fs::ScopedTempDir dir("cb_snes_cw_bad");
     fs::write_file(dir.path() / "bad.sfc", Bytes(100, 0x11));
     CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "bad.sfc", dir.path() / "out"));
 });
 
 }  // namespace
-}  // namespace cb::source::snes_writer
+}  // namespace cb::source::console_writer::snes_test

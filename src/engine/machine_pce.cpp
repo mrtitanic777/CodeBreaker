@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_huc6280.hpp"
 #include "formats/read.hpp"
-#include "platforms/pce.hpp"
 #include "formats/pce.hpp"
-#include "source/pce_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -102,7 +102,7 @@ vl::Effects pce_effects(const stdfs::path& path, std::uint32_t entry, const vl::
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::pce_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("pce", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -132,7 +132,7 @@ vl::ImageLaneSpec pce_lane_spec() {
 void register_pce_lane() {
     register_lane({
         .name = "pce",
-        .platform = platforms::pce,
+        .platform = [] { return platforms::described("pce"); },
         .probe = [](const stdfs::path& p) { return formats::pce::probe(p); },
         .make_spec = pce_lane_spec,
         .detectors = {{.priority = 220, .detect = formats::detect::info_pce}},

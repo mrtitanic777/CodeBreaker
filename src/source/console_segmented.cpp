@@ -41,6 +41,8 @@ struct SegCpu {
 SegCpu seg_cpu(const Description& d) {
     if (d.segmented.cpu == "6502") return {};
     if (d.segmented.cpu == "65sc02") return {m6502_source::Cpu::M65C02, m6502::Variant::Cmos};
+    if (d.segmented.cpu == "huc6280") return {m6502_source::Cpu::Huc6280, m6502::Variant::Cmos};   // (flow is the loader's: console_pce.cpp)
+    if (d.segmented.cpu == "65816") return {m6502_source::Cpu::W65816, m6502::Variant::Cmos};      // (console_snes.cpp)
     throw UsageError(std::format("console platform {}: the segmented shape has no processor {}", d.name, d.segmented.cpu));
 }
 
@@ -144,10 +146,84 @@ private:
     bool tail_here_;
 };
 
+// The plain flow (the NES, the Lynx): through one address space from the loader's starts, the loader's entries named.
+class FlatCode final : public SegmentCode {
+public:
+    FlatCode(const Loaded& program, SegCpu cpu) : program_(program), cpu_(cpu), flow_(program, cpu.variant) {}
+
+    void follow(const Description& d) override {
+        d_ = &d;
+        said_ = &dialect::find(d.dialect);
+        const Segmented& shape = d.segmented;
+        walked_ = iw::walk<m6502::Insn>(flow_, program_.starts);
+        const std::map<std::uint32_t, m6502::Insn>& code = walked_.code;
+        iw::Names names = program_.entries;
+        functions_ = iw::name_functions(walked_.starts, names, kSegSub);
+
+        // a label can only stand where a line starts, in the piece that shows the address
+        const std::set<std::uint32_t> inside_insn = iw::covered(code, flow_);   // image offsets inside an instruction
+        std::set<std::uint32_t> line_at;
+        for (const Piece& piece : program_.segments.pieces) {
+            if (!piece.code) continue;
+            for (std::uint32_t off = piece.offset; off < piece.offset + piece.size; ++off) {
+                if (const auto address = flow_.shown_at(piece, off); address && !inside_insn.contains(off)) line_at.insert(*address);
+            }
+        }
+        labels_ = iw::make_labels(walked_.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kSegLocal);
+        for (const auto& entry : code) {   // absolute operands that name a line's start
+            const m6502::Insn& insn = entry.second;
+            if (seg_absolute(insn.mode) && insn.mnemonic != "JMP" && insn.mnemonic != "JSR" && insn.operand && *insn.operand >= shape.data_floor &&
+                line_at.contains(*insn.operand)) {
+                labels_.try_emplace(*insn.operand, std::format("D_{:04X}", *insn.operand));
+            }
+        }
+        registers_ = shape.registers.empty() ? iw::Names{} : knowledge::standard().hardware_names(d.platform, shape.registers);
+        for (const auto& entry : code) {
+            const m6502::Insn& insn = entry.second;
+            if (seg_absolute(insn.mode) && insn.operand && registers_.contains(*insn.operand)) used_.insert(*insn.operand);
+        }
+        for (const std::uint32_t a : used_) names_for_text_[a] = registers_.at(a);   // (the registers and the labels: a label wins)
+        for (const auto& [a, label] : labels_) names_for_text_[a] = label;
+    }
+    iw::Functions functions() const override { return functions_; }
+    std::size_t code_bytes() const override { return iw::code_bytes(walked_.code, flow_); }
+    std::vector<std::string> names() const override {
+        std::vector<std::string> lines;
+        for (const std::uint32_t a : used_) {
+            const std::string e = m6502_source::equ(registers_.at(a), a, 4);
+            lines.push_back(d_->segmented.whole ? e : said_->line(e));
+        }
+        if (!used_.empty()) lines.push_back("");
+        return lines;
+    }
+    void write(translate::l2::Assembly& out, const Piece& piece) override {
+        iw::Names mine;   // the labels of the addresses this piece shows
+        for (const auto& [a, label] : labels_) {
+            if (a >= piece.address && a < piece.address + piece.size && flow_.shown_at(piece, piece.offset + (a - piece.address))) mine[a] = label;
+        }
+        SegListing listing(out, d_->segmented, cpu_, program_, piece, flow_, walked_.code, labels_, names_for_text_, *said_);
+        iw::emit<m6502::Insn>(out, piece.offset, piece.offset + piece.size, mine, functions_, listing);
+    }
+
+private:
+    const Loaded& program_;
+    SegCpu cpu_;
+    SegFlow flow_;
+    const Description* d_ = nullptr;
+    const dialect::Dialect* said_ = nullptr;
+    iw::Walked<m6502::Insn> walked_;
+    iw::Functions functions_;
+    iw::Names labels_, registers_;
+    std::set<std::uint32_t> used_;
+    decompile::AddressLabels names_for_text_;
+};
+
 // The ld65 configuration: each piece a memory area of its size, in image order, filled (the dialect reads it back).
-std::string link_config(const std::vector<Piece>& pieces) {
+std::string link_config(const std::vector<Piece>& pieces, const SegmentCode& code, unsigned digits) {
     std::vector<std::string> cfg = {"MEMORY {"};
-    for (const Piece& p : pieces) cfg.push_back(std::format("    {}: start = ${:04X}, size = ${:04X}, fill = yes, file = %O;", p.area, p.address, p.size));
+    for (const Piece& p : pieces) {
+        cfg.push_back(std::format("    {}: start = ${:0{}X}, size = ${:04X}, fill = yes, file = %O;", p.area, p.code ? code.linked_at(p) : p.address, digits, p.size));
+    }
     cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
     for (const Piece& p : pieces) cfg.push_back(std::format("    {}: load = {}, type = ro;", p.segment, p.area));
     cfg.push_back("}");
@@ -164,49 +240,14 @@ image_writer::Written write_segmented(const Description& d, const Loaded& progra
     const dialect::Dialect& said = dialect::find(d.dialect);
     fs::make_dirs(folder);
     const std::string stem = std::filesystem::path(file_name).stem().string();
-    const SegFlow flow(program, cpu.variant);
-    const iw::Walked<m6502::Insn> walked = iw::walk<m6502::Insn>(flow, program.starts);
-    const std::map<std::uint32_t, m6502::Insn>& code = walked.code;
-
-    iw::Names names = program.entries;
-    const iw::Functions functions = iw::name_functions(walked.starts, names, kSegSub);
-
-    // a label can only stand where a line starts, in the piece that shows the address
-    const std::set<std::uint32_t> inside_insn = iw::covered(code, flow);   // image offsets inside an instruction
-    std::set<std::uint32_t> line_at;
-    for (const Piece& piece : pieces) {
-        if (!piece.code) continue;
-        for (std::uint32_t off = piece.offset; off < piece.offset + piece.size; ++off) {
-            if (const auto address = flow.shown_at(piece, off); address && !inside_insn.contains(off)) line_at.insert(*address);
-        }
-    }
-    iw::Names labels = iw::make_labels(walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kSegLocal);
-    for (const auto& entry : code) {   // absolute operands that name a line's start
-        const m6502::Insn& insn = entry.second;
-        if (seg_absolute(insn.mode) && insn.mnemonic != "JMP" && insn.mnemonic != "JSR" && insn.operand && *insn.operand >= shape.data_floor &&
-            line_at.contains(*insn.operand)) {
-            labels.try_emplace(*insn.operand, std::format("D_{:04X}", *insn.operand));
-        }
-    }
-    const iw::Names registers = shape.registers.empty() ? iw::Names{} : knowledge::standard().hardware_names(d.platform, shape.registers);
-    std::set<std::uint32_t> used_registers;
-    for (const auto& entry : code) {
-        const m6502::Insn& insn = entry.second;
-        if (seg_absolute(insn.mode) && insn.operand && registers.contains(*insn.operand)) used_registers.insert(*insn.operand);
-    }
+    FlatCode flat(program, cpu);
+    SegmentCode& code = program.segments.code ? *program.segments.code : static_cast<SegmentCode&>(flat);
+    code.follow(d);
 
     std::vector<std::string> lines = head;
     lines.insert(lines.end(), shape.prologue.begin(), shape.prologue.end());
-    for (const std::uint32_t a : used_registers) {
-        const std::string e = m6502_source::equ(registers.at(a), a, 4);
-        lines.push_back(shape.whole ? e : said.line(e));
-    }
-    if (!used_registers.empty()) lines.push_back("");
+    for (std::string& l : code.names()) lines.push_back(std::move(l));
     translate::l2::Assembly out(lines, shape.assembler.empty() ? d.dialect : shape.assembler, std::string(file_name));
-
-    decompile::AddressLabels names_for_text;   // the registers and the labels: a label wins
-    for (const std::uint32_t a : used_registers) names_for_text[a] = registers.at(a);
-    for (const auto& [a, label] : labels) names_for_text[a] = label;
 
     for (const Piece& piece : pieces) {
         const ByteView bytes = ByteView(program.image).subspan(piece.offset, piece.size);
@@ -215,12 +256,7 @@ image_writer::Written write_segmented(const Description& d, const Loaded& progra
         out.extend(said.block("segment", {{"name", piece.segment}}));
         if (role && !role->note.empty()) out.append("; " + fill(role->note, values));
         if (piece.code) {
-            iw::Names mine;   // the labels of the addresses this piece shows
-            for (const auto& [a, label] : labels) {
-                if (a >= piece.address && a < piece.address + piece.size && flow.shown_at(piece, piece.offset + (a - piece.address))) mine[a] = label;
-            }
-            SegListing listing(out, shape, cpu, program, piece, flow, code, labels, names_for_text, said);
-            iw::emit<m6502::Insn>(out, piece.offset, piece.offset + piece.size, mine, functions, listing);
+            code.write(out, piece);
         } else if (role && role->as == "incbin") {
             const std::string name = fill(role->file, values);
             fs::write_file(folder / name, bytes);   // (beside the source, which names it)
@@ -230,16 +266,17 @@ image_writer::Written write_segmented(const Description& d, const Loaded& progra
             for (const std::uint8_t b : bytes) items.push_back(said.number(b, 2));
             out.append("        .byte " + text::join(items, ", "));
         } else {
-            out.extend(said.data_lines(bytes));
+            std::vector<std::string> rows = role && role->neutral ? m6502_source::data_lines(bytes) : said.data_lines(bytes);
+            out.extend(role && !role->what.empty() ? iw::commented(std::move(rows), role->what) : rows);
         }
         out.append("");
     }
     const std::string source = shape.whole ? said.print(iw::text(out) + "\n") : iw::text(out) + "\n";
-    const std::string config = link_config(pieces);
+    const std::string config = link_config(pieces, code, shape.address_digits);
     const std::filesystem::path config_path = folder / (stem + ".cfg");
     fs::write_file(config_path, as_bytes(config));
 
-    iw::Written r = iw::finish(folder, stem + "." + shape.source, source, functions, iw::code_bytes(code, flow), program.segments.measured);
+    iw::Written r = iw::finish(folder, stem + "." + shape.source, source, code.functions(), code.code_bytes(), program.segments.measured);
     r.config = config_path;
     iw::assembled(r, [&] { return m6502_source::assemble(cpu.cpu, said.parse(source, {config, folder}), folder); }, program.image, folder / fill(shape.built, values));
     return r;

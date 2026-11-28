@@ -1,5 +1,6 @@
-// The PC Engine writer: a HuCard comes back as ca65 source that builds the same file.
-#include "source/pce_writer.hpp"
+// The PC Engine on the console writer (config/platforms/pce.json, the segmented shape with console_pce.cpp's flow): a HuCard comes back as
+// ca65 source that builds the same file.
+#include "source/console_writer.hpp"
 
 #include <algorithm>
 
@@ -8,8 +9,12 @@
 #include "core/text.hpp"
 #include "formats/pce_test_image.hpp"
 
-namespace cb::source::pce_writer {
+namespace cb::source::console_writer::pce_test {
 namespace {
+
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("pce", file, folder);
+}
 
 bool has_line(const std::string& source, std::string_view line) {
     for (const std::string_view l : text::lines(source)) {
@@ -18,8 +23,8 @@ bool has_line(const std::string& source, std::string_view line) {
     return false;
 }
 
-CB_TEST("source.pce_writer.a_card_comes_back_as_source_that_builds_the_same_file", [] {
-    fs::ScopedTempDir dir("cb_pce_writer");
+CB_TEST("source.console_writer.pce.a_card_comes_back_as_source_that_builds_the_same_file", [] {
+    fs::ScopedTempDir dir("cb_pce_cw");
     const Bytes file = formats::pce_test_image::cartridge();
     fs::write_file(dir.path() / "demo.pce", file);
     const image_writer::Written r = reconstruct(dir.path() / "demo.pce", dir.path() / "out");
@@ -56,8 +61,8 @@ CB_TEST("source.pce_writer.a_card_comes_back_as_source_that_builds_the_same_file
     CB_CHECK(config.find("BANK0: start = $E000") != std::string::npos);
 });
 
-CB_TEST("source.pce_writer.a_copier_header_is_a_segment_of_its_own", [] {
-    fs::ScopedTempDir dir("cb_pce_writer_header");
+CB_TEST("source.console_writer.pce.a_copier_header_is_a_segment_of_its_own", [] {
+    fs::ScopedTempDir dir("cb_pce_cw_header");
     const Bytes file = formats::pce_test_image::cartridge(true);
     fs::write_file(dir.path() / "demo.pce", file);
     const image_writer::Written r = reconstruct(dir.path() / "demo.pce", dir.path() / "out");
@@ -68,8 +73,8 @@ CB_TEST("source.pce_writer.a_copier_header_is_a_segment_of_its_own", [] {
     CB_CHECK(fs::read_text(*r.config).find("HEADER: start = $0000, size = $0200") != std::string::npos);
 });
 
-CB_TEST("source.pce_writer.what_is_not_reached_stays_data_and_an_edit_still_rebuilds", [] {
-    fs::ScopedTempDir dir("cb_pce_writer_edit");
+CB_TEST("source.console_writer.pce.what_is_not_reached_stays_data_and_an_edit_still_rebuilds", [] {
+    fs::ScopedTempDir dir("cb_pce_cw_edit");
     Bytes file = formats::pce_test_image::cartridge();
     file[0x0B + 1] = 0x00;   // LDA #$00 instead of #$01: $4000 now shows bank 0, so bank 1 is reached by nothing and is data
     fs::write_file(dir.path() / "demo.pce", file);
@@ -80,11 +85,11 @@ CB_TEST("source.pce_writer.what_is_not_reached_stays_data_and_an_edit_still_rebu
     CB_CHECK(has_line(fs::read_text(r.source), "JSR $4000"));   // bank 0 is shown at $E000: the operand cannot name its label, so it is the number
 });
 
-CB_TEST("source.pce_writer.a_file_that_is_not_a_card_is_refused", [] {
-    fs::ScopedTempDir dir("cb_pce_writer_bad");
+CB_TEST("source.console_writer.pce.a_file_that_is_not_a_card_is_refused", [] {
+    fs::ScopedTempDir dir("cb_pce_cw_bad");
     fs::write_file(dir.path() / "bad.pce", Bytes(100, 0x11));
     CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "bad.pce", dir.path() / "out"));
 });
 
 }  // namespace
-}  // namespace cb::source::pce_writer
+}  // namespace cb::source::console_writer::pce_test

@@ -6,7 +6,8 @@
 #include "core/testing.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/snes_test_image.hpp"
-#include "source/snes_writer.hpp"
+#include "source/console_snes.hpp"
+#include "source/console_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;
@@ -16,8 +17,8 @@ namespace img = cb::formats::snes_test_image;
 
 namespace {
 
-constexpr std::uint32_t kSub8040 = 0x008040 | source::snes_writer::kStartsNative | source::snes_writer::kStartsWith16BitIndex;
-constexpr std::uint32_t kSub8050 = 0x008050 | source::snes_writer::kStartsNative | source::snes_writer::kStartsWith16BitIndex;
+constexpr std::uint32_t kSub8040 = 0x008040 | source::console_writer::snes_code::kStartsNative | source::console_writer::snes_code::kStartsWith16BitIndex;
+constexpr std::uint32_t kSub8050 = 0x008050 | source::console_writer::snes_code::kStartsNative | source::console_writer::snes_code::kStartsWith16BitIndex;
 
 }  // namespace
 

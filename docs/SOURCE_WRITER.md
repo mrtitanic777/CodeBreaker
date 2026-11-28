@@ -15,6 +15,7 @@ src/source/console_writer.{hpp,cpp}           the one writer: reads the descript
 src/source/console_banked.cpp                 the banked shape (the processor a CPU trait: Z80, SM83)
 src/source/console_cart6502.cpp               the cart6502 shape (6502 cartridges: read and write register names, data at the end, a file header)
 src/source/console_segmented.cpp              the segmented shape (ca65 segments an ld65 configuration lays out in file order)
+src/source/console_pce.cpp, console_snes.cpp  the flow the segmented shape cannot do alone (a SegmentCode: bank mapping, register widths)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -27,7 +28,7 @@ one way a program sits in memory, shared by every platform that sits that way:
 | `z80-block` | one block at one address, flow from the entries | ZX Spectrum, MSX, ColecoVision, Amstrad CPC (and the Neo Geo's sound CPU) |
 | `banked` | fixed-size banks, the first N mapped at power-on, a header range that is data, vectors at fixed places | Game Boy, Master System / Game Gear / SG-1000 |
 | `cart6502` | a 6502 cartridge's banks, each seen in a window; its last bytes data; the chips' read and write names | Atari 2600, 5200, 7800 |
-| `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx (next: PC Engine, SNES) |
+| `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx, PC Engine, SNES |
 | `vectored` (later) | a 68000/ARM/MIPS image with a vector table or entry header | Genesis, Sega CD, 32X, Neo Geo, Jaguar, GBA, PS1, N64, Virtual Boy |
 | `executable` (later) | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections | PS2, PSP, PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
 
@@ -68,6 +69,11 @@ The `segmented` shape adds: `cpu` (`6502`, `65sc02`), the L2 `assembler`, the `b
 knowledge section of the `registers`, `data_floor`, a `tail` (`{at, size, lines}`: the vectors) and the `roles` a loader gives its pieces
 (`{as: rows|row|incbin, file, note}`). The loader cuts the file into pieces (`Piece`: segment, memory area, role, offset, size, the address code is
 linked at) and says which image offset each address shows (`offset_of`): an instruction or a label is written only in the piece the address shows.
+Where flow keeps a state the plain flow does not, the loader gives a `SegmentCode` (console_writer.hpp) that follows the code and writes the
+code pieces, and may decide where each is linked: the PC Engine's flow tracks the MPRs (`LDA #n` / `TAM`) and links each bank at the page it
+was first found mapped at; the SNES's tracks the register widths and emulation mode (`REP`, `SEP`, `CLC; XCE`) and writes `.a16` / `.i8`
+where the assembler's widths must change. The shape keeps the rest: the head, the names, the other pieces' roles (a copier header's rows,
+`what` and `neutral`), the ld65 configuration (`address_digits`) and the build.
 
 ## What stays code
 
@@ -102,3 +108,6 @@ engine.
   each, the PRG a segment a bank, the CHR beside the source as `.incbin`, the vectors as words) and the Atari Lynx (the whole file in order, the
   stretches the loaders copy linked at their RAM addresses, the encrypted first stage and the headers noted). The Lynx's boot ROM is the
   emulator's: the caller plays it and hands the program to `load_lynx`. Their machine facts moved into their files.
+- 2026-11-28: the PC Engine and the SNES on `segmented`, each with its loader's `SegmentCode` (console_pce.cpp, console_snes.cpp). The
+  source, the linker configuration, the functions and the code bytes are byte-identical to the old writers' on the 5 PC Engine and 67 SNES
+  homebrew programs here and on their tests' programs.

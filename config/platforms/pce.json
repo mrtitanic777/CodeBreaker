@@ -1,0 +1,30 @@
+{
+  "platform": "pce",
+  "title": "PC Engine / TurboGrafx-16",
+  "description": "A HuCard image: a copier header (if any) as data, then each 8 KB bank one ca65 segment linked at the page the code that maps it expects (flow tracks the MPRs: console_pce.cpp), the ten vector bytes at the end of bank 0. The chips' registers by their hardware names, the zero page as zp_nn; an ld65 configuration lays the segments out in file order.",
+  "machine": {
+    "family": "6502",
+    "container": "HuCard image (.pce, .tg16)",
+    "cpu": {"language": "HuC6280:LE:16:default", "bits": 8, "endian": "little", "decoder": "huc6280", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P", "S"],
+    "toolchain": "CodeBreaker's own assembler (ca65 syntax), or cc65 (ca65 and ld65)"
+  },
+  "shape": "segmented",
+  "dialect": "ca65-res",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "PC Engine / TurboGrafx-16 HuCard: {banks} banks of 8 KB{copier?, with a 512-byte copier header|}",
+    "each BANKn segment is one 8 KB bank, linked at the address the code that maps it expects",
+    ""
+  ],
+  "segmented": {
+    "cpu": "huc6280",
+    "assembler": "ca65",
+    "built": "{stem}.built.pce",
+    "prologue": ["        .setcpu \"HuC6280\"", ""],
+    "whole": true,
+    "roles": {
+      "copier": {"what": "the copier header"}
+    }
+  }
+}

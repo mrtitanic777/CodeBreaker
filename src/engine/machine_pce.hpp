@@ -2,7 +2,7 @@
 //
 //     engine::register_pce_lane();     // once, before a LaneKit is made (the host's start-up does, with the other 65xx consoles)
 //
-// A HuCard image (formats/pce) is written back as ca65 source (source/pce_writer) and rebuilt; one that comes back identical is the original, an
+// A HuCard image (formats/pce) is written back as ca65 source (source/console_writer, config/platforms/pce.json) and rebuilt; one that comes back identical is the original, an
 // edited one has each function run beside the original's in the HuC6280 interpreter (emulate/huc6280) over the console's memory: the card's ROM in
 // 8 KB banks, the 8 KB of RAM, the eight mapping registers, and the chips' registers as logged devices (VDC, VCE, PSG, timer, joypad port, interrupt
 // control, each access under its register's name). A function is run with the mapping its own bank implies (the bank its address is in, at the page

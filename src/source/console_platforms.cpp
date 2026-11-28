@@ -2,7 +2,7 @@
 // where they sit, its entry points and its header's values by the names the description's templates use. The rest of a platform is its
 // description (config/platforms/<name>.json).
 
-#include "source/console_writer.hpp"
+#include "source/console_shapes.hpp"
 
 #include <format>
 #include <memory>
@@ -257,7 +257,9 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"lynx", load_lynx_file},
     {"msx", load_msx},
     {"nes", load_nes},
+    {"pce", pce_code::load_pce_file},
     {"sms", load_sms},
+    {"snes", snes_code::load_snes_file},
     {"zx", load_zx},
 };
 

@@ -1,0 +1,31 @@
+{
+  "platform": "snes",
+  "title": "Super Nintendo",
+  "description": "A cartridge image (LoROM or HiROM by its internal header): a copier header (if any) as data, then each bank one ca65 segment linked at the address the code runs at, the internal header written as its fields; flow follows the register widths and the emulation flag (console_snes.cpp). The chips' registers by their hardware names, the direct page as dp_nn; an ld65 configuration lays the segments out in file order.",
+  "machine": {
+    "family": "65816",
+    "container": "cartridge image (.sfc, .smc)",
+    "cpu": {"language": "65816:LE:16:default", "bits": 16, "endian": "little", "decoder": "w65816", "registers": ["A", "X", "Y", "P", "S", "D", "DBR"], "stack": "S"},
+    "results": ["A", "X", "Y", "P", "S", "D", "DBR"],
+    "toolchain": "CodeBreaker's own assembler (ca65 syntax), or cc65 (ca65 and ld65)"
+  },
+  "shape": "segmented",
+  "dialect": "ca65-65816",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Super Nintendo cartridge \"{title}\": {mapping}, {rom_bytes} bytes of ROM in {banks} banks{copier?, with a 512-byte copier header|}",
+    "each BANKn segment is one bank, linked at the address the code runs at; the SPC700 sound program is data",
+    ""
+  ],
+  "segmented": {
+    "cpu": "65816",
+    "assembler": "ca65",
+    "built": "{stem}.built.sfc",
+    "prologue": ["        .p816", ""],
+    "whole": true,
+    "address_digits": 6,
+    "roles": {
+      "copier": {"what": "the copier header", "neutral": true}
+    }
+  }
+}

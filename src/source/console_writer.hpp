@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <map>
 #include <string>
@@ -115,9 +116,11 @@ struct SegmentRole {
     std::string as = "rows";          // how its bytes are written: "rows" (the dialect's data rows), "row" (one `.byte` line), "incbin" (a file of their own)
     std::string file;                 // (incbin) the file's name, a template ({stem})
     std::string note;                 // a comment ahead of the bytes, a template over the loader's values ("" none)
+    std::string what;                 // a comment on the first data row ("the copier header")
+    bool neutral = false;             // (rows) the neutral text's rows, said with the rest at the end (`whole`), not the dialect's
 };
 struct Segmented {
-    std::string cpu;                  // "6502", "65sc02"
+    std::string cpu;                  // "6502", "65sc02", "huc6280", "65816"
     std::string assembler;            // the L2 assembly's syntax ("ca65")
     std::string source = "s";         // the source's extension
     std::string built;                // the rebuilt file's name, a template ({stem} and the loader's values)
@@ -128,6 +131,7 @@ struct Segmented {
     std::uint32_t tail_at = 0, tail = 0;   // bytes at a fixed address of a code piece that are data (the vectors), and how they are said
     std::vector<std::string> tail_lines;   // ({wN} the word at N, by its label; {bN} the byte at N)
     std::vector<SegmentRole> roles;
+    unsigned address_digits = 4;      // the hex digits of a memory area's start in the ld65 configuration
 };
 
 // A platform's description (config/platforms/<name>.json).
@@ -173,8 +177,27 @@ struct Piece {
     std::uint32_t address = 0;            // the start of its memory area: where code is linked
     bool code = false;
 };
+// (segmented) The code of a program whose flow keeps a state the plain one does not -- the PC Engine's bank mapping, the SNES's register widths --
+// as its loader gives it (console_pce.cpp, console_snes.cpp): it follows the code and writes the code pieces; the shape writes the rest. A
+// program without one is followed through one address space by the shape itself.
+class SegmentCode {
+public:
+    virtual ~SegmentCode() = default;
+    // Follow the code (asked first, once).
+    virtual void follow(const Description& d) = 0;
+    virtual image_writer::Functions functions() const = 0;
+    virtual std::size_t code_bytes() const = 0;
+    // The lines that name the registers and the like, ahead of the pieces (with the empty lines between their groups).
+    virtual std::vector<std::string> names() const = 0;
+    // The address a code piece is linked at (flow may have decided it: the page a bank was found mapped at).
+    virtual std::uint32_t linked_at(const Piece& piece) const { return piece.address; }
+    // A code piece's lines.
+    virtual void write(translate::l2::Assembly& out, const Piece& piece) = 0;
+};
+
 struct Segments {
     std::vector<Piece> pieces;
+    std::shared_ptr<SegmentCode> code;    // the loader's own flow ("" the shape's)
     std::function<std::optional<std::uint32_t>(std::uint32_t address)> offset_of;   // the image offset the processor sees at an address, if any
     std::size_t measured = 0;             // the bytes the result says the program is (the PRG, the file)
 };

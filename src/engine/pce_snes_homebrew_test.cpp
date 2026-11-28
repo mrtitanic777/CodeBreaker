@@ -11,7 +11,8 @@
 #include "engine/machine_snes.hpp"
 #include "formats/pce.hpp"
 #include "formats/snes.hpp"
-#include "source/snes_writer.hpp"
+#include "source/console_snes.hpp"
+#include "source/console_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;
@@ -76,7 +77,7 @@ void judge_snes(std::string_view relative) {
     const formats::snes::Rom rom = formats::snes::read(*file);
     const verify::lanes::ImageLane lane(engine::snes_lane_spec());
     judge(lane, *file, relative, 12, [&](std::uint32_t address) -> std::optional<std::size_t> {
-        const auto offset = rom.offset(address & source::snes_writer::kAddressMask);
+        const auto offset = rom.offset(address & source::console_writer::snes_code::kAddressMask);
         if (!offset) return std::nullopt;
         return rom.copier_header.size() + *offset;
     });
@@ -116,7 +117,7 @@ CB_TEST("engine.snes.homebrew.every_opensnes_example_rebuilds", [] {
     fs::ScopedTempDir dir("cb_opensnes_all");
     std::size_t identical = 0, functions = 0, code = 0, bytes = 0;
     for (const stdfs::path& file : files) {
-        const source::image_writer::Written r = source::snes_writer::reconstruct(file, dir.path() / file.stem());
+        const source::image_writer::Written r = source::console_writer::reconstruct("snes", file, dir.path() / file.stem());
         if (r.same) ++identical;
         else std::cout << file.filename().string() << ": NOT identical\n";
         CB_CHECK(r.same);
