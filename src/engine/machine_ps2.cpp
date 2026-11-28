@@ -20,21 +20,6 @@
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_ps2(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 8) {   // a little-endian MIPS ELF: the flags say which console
-        const std::uint32_t flags = get<std::uint32_t>(file, 36, "detect");
-        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
-        if ((flags & 0x00FF0000u) == 0x00920000u) return one("PlayStation 2 executable (ELF)", std::format("Emotion Engine R5900, entry 0x{:08X}, {} bytes", entry, size), "ps2", "reach");
-        if ((flags & 0x00FF0000u) == 0x00A20000u)
-            return one((head[16] | head[17] << 8) == 0xFFA0 ? "PSP module (PRX)" : "PSP executable (ELF)", std::format("Allegrex, entry 0x{:08X}, {} bytes", entry, size), "psp", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -170,7 +155,6 @@ void register_ps2_lane() {
         .platform = platforms::ps2,
         .probe = [](const stdfs::path& p) { return formats::ps2::probe(p); },
         .make_spec = ps2_lane_spec,
-        .detectors = {{.priority = 20, .detect = formats::detect::info_ps2}},
     });
 }
 

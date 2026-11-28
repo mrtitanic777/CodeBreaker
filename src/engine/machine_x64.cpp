@@ -87,16 +87,6 @@ std::optional<std::vector<Detected>> info_xboxone_1(const DetectInput& in) {
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_xboxone_2(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (name_ends_with(name, {".xvc", ".msixvc", ".eappx", ".eappxbundle"}))   // a retail package: encrypted with the console's keys
-        return one("Xbox One / Series package (encrypted)", "not handled: CodeBreaker does not decrypt", "xboxone", "gap");
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -190,7 +180,6 @@ std::shared_ptr<const Loaded> load_orbis(const stdfs::path& path) {
     loaded->syscall_name = [](std::uint64_t n) { return fo::syscall_name(static_cast<std::uint32_t>(n)); };
     return loaded;
 }
-
 
 // A PE32+ at its preferred image base, as the system's loader leaves it before relocations (none are needed there): the headers and each section's bytes at
 // their RVAs, every import address-table slot to be filled with a stub's address, the dynamic-link names kept as `dll!function`.
@@ -432,7 +421,7 @@ void register_xboxone_lane() {
         .platform = platforms::xboxone,
         .probe = [](const stdfs::path& p) { return formats::xboxone::probe(p); },
         .make_spec = xboxone_lane_spec,
-        .detectors = {{.priority = 130, .detect = formats::detect::info_xboxone_1}, {.priority = 140, .detect = formats::detect::info_xboxone_2}},
+        .detectors = {{.priority = 130, .detect = formats::detect::info_xboxone_1}},
     });
 }
 

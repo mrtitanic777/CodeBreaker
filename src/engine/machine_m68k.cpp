@@ -22,24 +22,6 @@
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_neogeo(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped
-        const bool swapped = starts_with(head, 0x100, "EN-OEG");
-        const unsigned ngh = swapped ? head[0x109] << 8 | head[0x108] : head[0x108] << 8 | head[0x109];
-        return one("Neo Geo cartridge (P-ROM)", std::format("NGH {:04X}, {} KB{}", ngh, size / 1024, swapped ? ", words swapped" : ""), "neogeo", "reach");
-    }
-    if (starts_with(h4, 0, "NEO") && size >= 4096) {   // a .neo file: a 4 KB header, then the P, S, M, V and C ROMs
-        return one("Neo Geo .neo file", std::format("{} KB P-ROM, {} KB sound program, {} KB sprites", get<std::uint32_t>(file, 4, "detect") / 1024,
-                                                      get<std::uint32_t>(file, 12, "detect") / 1024, get<std::uint32_t>(file, 24, "detect") / 1024),
-                   "neogeo", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -278,7 +260,6 @@ vl::Effects segacd_effects(const stdfs::path& path, std::uint32_t entry, const v
 
 vl::Written segacd_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::segacd_writer::reconstruct(module, out)); }
 
-
 }  // namespace m68k_lane_detail
 
 vl::ImageLaneSpec neogeo_lane_spec() {
@@ -319,7 +300,6 @@ void register_m68k_lanes() {
         .platform = platforms::neogeo,
         .probe = [](const stdfs::path& p) { return formats::neogeo::probe(p); },
         .make_spec = neogeo_lane_spec,
-        .detectors = {{.priority = 350, .detect = formats::detect::info_neogeo}},
     });
     register_lane({
         .name = "segacd",

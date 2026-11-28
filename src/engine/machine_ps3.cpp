@@ -20,38 +20,12 @@
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_ps3_1(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 2 && (head[18] << 8 | head[19]) == 21) {   // a 64-bit big-endian PowerPC ELF: PSL1GHT's output
-        const std::uint64_t entry = static_cast<std::uint64_t>(be32_or_zero(head, 24)) << 32 | be32_or_zero(head, 28);
-        return one("PlayStation 3 executable (ELF)", std::format("Cell PPU, entry descriptor 0x{:X}, {} bytes", entry, size), "ps3", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_ps3_2(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE\0", 4)) && be32_or_zero(head, 4) == 2) {   // a PS3 SELF: the segment table says whether they are encrypted
-        const std::uint64_t info = static_cast<std::uint64_t>(be32_or_zero(head, 0x48)) << 32 | be32_or_zero(head, 0x4C);
-        const bool encrypted = info + 32 <= size && info + 32 <= head.size() ? be32_or_zero(head, static_cast<std::size_t>(info) + 28) == 1 : true;
-        if (encrypted) return one("PlayStation 3 SELF (encrypted)", "not handled: the segments are encrypted", "ps3", "gap");
-        return one("PlayStation 3 SELF", std::format("Cell PPU, {} bytes", size), "ps3", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -164,7 +138,6 @@ void register_ps3_lane() {
         .platform = platforms::ps3,
         .probe = [](const stdfs::path& p) { return formats::ps3::probe(p); },
         .make_spec = ps3_lane_spec,
-        .detectors = {{.priority = 100, .detect = formats::detect::info_ps3_1}, {.priority = 110, .detect = formats::detect::info_ps3_2}},
     });
 }
 

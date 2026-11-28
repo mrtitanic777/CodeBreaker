@@ -20,37 +20,12 @@
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_vita_1(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE\0", 4)) && get<std::uint32_t>(file, 4, "detect") == 3) {   // a Vita SELF: the segments' table says whether they are encrypted
-        const std::uint64_t info = get<std::uint32_t>(file, 0x58, "detect");
-        const bool encrypted = info + 32 <= size && get<std::uint32_t>(file, static_cast<std::size_t>(info) + 24, "detect") == 1;
-        if (encrypted) return one("PlayStation Vita SELF (encrypted)", "not handled: the segments are encrypted", "vita", "gap");
-        return one("PlayStation Vita SELF", std::format("ARMv7-A Thumb-2, {} bytes", size), "vita", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_vita_2(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
-        (head[16] | head[17] << 8) >= 0xFE00 && (head[16] | head[17] << 8) <= 0xFE04)   // an ARM ELF of a Sony type: VitaSDK's .velf
-        return one("PlayStation Vita executable (ELF)", std::format("ARMv7-A Thumb-2, entry field 0x{:08X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "vita", "reach");
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -195,7 +170,6 @@ void register_vita_lane() {
         .platform = platforms::vita,
         .probe = [](const stdfs::path& p) { return formats::vita::probe(p); },
         .make_spec = vita_lane_spec,
-        .detectors = {{.priority = 150, .detect = formats::detect::info_vita_1}, {.priority = 160, .detect = formats::detect::info_vita_2}},
     });
 }
 

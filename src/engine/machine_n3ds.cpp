@@ -20,54 +20,18 @@
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_n3ds_1(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 32 && head.size() >= 32 && starts_with(head, 0, "3DSX")) {   // a 3DS homebrew executable: the header gives the segment sizes
-        return one("Nintendo 3DS homebrew executable (3DSX)",
-                   std::format("ARM11, code {} bytes, rodata {} bytes, data {} bytes, bss {} bytes", get<std::uint32_t>(file, 16, "detect"), get<std::uint32_t>(file, 20, "detect"),
-                               get<std::uint32_t>(file, 24, "detect") - get<std::uint32_t>(file, 28, "detect"), get<std::uint32_t>(file, 28, "detect")),
-                   "n3ds", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_n3ds_2(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
-        (head[16] | head[17] << 8) == 2) {   // an ARM ELF whose entry is in the 3DS homebrew's range ($00100000 up): devkitARM's output
-        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
-        if (entry >= 0x00100000u && entry < 0x01000000u) return one("Nintendo 3DS executable (ELF)", std::format("ARM11, entry 0x{:08X}, {} bytes", entry, size), "n3ds", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_n3ds_3(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "NCSD")) return one("Nintendo 3DS cartridge image (NCSD)", "not handled: the contents are encrypted", "n3ds", "gap");
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -246,7 +210,6 @@ void register_n3ds_lane() {
         .platform = platforms::n3ds,
         .probe = [](const stdfs::path& p) { return formats::n3ds::probe(p); },
         .make_spec = n3ds_lane_spec,
-        .detectors = {{.priority = 30, .detect = formats::detect::info_n3ds_1}, {.priority = 40, .detect = formats::detect::info_n3ds_2}, {.priority = 170, .detect = formats::detect::info_n3ds_3}},
     });
 }
 
