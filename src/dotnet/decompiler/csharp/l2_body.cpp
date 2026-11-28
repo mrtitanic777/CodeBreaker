@@ -9,11 +9,17 @@
 
 namespace cb::dotnet::decompiler::csharp {
 
-std::unique_ptr<L2Body> L2Body::make(const il::ILFunction& function, L2Lane& lane) {
+std::unique_ptr<L2Body> L2Body::make(il::ILFunction& function, L2Lane& lane) {
     std::unique_ptr<L2Body> body(new L2Body(lane));
+    const auto start = std::chrono::steady_clock::now();
+    struct Clock {
+        std::chrono::steady_clock::time_point start;
+        std::chrono::steady_clock::duration& total;
+        ~Clock() { total += std::chrono::steady_clock::now() - start; }
+    } clock{start, lane.lowering_time};
     try {
-        body->root_ = lane.lowering.function(function);
-        body->lifted_ = translate::frontends::cil::Lifting().function(body->root_, &body->map_);
+        body->root_ = lane.lowering.function(function, &body->map_);
+        body->function_ = &function;
     } catch (const std::logic_error&) {
         ++lane.refused;
         return nullptr;   // a state L2 cannot hold (none on the test corpus): the builders read the ILAst
@@ -23,9 +29,13 @@ std::unique_ptr<L2Body> L2Body::make(const il::ILFunction& function, L2Lane& lan
     return body;
 }
 
-il::ILVariable* L2Body::lifted(const il::ILVariable* original) const {
-    const ir::SymP sym = original != nullptr ? lane_.lowering.symbol_of(*original) : nullptr;
-    return sym != nullptr ? map_.variable(sym.get()) : nullptr;
+void L2Body::count(bool read_from_l2, const il::ILInstruction& inst) {
+    if (read_from_l2) {
+        ++lane_.from_l2;
+    } else {
+        ++lane_.from_ilast;
+        ++lane_.from_ilast_by_op[static_cast<std::size_t>(inst.op_code)];
+    }
 }
 
 void L2Body::variable_changed(il::ILVariable* variable) {

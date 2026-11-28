@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "dotnet/decompiler/csharp/annotations.hpp"
+#include "dotnet/decompiler/csharp/instruction_facts.hpp"
 #include "dotnet/decompiler/csharp/resolver/csharp_resolver.hpp"
 #include "dotnet/decompiler/csharp/resolver/type_inference.hpp"
 #include "dotnet/decompiler/csharp/syntax/syntax.hpp"
@@ -116,7 +117,7 @@ public:
     SwitchValue translate_switch_value(il::SwitchInstruction& inst, bool is_expression_context);
 
     static TranslatedExpression unwrap_boxing_conversion(TranslatedExpression arg);
-    static bool is_unbox_any_with_is_inst(il::UnboxAny& unbox_any, const IType* is_inst_type);
+    static bool is_unbox_any_with_is_inst(const TypedUnaryFacts& unbox_any, const IType* is_inst_type);
     static std::optional<syntax::AssignmentOperatorType> get_assignment_operator_type_from_metadata_name(const std::string& name,
                                                                                                          const DecompilerSettings& settings);
     static std::optional<syntax::UnaryOperatorType> get_unary_operator_type_from_metadata_name(const std::string& name, bool is_postfix);
@@ -212,34 +213,34 @@ private:
     syntax::StackAllocExpression* translate_loc_alloc(il::LocAlloc& inst, const IType* type_hint, const IType** element_type);
     static bool should_display_as_hex(std::int64_t value, const IType* type);
 
-    TranslatedExpression translate_ceq(il::Comp& inst, bool* negate_output);
+    TranslatedExpression translate_ceq(const CompFacts& inst, bool* negate_output);
     TranslatedExpression try_unite_equality_operand_type(TranslatedExpression left, TranslatedExpression right);
     bool is_special_cased_reference_comparison_with_null(TranslatedExpression lhs, TranslatedExpression rhs);
     ExpressionWithResolveResult create_builtin_binary_operator(TranslatedExpression left, syntax::BinaryOperatorType type, TranslatedExpression right,
                                                                bool check_for_overflow = false);
-    TranslatedExpression translate_comp(il::Comp& inst);
+    TranslatedExpression translate_comp(const CompFacts& inst);
     TranslatedExpression handle_three_valued_logic(il::BinaryInstruction& inst, syntax::BinaryOperatorType op, il::ExpressionType eop);
     ExpressionWithResolveResult assignment(TranslatedExpression left, TranslatedExpression right);
 
-    std::optional<TranslatedExpression> handle_pointer_arithmetic(il::BinaryNumericInstruction& inst, TranslatedExpression left, TranslatedExpression right,
+    std::optional<TranslatedExpression> handle_pointer_arithmetic(const BinaryNumericFacts& inst, TranslatedExpression left, TranslatedExpression right,
                                                                   TranslationContext context);
-    std::optional<TranslatedExpression> handle_managed_pointer_arithmetic(il::BinaryNumericInstruction& inst, TranslatedExpression left,
+    std::optional<TranslatedExpression> handle_managed_pointer_arithmetic(const BinaryNumericFacts& inst, TranslatedExpression left,
                                                                           TranslatedExpression right);
     TranslatedExpression ensure_integer_type(TranslatedExpression expr);
     std::optional<TranslatedExpression> get_pointer_arithmetic_offset(il::ILInstruction* byte_offset_inst, TranslatedExpression byte_offset_expr,
                                                                       const IType* pointer_element_type, bool check_for_overflow,
                                                                       bool unwrap_zero_extension = false);
-    std::optional<TranslatedExpression> handle_pointer_subtraction(il::BinaryNumericInstruction& inst);
-    TranslatedExpression handle_binary_numeric(il::BinaryNumericInstruction& inst, syntax::BinaryOperatorType op, TranslationContext context);
+    std::optional<TranslatedExpression> handle_pointer_subtraction(const BinaryNumericFacts& inst);
+    TranslatedExpression handle_binary_numeric(const BinaryNumericFacts& inst, syntax::BinaryOperatorType op, TranslationContext context);
     const IType* find_type(il::StackType stack_type, typesystem::Sign sign);
     const IType* find_arithmetic_type(il::StackType stack_type, typesystem::Sign sign);
     TranslatedExpression prepare_arithmetic_argument(TranslatedExpression arg, il::StackType arg_stack_type, typesystem::Sign sign, bool is_lifted);
     static bool is_compatible_with_sign(const IType* type, typesystem::Sign sign);
     static bool binary_operator_might_check_for_overflow(syntax::BinaryOperatorType op);
     bool constant_binary_operator_overflows(syntax::BinaryOperatorType op, ResolveResult* left, ResolveResult* right);
-    TranslatedExpression handle_shift(il::BinaryNumericInstruction& inst, syntax::BinaryOperatorType op, TranslationContext context);
-    TranslatedExpression handle_compound_assignment(il::NumericCompoundAssign& inst, syntax::AssignmentOperatorType op);
-    TranslatedExpression handle_compound_shift(il::NumericCompoundAssign& inst, syntax::AssignmentOperatorType op);
+    TranslatedExpression handle_shift(const BinaryNumericFacts& inst, syntax::BinaryOperatorType op, TranslationContext context);
+    TranslatedExpression handle_compound_assignment(const NumericCompoundAssignFacts& inst, syntax::AssignmentOperatorType op);
+    TranslatedExpression handle_compound_shift(const NumericCompoundAssignFacts& inst, syntax::AssignmentOperatorType op);
     static bool assignment_operator_might_check_for_overflow(syntax::AssignmentOperatorType op);
     bool value_might_be_oversized(ResolveResult* rr, il::StackType stack_type);
     TranslatedExpression wrap_in_ref(TranslatedExpression expr, const IType* type);
@@ -250,7 +251,7 @@ private:
     TranslatedExpression ensure_target_not_nullable(TranslatedExpression expr, il::ILInstruction* inst);
 
     ExpressionWithResolveResult ld_obj(il::ILInstruction* address, const IType* load_type);
-    TranslatedExpression st_obj_via_helper_call(il::StObj& inst);
+    TranslatedExpression st_obj_via_helper_call(const StObjFacts& inst);
     TranslatedExpression translate_array_index(il::ILInstruction* i);
     TranslatedExpression convert_array_index(TranslatedExpression input, il::StackType stack_type, bool allow_int_ptr);
 
@@ -287,9 +288,44 @@ private:
     ExpressionWithILInstruction translate_pattern(il::ILInstruction* pattern, const IType* left_hand_type);
     static TranslatedExpression error_expression(const std::string& message);
 
-    // Stage 14: the kinds the builder reads from the instruction's L2 node (expression_builder_l2.cpp); nothing for another kind, which
-    // the ILAst visitor translates.
+    // Stage 14: the instruction's translation from its L2 node: the node's facts decoded as the lifting decodes them (lift.cpp), then
+    // the kind's translation below; nothing for a kind not read from L2 (the ILAst visitor translates it) or a node whose operands are
+    // no longer the instruction's.
     std::optional<TranslatedExpression> translate_from_l2(const translate::ir::Node& node, ILInstruction& inst, TranslationContext context);
+    // Each kind's translation from its facts (instruction_facts.hpp), which its visitor reads from the instruction and translate_from_l2 from
+    // the node.
+    TranslatedExpression translate_st_loc(const StLocFacts& inst);
+    TranslatedExpression translate_comp_facts(const CompFacts& inst);
+    TranslatedExpression translate_binary_numeric(const BinaryNumericFacts& inst, TranslationContext context);
+    TranslatedExpression translate_conv(const ConvFacts& inst, TranslationContext context);
+    TranslatedExpression translate_box(const TypedUnaryFacts& inst);
+    TranslatedExpression translate_unbox(const TypedUnaryFacts& inst);
+    TranslatedExpression translate_unbox_any(const TypedUnaryFacts& inst);
+    TranslatedExpression translate_cast_class(const TypedUnaryFacts& inst);
+    TranslatedExpression translate_is_inst(const TypedUnaryFacts& inst);
+    TranslatedExpression translate_ld_obj(const LdObjFacts& inst, TranslationContext context);
+    TranslatedExpression translate_st_obj(const StObjFacts& inst);
+    TranslatedExpression translate_ld_flda(const LdFldaFacts& inst);
+    TranslatedExpression translate_lds_flda(const LdsFldaFacts& inst);
+    TranslatedExpression translate_ld_elema(const LdElemaFacts& inst);
+    TranslatedExpression translate_new_arr(const NewArrFacts& inst);
+    TranslatedExpression translate_address_of(const AddressOfFacts& inst);
+    TranslatedExpression translate_call(const CallFacts& inst, TranslationContext context);   // call, callvirt (and newobj)
+    TranslatedExpression translate_new_obj(const CallFacts& inst, TranslationContext context);
+    TranslatedExpression translate_null_coalescing(const NullCoalescingFacts& inst);
+    TranslatedExpression translate_ld_ftn(const MethodPointerFacts& inst);
+    TranslatedExpression translate_ld_virt_ftn(const MethodPointerFacts& inst);
+    TranslatedExpression translate_await(const AwaitFacts& inst);
+    TranslatedExpression translate_nullable_unwrap(const NullableUnwrapFacts& inst);
+    TranslatedExpression translate_nullable_rewrap(const OperandFacts& inst);
+    TranslatedExpression translate_throw(const OperandFacts& inst);
+    TranslatedExpression translate_ld_type_token(const TypeTokenFacts& inst);
+    TranslatedExpression translate_if(const IfFacts& inst, TranslationContext context);
+    TranslatedExpression translate_numeric_compound_assign(const NumericCompoundAssignFacts& inst);
+    TranslatedExpression translate_user_defined_compound_assign(const UserDefinedCompoundAssignFacts& inst);
+    TranslatedExpression translate_call_indirect(const CallIndirectFacts& inst);
+    TranslatedExpression translate_match(const MatchFacts& inst);
+    TranslatedExpression translate_block(il::Block& block, il::BlockKind kind, TranslationContext context);
 
     const typesystem::DecompilerTypeSystem* type_system_;
     util::CancellationToken cancellation_token_;

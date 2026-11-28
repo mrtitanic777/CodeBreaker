@@ -223,7 +223,7 @@ TranslatedExpression ExpressionBuilder::translate(ILInstruction* inst, const ITy
     std::optional<TranslatedExpression> from_l2;
     if (l2 != nullptr) {
         if (const translate::ir::Node* node = l2->node(inst)) from_l2 = translate_from_l2(*node, *inst, context);
-        l2->count(from_l2.has_value());
+        l2->count(from_l2.has_value(), *inst);
     }
     TranslatedExpression cexpr = from_l2 ? *std::move(from_l2) : accept_visitor<TranslationContext, TranslatedExpression>(*inst, *this, context);
 #ifndef NDEBUG
@@ -425,7 +425,9 @@ TranslatedExpression ExpressionBuilder::is_type(IsInst& inst) {
                    make<TypeIsResolveResult>(arg.resolve_result, inst.type(), known(KnownTypeCode::Boolean)));
 }
 
-TranslatedExpression ExpressionBuilder::visit_is_inst(IsInst& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_is_inst(IsInst& inst, TranslationContext) { return translate_is_inst(TypedUnaryFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_is_inst(const TypedUnaryFacts& inst) {
     TranslatedExpression arg = translate(inst.argument());
     if (inst.type()->is_reference_type() != std::optional<bool>(true)) {
         // isinst with a value type results in an expression of "boxed value type",
@@ -441,7 +443,7 @@ TranslatedExpression ExpressionBuilder::visit_is_inst(IsInst& inst, TranslationC
             //   expr is T ? expr : null
             // (doubling the boxing side-effect is harmless because the "expr is T" part won't observe object identity,
             //  and we need to support this because Roslyn pattern matching sometimes generates such code.)
-            Expression* is_expr = with_il_instruction(make<IsExpression>(arg.expression, convert_type(inst.type())), &inst).expression;
+            Expression* is_expr = with_il_instruction(make<IsExpression>(arg.expression, convert_type(inst.type())), inst.self).expression;
             Expression* true_expr = arg.expression->clone();
             return without_il_instruction(make<ConditionalExpression>(is_expr, true_expr, make<NullReferenceExpression>()))
                 .with_rr(make<ResolveResult>(arg.type()));
@@ -449,7 +451,7 @@ TranslatedExpression ExpressionBuilder::visit_is_inst(IsInst& inst, TranslationC
         return error_expression("isinst with value type is only supported in some contexts");
     }
     arg = unwrap_boxing_conversion(arg);
-    return with_rr(with_il_instruction(make<AsExpression>(arg.expression, convert_type(inst.type())), &inst),
+    return with_rr(with_il_instruction(make<AsExpression>(arg.expression, convert_type(inst.type())), inst.self),
                    make<ConversionResolveResult>(inst.type(), arg.resolve_result, Conversion::try_cast()));
 }
 
@@ -464,25 +466,29 @@ TranslatedExpression ExpressionBuilder::unwrap_boxing_conversion(TranslatedExpre
     return arg;
 }
 
-TranslatedExpression ExpressionBuilder::visit_new_obj(NewObj& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_new_obj(NewObj& inst, TranslationContext context) { return translate_new_obj(CallFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_new_obj(const CallFacts& inst, TranslationContext context) {
     const IType* type = inst.method->declaring_type();
     if (is_known_type(type, KnownTypeCode::SpanOfT) || is_known_type(type, KnownTypeCode::ReadOnlySpanOfT)) {
-        if (inst.arguments().count() == 2) {
-            auto* b = il::as<Block>(inst.arguments()[0]);
+        if (inst.arguments.size() == 2) {
+            auto* b = il::as<Block>(inst.arguments[0]);
             if (b != nullptr && b->kind == BlockKind::StackAllocInitializer) {
                 return translate_stack_alloc_initializer(b, type->type_arguments()[0]);
             }
         }
     }
-    return CallBuilder(*this, *type_system_, *settings).build(&inst, context.type_hint);
+    return CallBuilder(*this, *type_system_, *settings).build(inst, context.type_hint);
 }
 
 TranslatedExpression ExpressionBuilder::visit_ld_virt_delegate(LdVirtDelegate& inst, TranslationContext) {
     return CallBuilder(*this, *type_system_, *settings).build(&inst);
 }
 
-TranslatedExpression ExpressionBuilder::visit_new_arr(NewArr& inst, TranslationContext) {
-    int dimensions = inst.indices().count();
+TranslatedExpression ExpressionBuilder::visit_new_arr(NewArr& inst, TranslationContext) { return translate_new_arr(NewArrFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_new_arr(const NewArrFacts& inst) {
+    int dimensions = static_cast<int>(inst.indices().size());
     std::vector<TranslatedExpression> args;
     for (ILInstruction* arg : inst.indices()) args.push_back(translate_array_index(arg));
     auto* expr = make<ArrayCreateExpression>();
@@ -494,7 +500,7 @@ TranslatedExpression ExpressionBuilder::visit_new_arr(NewArr& inst, TranslationC
     for (const TranslatedExpression& arg : args) expr->arguments().add(arg.expression);
     std::vector<ResolveResult*> size_rrs;
     for (const TranslatedExpression& a : args) size_rrs.push_back(a.resolve_result);
-    return with_rr(with_il_instruction(expr, &inst),
+    return with_rr(with_il_instruction(expr, inst.self),
                    make<ArrayCreateResolveResult>(make_array_type(*compilation, inst.type(), dimensions), std::move(size_rrs), std::nullopt));
 }
 
@@ -638,10 +644,12 @@ TranslatedExpression ExpressionBuilder::visit_size_of(SizeOf& inst, TranslationC
     return call_unsafe_intrinsic("SizeOf", {}, known(KnownTypeCode::Int32), &inst, {inst.type()});
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_type_token(LdTypeToken& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_type_token(LdTypeToken& inst, TranslationContext) { return translate_ld_type_token(TypeTokenFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_type_token(const TypeTokenFacts& inst) {
     Expression* typeof_expr = with_rr(make<TypeOfExpression>(convert_type(inst.type())),
                                       make<TypeOfResolveResult>(known(KnownTypeCode::Type), inst.type())).expression;
-    return with_rr(with_il_instruction(make<MemberReferenceExpression>(typeof_expr, "TypeHandle"), &inst),
+    return with_rr(with_il_instruction(make<MemberReferenceExpression>(typeof_expr, "TypeHandle"), inst.self),
                    make<TypeOfResolveResult>(typesystem::find_type(*compilation, TopLevelTypeName("System", "RuntimeTypeHandle")), inst.type()));
 }
 
@@ -700,7 +708,9 @@ TranslatedExpression ExpressionBuilder::visit_ld_loca(LdLoca& inst, TranslationC
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_st_loc(StLoc& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_st_loc(StLoc& inst, TranslationContext) { return translate_st_loc(StLocFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_st_loc(const StLocFacts& inst) {
     TranslatedExpression translated_value = translate(inst.value(), inst.variable()->type());
     auto is_other_value_type = [](const IType* type) {
         return type->is_reference_type() == std::optional<bool>(false) && get_stack_type(*type) == StackType::O;
@@ -745,16 +755,18 @@ TranslatedExpression ExpressionBuilder::visit_st_loc(StLoc& inst, TranslationCon
                                                 std::vector<ResolveResult*>{lhs_ref_rr, translated_value.resolve_result}));
         return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, assign.expression)).with_rr(lhs_ref_rr);
     }
-    return assignment(lhs, translated_value).with_il_instruction(&inst);
+    return assignment(lhs, translated_value).with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::visit_comp(Comp& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_comp(Comp& inst, TranslationContext) { return translate_comp_facts(CompFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_comp_facts(const CompFacts& inst) {
     if (inst.lifting_kind == ComparisonLiftingKind::ThreeValuedLogic) {
         if (inst.kind() == ComparisonKind::Equality && inst.right()->match_ldc_i4(0)) {
             // lifted logic.not
             const IType* target_type = nullable_type::create(*compilation, known(KnownTypeCode::Boolean));
             TranslatedExpression arg = translate(inst.left(), target_type).convert_to(target_type, *this);
-            return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::Not, arg.expression), &inst)
+            return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::Not, arg.expression), inst.self)
                 .with_rr(make<OperatorResolveResult>(target_type, ExpressionType::Not, std::vector<ResolveResult*>{arg.resolve_result}));
         }
         return error_expression("Nullable comparisons with three-valued-logic not supported in C#");
@@ -781,7 +793,7 @@ TranslatedExpression ExpressionBuilder::visit_comp(Comp& inst, TranslationContex
             right = right.convert_to(common_ref_type, *this);
         }
         const IType* bool_type = known(KnownTypeCode::Boolean);
-        TranslatedExpression expr = call_unsafe_intrinsic(method_name, {left.expression, right.expression}, bool_type, &inst);
+        TranslatedExpression expr = call_unsafe_intrinsic(method_name, {left.expression, right.expression}, bool_type, inst.self);
         if (negate) {
             expr = without_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::Not, expr.expression)).with_rr(make<ResolveResult>(bool_type));
         }
@@ -790,14 +802,14 @@ TranslatedExpression ExpressionBuilder::visit_comp(Comp& inst, TranslationContex
     if (is_equality_or_inequality(inst.kind())) {
         bool negate_output = false;
         TranslatedExpression result = translate_ceq(inst, &negate_output);
-        if (negate_output) return logic_not(result).with_il_instruction(&inst);
+        if (negate_output) return logic_not(result).with_il_instruction(inst.self);
         return result;
     }
     return translate_comp(inst);
 }
 
 // Translates the equality comparison between left and right.
-TranslatedExpression ExpressionBuilder::translate_ceq(Comp& inst, bool* negate_output) {
+TranslatedExpression ExpressionBuilder::translate_ceq(const CompFacts& inst, bool* negate_output) {
     assert(is_equality_or_inequality(inst.kind()));
     // Translate '(e as T) == null' to '!(e is T)'.
     // This is necessary for correctness when T is a value type.
@@ -844,11 +856,11 @@ TranslatedExpression ExpressionBuilder::translate_ceq(Comp& inst, bool* negate_o
     if (left.type()->kind() == TypeKind::Pointer && inst.right()->match_ldc_i(std::int64_t{0})) {
         *negate_output = false;
         right = TranslatedExpression(with_il_instruction(with_rr(make<NullReferenceExpression>(), make<ConstantResolveResult>(&SpecialType::null_type(), ConstantValue())).expression, inst.right()).expression);
-        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(&inst);
+        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(inst.self);
     } else if (right.type()->kind() == TypeKind::Pointer && inst.left()->match_ldc_i(std::int64_t{0})) {
         *negate_output = false;
         left = TranslatedExpression(with_il_instruction(with_rr(make<NullReferenceExpression>(), make<ConstantResolveResult>(&SpecialType::null_type(), ConstantValue())).expression, inst.left()).expression);
-        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(&inst);
+        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(inst.self);
     }
 
     // Special case comparisons with enum and char literals
@@ -858,7 +870,7 @@ TranslatedExpression ExpressionBuilder::translate_ceq(Comp& inst, bool* negate_o
     if (is_special_cased_reference_comparison_with_null(left, right)) {
         // When comparing a string/delegate with null, the C# compiler generates a reference comparison.
         *negate_output = false;
-        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(&inst);
+        return create_builtin_binary_operator(left, to_binary_operator_type(inst.kind()), right).with_il_instruction(inst.self);
     }
 
     auto* rr = dynamic_cast<OperatorResolveResult*>(resolver->resolve_binary_operator(to_binary_operator_type(inst.kind()), left.resolve_result, right.resolve_result));
@@ -900,7 +912,7 @@ TranslatedExpression ExpressionBuilder::translate_ceq(Comp& inst, bool* negate_o
         }
     }
     *negate_output = false;
-    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, to_binary_operator_type(inst.kind()), right.expression), &inst).with_rr(rr);
+    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, to_binary_operator_type(inst.kind()), right.expression), inst.self).with_rr(rr);
 }
 
 TranslatedExpression ExpressionBuilder::try_unite_equality_operand_type(TranslatedExpression left, TranslatedExpression right) {
@@ -936,13 +948,13 @@ ExpressionWithResolveResult ExpressionBuilder::create_builtin_binary_operator(Tr
 }
 
 // Handle Comp instruction, operators other than equality/inequality.
-TranslatedExpression ExpressionBuilder::translate_comp(Comp& inst) {
+TranslatedExpression ExpressionBuilder::translate_comp(const CompFacts& inst) {
     BinaryOperatorType op = to_binary_operator_type(inst.kind());
     TranslatedExpression left = translate(inst.left());
     TranslatedExpression right = translate(inst.right());
 
     if (left.type()->kind() == TypeKind::Pointer && right.type()->kind() == TypeKind::Pointer) {
-        return create_builtin_binary_operator(left, op, right).with_il_instruction(&inst);
+        return create_builtin_binary_operator(left, op, right).with_il_instruction(inst.self);
     }
 
     left = prepare_arithmetic_argument(left, inst.input_type, inst.sign, inst.is_lifted());
@@ -957,7 +969,7 @@ TranslatedExpression ExpressionBuilder::translate_comp(Comp& inst) {
     if (rr != nullptr && !rr->is_error()) {
         const IType* comp_utype = nullable_type::get_underlying_type(rr->operands()[0]->type());
         if (get_sign(*comp_utype) == inst.sign && get_stack_type(*comp_utype) == inst.input_type) {
-            return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), &inst).with_rr(rr);
+            return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), inst.self).with_rr(rr);
         }
     }
 
@@ -981,7 +993,7 @@ TranslatedExpression ExpressionBuilder::translate_comp(Comp& inst) {
         left = wrap_in_unsafe_as(left);
         right = wrap_in_unsafe_as(right);
     }
-    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), &inst)
+    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), inst.self)
         .with_rr(make<OperatorResolveResult>(known(KnownTypeCode::Boolean), BinaryOperatorExpression::get_linq_node_type(op, false),
                                              std::vector<ResolveResult*>{left.resolve_result, right.resolve_result}));
 }
@@ -1015,8 +1027,10 @@ TranslatedExpression ExpressionBuilder::handle_three_valued_logic(BinaryInstruct
         .with_il_instruction(&inst);
 }
 
-TranslatedExpression ExpressionBuilder::visit_throw(Throw& inst, TranslationContext) {
-    return with_rr(with_il_instruction(make<ThrowExpression>(translate(inst.argument()).expression), &inst), make<ThrowResolveResult>());
+TranslatedExpression ExpressionBuilder::visit_throw(Throw& inst, TranslationContext) { return translate_throw(OperandFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_throw(const OperandFacts& inst) {
+    return with_rr(with_il_instruction(make<ThrowExpression>(translate(inst.argument()).expression), inst.self), make<ThrowResolveResult>());
 }
 
 TranslatedExpression ExpressionBuilder::visit_user_defined_logic_operator(UserDefinedLogicOperator& inst, TranslationContext) {
@@ -1044,6 +1058,10 @@ ExpressionWithResolveResult ExpressionBuilder::assignment(TranslatedExpression l
 }
 
 TranslatedExpression ExpressionBuilder::visit_binary_numeric_instruction(BinaryNumericInstruction& inst, TranslationContext context) {
+    return translate_binary_numeric(BinaryNumericFacts::of(inst), context);
+}
+
+TranslatedExpression ExpressionBuilder::translate_binary_numeric(const BinaryNumericFacts& inst, TranslationContext context) {
     switch (inst.op) {
         case BinaryNumericOperator::Add: return handle_binary_numeric(inst, BinaryOperatorType::Add, context);
         case BinaryNumericOperator::Sub: return handle_binary_numeric(inst, BinaryOperatorType::Subtract, context);
@@ -1069,7 +1087,7 @@ TranslatedExpression ExpressionBuilder::visit_binary_numeric_instruction(BinaryN
 //   ptr - int
 // Returns nullopt if 'inst' is not performing pointer arithmetic.
 // 'ptr - ptr' is not handled here, but in handle_pointer_subtraction()!
-std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_arithmetic(BinaryNumericInstruction& inst, TranslatedExpression left,
+std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_arithmetic(const BinaryNumericFacts& inst, TranslatedExpression left,
                                                                                   TranslatedExpression right, TranslationContext context) {
     if (!(inst.op == BinaryNumericOperator::Add || inst.op == BinaryNumericOperator::Sub)) return std::nullopt;
     if (inst.check_for_overflow || inst.is_lifted()) return std::nullopt;
@@ -1126,7 +1144,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_arithmetic
         right = right.convert_to(pointer_type, *this);
     }
     BinaryOperatorType operator_type = inst.op == BinaryNumericOperator::Add ? BinaryOperatorType::Add : BinaryOperatorType::Subtract;
-    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, operator_type, right.expression), &inst)
+    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, operator_type, right.expression), inst.self)
         .with_rr(make<OperatorResolveResult>(pointer_type, BinaryOperatorExpression::get_linq_node_type(operator_type, inst.check_for_overflow),
                                              std::vector<ResolveResult*>{left.resolve_result, right.resolve_result}));
 }
@@ -1136,7 +1154,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_arithmetic
 //   int + ref
 //   ref - int
 //   ref - ref
-std::optional<TranslatedExpression> ExpressionBuilder::handle_managed_pointer_arithmetic(BinaryNumericInstruction& inst, TranslatedExpression left,
+std::optional<TranslatedExpression> ExpressionBuilder::handle_managed_pointer_arithmetic(const BinaryNumericFacts& inst, TranslatedExpression left,
                                                                                           TranslatedExpression right) {
     if (!(inst.op == BinaryNumericOperator::Add || inst.op == BinaryNumericOperator::Sub)) return std::nullopt;
     if (inst.check_for_overflow || inst.is_lifted()) return std::nullopt;
@@ -1151,7 +1169,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_managed_pointer_ar
         // ByteOffset() expects the parameters the wrong way around, so order using named arguments
         Expression* target_arg = make<NamedArgumentExpression>("target", left.expression);
         Expression* origin_arg = make<NamedArgumentExpression>("origin", right.expression);
-        return call_unsafe_intrinsic("ByteOffset", {target_arg, origin_arg}, known(KnownTypeCode::IntPtr), &inst);
+        return call_unsafe_intrinsic("ByteOffset", {target_arg, origin_arg}, known(KnownTypeCode::IntPtr), inst.self);
     }
     if (inst.left_input_type == StackType::Ref && is_integer_type(inst.right_input_type)) {
         // ref [+-] int
@@ -1173,19 +1191,19 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_managed_pointer_ar
                 field_access->remove_annotations<ResolveResult>();
                 ExpressionWithResolveResult field_result = with_rr(
                     field_access, make<MemberResolveResult>(mrr->target_result(), mrr->member(), make_pointer_type(element_type)));
-                TranslatedExpression result = field_result.with_il_instruction(&inst);
+                TranslatedExpression result = field_result.with_il_instruction(inst.self);
                 right = translate_array_index(offset_inst);
-                TranslatedExpression expr = with_il_instruction(make<IndexerExpression>(result.expression, std::vector<Expression*>{right.expression}), &inst)
+                TranslatedExpression expr = with_il_instruction(make<IndexerExpression>(result.expression, std::vector<Expression*>{right.expression}), inst.self)
                                                 .with_rr(make<ResolveResult>(element_type));
                 return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, expr.expression))
                     .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
             }
             right = translate(offset_inst);
             right = convert_array_index(right, inst.right_input_type, true);
-            return call_unsafe_intrinsic(name, {left.expression, right.expression}, brt, &inst);
+            return call_unsafe_intrinsic(name, {left.expression, right.expression}, brt, inst.self);
         }
         right = convert_array_index(right, inst.right_input_type, true);
-        return call_unsafe_intrinsic(name + "ByteOffset", {left.expression, right.expression}, brt, &inst);
+        return call_unsafe_intrinsic(name + "ByteOffset", {left.expression, right.expression}, brt, inst.self);
     }
 
     if (inst.left_input_type == StackType::I && inst.right_input_type == StackType::Ref && inst.op == BinaryNumericOperator::Add) {
@@ -1201,12 +1219,12 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_managed_pointer_ar
             left = convert_array_index(left, inst.left_input_type, true);
             Expression* offset_arg = make<NamedArgumentExpression>("elementOffset", left.expression);
             Expression* source_arg = make<NamedArgumentExpression>("source", right.expression);
-            return call_unsafe_intrinsic("Add", {offset_arg, source_arg}, brt, &inst);
+            return call_unsafe_intrinsic("Add", {offset_arg, source_arg}, brt, inst.self);
         }
         left = convert_array_index(left, inst.left_input_type, true);
         Expression* offset_arg = make<NamedArgumentExpression>("byteOffset", left.expression);
         Expression* source_arg = make<NamedArgumentExpression>("source", right.expression);
-        return call_unsafe_intrinsic("AddByteOffset", {offset_arg, source_arg}, brt, &inst);
+        return call_unsafe_intrinsic("AddByteOffset", {offset_arg, source_arg}, brt, inst.self);
     }
     return std::nullopt;
 }
@@ -1253,7 +1271,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::get_pointer_arithmetic_of
 //   div(sub(a, b), sizeof(T))
 // when a,b are of type T*.
 // This is what the C# compiler generates for pointer subtraction.
-std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_subtraction(BinaryNumericInstruction& inst) {
+std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_subtraction(const BinaryNumericFacts& inst) {
     assert(inst.op == BinaryNumericOperator::Div);
     if (inst.check_for_overflow || inst.left_input_type != StackType::I) return std::nullopt;
     auto* sub = il::as<BinaryNumericInstruction>(inst.left());
@@ -1302,11 +1320,11 @@ std::optional<TranslatedExpression> ExpressionBuilder::handle_pointer_subtractio
     auto* rr = make<OperatorResolveResult>(known(KnownTypeCode::Int64), ExpressionType::Subtract,
                                            std::vector<ResolveResult*>{left.resolve_result, right.resolve_result});
     return with_il_instruction(make<BinaryOperatorExpression>(left.expression, BinaryOperatorType::Subtract, right.expression),
-                               std::vector<ILInstruction*>{&inst, sub})
+                               std::vector<ILInstruction*>{inst.self, sub})
         .with_rr(rr);
 }
 
-TranslatedExpression ExpressionBuilder::handle_binary_numeric(BinaryNumericInstruction& inst, BinaryOperatorType op, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::handle_binary_numeric(const BinaryNumericFacts& inst, BinaryOperatorType op, TranslationContext context) {
     CSharpResolver resolver_with_overflow_check = resolver->with_check_for_overflow(inst.check_for_overflow);
     bool propagate_type_hint = is_bitwise(op) && inst.left_input_type != inst.right_input_type;
     TranslatedExpression left = translate(inst.left(), propagate_type_hint ? context.type_hint : nullptr);
@@ -1333,7 +1351,7 @@ TranslatedExpression ExpressionBuilder::handle_binary_numeric(BinaryNumericInstr
             annotate_checked(uoe, inst.check_for_overflow ? CheckedAnnotationKind::Checked : CheckedAnnotationKind::Unchecked);
             const IType* result_type = find_arithmetic_type(inst.right_input_type, Sign::Signed);
             if (inst.is_lifted()) result_type = nullable_type::create(*compilation, result_type);
-            return with_il_instruction(uoe, &inst)
+            return with_il_instruction(uoe, inst.self)
                 .with_rr(make<OperatorResolveResult>(result_type, inst.check_for_overflow ? ExpressionType::NegateChecked : ExpressionType::Negate,
                                                      std::vector<ResolveResult*>{right.resolve_result}));
         }
@@ -1373,7 +1391,7 @@ TranslatedExpression ExpressionBuilder::handle_binary_numeric(BinaryNumericInstr
         }
     }
     TranslatedExpression result_expr =
-        with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), &inst).with_rr(rr);
+        with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), inst.self).with_rr(rr);
     if (binary_operator_might_check_for_overflow(op) && !is_float_type(inst.underlying_result_type())) {
         CheckedAnnotationKind annotation;
         if (inst.check_for_overflow) {
@@ -1471,7 +1489,7 @@ bool ExpressionBuilder::constant_binary_operator_overflows(BinaryOperatorType op
     return checked_result->is_error();
 }
 
-TranslatedExpression ExpressionBuilder::handle_shift(BinaryNumericInstruction& inst, BinaryOperatorType op, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::handle_shift(const BinaryNumericFacts& inst, BinaryOperatorType op, TranslationContext context) {
     TranslatedExpression left = translate(inst.left());
     TranslatedExpression right = translate(inst.right());
 
@@ -1515,11 +1533,15 @@ TranslatedExpression ExpressionBuilder::handle_shift(BinaryNumericInstruction& i
         right = right.convert_to(known(KnownTypeCode::Int32), *this);
     }
 
-    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), &inst)
+    return with_il_instruction(make<BinaryOperatorExpression>(left.expression, op, right.expression), inst.self)
         .with_rr(resolver->resolve_binary_operator(op, left.resolve_result, right.resolve_result));
 }
 
 TranslatedExpression ExpressionBuilder::visit_user_defined_compound_assign(UserDefinedCompoundAssign& inst, TranslationContext) {
+    return translate_user_defined_compound_assign(UserDefinedCompoundAssignFacts::of(inst));
+}
+
+TranslatedExpression ExpressionBuilder::translate_user_defined_compound_assign(const UserDefinedCompoundAssignFacts& inst) {
     const IType* load_type;
     bool is_span_based_string_concat = CallBuilder::is_span_based_string_concat(inst.method);
     if (is_span_based_string_concat) {
@@ -1556,7 +1578,7 @@ TranslatedExpression ExpressionBuilder::visit_user_defined_compound_assign(UserD
             value_expr = detach(remove_redundant_to_string_in_concat(value, inst.method, true));
             value_resolve_result = value.resolve_result;
         }
-        return with_il_instruction(make<AssignmentExpression>(target.expression, AssignmentOperatorType::Add, value_expr), &inst)
+        return with_il_instruction(make<AssignmentExpression>(target.expression, AssignmentOperatorType::Add, value_expr), inst.self)
             .with_rr(make<OperatorResolveResult>(inst.method->return_type(), ExpressionType::AddAssign, inst.method, inst.is_lifted(),
                                                  std::vector<ResolveResult*>{target.resolve_result, value_resolve_result}));
     } else if (inst.method->parameters().size() == 2) {
@@ -1564,14 +1586,14 @@ TranslatedExpression ExpressionBuilder::visit_user_defined_compound_assign(UserD
         std::optional<AssignmentOperatorType> op = get_assignment_operator_type_from_metadata_name(inst.method->name(), *settings);
         assert(op.has_value());
 
-        return with_il_instruction(make<AssignmentExpression>(target.expression, *op, value.expression), &inst)
+        return with_il_instruction(make<AssignmentExpression>(target.expression, *op, value.expression), inst.self)
             .with_rr(make<OperatorResolveResult>(inst.method->return_type(), AssignmentExpression::get_linq_node_type(*op, false), inst.method,
                                                  inst.is_lifted(), std::vector<ResolveResult*>{target.resolve_result, value.resolve_result}));
     }
     std::optional<UnaryOperatorType> op = get_unary_operator_type_from_metadata_name(inst.method->name(), inst.eval_mode == CompoundEvalMode::EvaluatesToOldValue);
     assert(op.has_value());
 
-    return with_il_instruction(make<UnaryOperatorExpression>(*op, target.expression), &inst)
+    return with_il_instruction(make<UnaryOperatorExpression>(*op, target.expression), inst.self)
         .with_rr(make<OperatorResolveResult>(inst.method->return_type(), UnaryOperatorExpression::get_linq_node_type(*op, false), inst.method,
                                              inst.is_lifted(), std::vector<ResolveResult*>{target.resolve_result}));
 }
@@ -1599,6 +1621,10 @@ std::optional<UnaryOperatorType> ExpressionBuilder::get_unary_operator_type_from
 }
 
 TranslatedExpression ExpressionBuilder::visit_numeric_compound_assign(NumericCompoundAssign& inst, TranslationContext) {
+    return translate_numeric_compound_assign(NumericCompoundAssignFacts::of(inst));
+}
+
+TranslatedExpression ExpressionBuilder::translate_numeric_compound_assign(const NumericCompoundAssignFacts& inst) {
     switch (inst.op) {
         case BinaryNumericOperator::Add: return handle_compound_assignment(inst, AssignmentOperatorType::Add);
         case BinaryNumericOperator::Sub: return handle_compound_assignment(inst, AssignmentOperatorType::Subtract);
@@ -1624,7 +1650,7 @@ TranslatedExpression ExpressionBuilder::visit_numeric_compound_assign(NumericCom
     }
 }
 
-TranslatedExpression ExpressionBuilder::handle_compound_assignment(NumericCompoundAssign& inst, AssignmentOperatorType op) {
+TranslatedExpression ExpressionBuilder::handle_compound_assignment(const NumericCompoundAssignFacts& inst, AssignmentOperatorType op) {
     ExpressionWithResolveResult target;
     if (inst.target_kind == CompoundTargetKind::Address) {
         target = ld_obj(inst.target(), inst.type());
@@ -1653,7 +1679,7 @@ TranslatedExpression ExpressionBuilder::handle_compound_assignment(NumericCompou
             unary = UnaryOperatorType::PostDecrement;
             expr_type = ExpressionType::PostDecrementAssign;
         }
-        result_expr = with_il_instruction(make<UnaryOperatorExpression>(unary, target.expression), &inst)
+        result_expr = with_il_instruction(make<UnaryOperatorExpression>(unary, target.expression), inst.self)
                           .with_rr(make<OperatorResolveResult>(target.type(), expr_type, std::vector<ResolveResult*>{target.resolve_result}));
     } else {
         TranslatedExpression value = translate(inst.value());
@@ -1698,7 +1724,7 @@ TranslatedExpression ExpressionBuilder::handle_compound_assignment(NumericCompou
             }
             default: break;
         }
-        result_expr = with_il_instruction(make<AssignmentExpression>(target.expression, op, value.expression), &inst)
+        result_expr = with_il_instruction(make<AssignmentExpression>(target.expression, op, value.expression), inst.self)
                           .with_rr(make<OperatorResolveResult>(target.type(), AssignmentExpression::get_linq_node_type(op, inst.check_for_overflow),
                                                                std::vector<ResolveResult*>{target.resolve_result, value.resolve_result}));
     }
@@ -1708,7 +1734,7 @@ TranslatedExpression ExpressionBuilder::handle_compound_assignment(NumericCompou
     return result_expr;
 }
 
-TranslatedExpression ExpressionBuilder::handle_compound_shift(NumericCompoundAssign& inst, AssignmentOperatorType op) {
+TranslatedExpression ExpressionBuilder::handle_compound_shift(const NumericCompoundAssignFacts& inst, AssignmentOperatorType op) {
     assert(inst.eval_mode == CompoundEvalMode::EvaluatesToNewValue);
     ExpressionWithResolveResult target;
     if (inst.target_kind == CompoundTargetKind::Address) {
@@ -1725,7 +1751,7 @@ TranslatedExpression ExpressionBuilder::handle_compound_shift(NumericCompoundAss
         value = value.convert_to(known(KnownTypeCode::Int32), *this);
     }
 
-    return with_il_instruction(make<AssignmentExpression>(target.expression, op, value.expression), &inst)
+    return with_il_instruction(make<AssignmentExpression>(target.expression, op, value.expression), inst.self)
         .with_rr(resolver->resolve_assignment(op, target.resolve_result, value.resolve_result));
 }
 
@@ -1740,7 +1766,9 @@ bool ExpressionBuilder::assignment_operator_might_check_for_overflow(AssignmentO
     }
 }
 
-TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContext context) { return translate_conv(ConvFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_conv(const ConvFacts& inst, TranslationContext context) {
     Sign hint_sign = inst.input_sign;
     if (hint_sign == Sign::None) {
         hint_sign = get_sign(*context.type_hint);
@@ -1784,7 +1812,7 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
         }
         // Because casts with overflow check match C# semantics (zero/sign-extension depends on source type),
         // we can just directly cast to the target type.
-        return arg.convert_to(get_type(to_known_type_code(inst.target_type)), *this, inst.check_for_overflow).with_il_instruction(&inst);
+        return arg.convert_to(get_type(to_known_type_code(inst.target_type)), *this, inst.check_for_overflow).with_il_instruction(inst.self);
     }
 
     // The `default:` branch of the switch below (reached by `goto default` upstream).
@@ -1804,7 +1832,7 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
         } else {
             target_type = get_type(to_known_type_code(inst.target_type));
         }
-        return arg.convert_to(target_type, *this, inst.check_for_overflow).with_il_instruction(&inst);
+        return arg.convert_to(target_type, *this, inst.check_for_overflow).with_il_instruction(inst.self);
     };
 
     switch (inst.kind) {
@@ -1818,10 +1846,10 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
                 if (PointerArithmeticOffset::is_fixed_variable(inst.argument())) {
                     // cast to corresponding pointer type:
                     const IType* pointer_type = make_pointer_type(dynamic_cast<const ByReferenceType*>(input_type)->element_type());
-                    return arg.convert_to(pointer_type, *this).with_il_instruction(&inst);
+                    return arg.convert_to(pointer_type, *this).with_il_instruction(inst.self);
                 }
                 // emit Unsafe.AsPointer() intrinsic:
-                return call_unsafe_intrinsic("AsPointer", {arg.expression}, make_pointer_type(known(KnownTypeCode::Void)), &inst);
+                return call_unsafe_intrinsic("AsPointer", {arg.expression}, make_pointer_type(known(KnownTypeCode::Void)), inst.self);
             } else if (is_integer_type(get_stack_type(*arg.type()))) {
                 // ConversionKind.StopGCTracking should only be used with managed references,
                 // but it's possible that we're supposed to stop tracking something we just started to track.
@@ -1841,16 +1869,16 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
             // Then, we can just return the argument as-is: the ExpressionBuilder post-condition allows us
             // to force our parent instruction to handle the actual sign-extension conversion.
             // (our caller may have more information to pick a better fitting target type)
-            return arg.with_il_instruction(&inst);
+            return arg.with_il_instruction(inst.self);
         case ConversionKind::ZeroExtend:
             // If overflow check cannot fail, handle this just like sign extension (except for swapped signs)
             if (get_sign(*input_type) != Sign::Unsigned || get_size(*input_type) > get_size(input_stack_type)) {
                 arg = arg.convert_to(get_type(to_known_type_code(input_stack_type, Sign::Unsigned)), *this);
             }
-            return arg.with_il_instruction(&inst);
+            return arg.with_il_instruction(inst.self);
         case ConversionKind::Nop:
             // no need to generate any C# code for a nop conversion
-            return arg.with_il_instruction(&inst);
+            return arg.with_il_instruction(inst.self);
         case ConversionKind::Truncate:
             // Note: there are three sizes involved here:
             // A = input_type size
@@ -1875,7 +1903,7 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
                     // There's no actual truncation involved, and the result of the Conv instruction is extended
                     // the same way as the original instruction
                     // -> we can return arg directly
-                    return arg.with_il_instruction(&inst);
+                    return arg.with_il_instruction(inst.self);
                 }
                 // We need to actually truncate; *or* we need to change the sign for the remaining extension to I4.
                 return convert_to_target_type();  // Emit simple cast to inst.target_type
@@ -1885,14 +1913,14 @@ TranslatedExpression ExpressionBuilder::visit_conv(Conv& inst, TranslationContex
             // get handled by our caller (using the ExpressionBuilder post-condition).
 
             // Case 4 (left-over extension from implicit conversion) can also be handled by our caller.
-            return arg.with_il_instruction(&inst);
+            return arg.with_il_instruction(inst.self);
         case ConversionKind::Invalid:
             if (inst.input_type == StackType::Unknown && inst.target_type == il::PrimitiveType::None && arg.type()->kind() == TypeKind::Unknown) {
                 // Unknown -> O conversion.
                 // Our post-condition allows us to also use expressions with unknown type where O is expected,
                 // so avoid introducing an `(object)` cast because we're likely to cast back to the same unknown type,
                 // just in a signature context where we know that it's a class type.
-                return arg.with_il_instruction(&inst);
+                return arg.with_il_instruction(inst.self);
             }
             return convert_to_target_type();
         default: return convert_to_target_type();
@@ -1919,12 +1947,13 @@ bool ExpressionBuilder::value_might_be_oversized(ResolveResult* rr, StackType st
     return true;
 }
 
-TranslatedExpression ExpressionBuilder::visit_call(Call& inst, TranslationContext) {
-    return wrap_in_ref(CallBuilder(*this, *type_system_, *settings).build(&inst), inst.method->return_type());
-}
+TranslatedExpression ExpressionBuilder::visit_call(Call& inst, TranslationContext context) { return translate_call(CallFacts::of(inst), context); }
 
-TranslatedExpression ExpressionBuilder::visit_call_virt(CallVirt& inst, TranslationContext) {
-    return wrap_in_ref(CallBuilder(*this, *type_system_, *settings).build(&inst), inst.method->return_type());
+TranslatedExpression ExpressionBuilder::visit_call_virt(CallVirt& inst, TranslationContext context) { return translate_call(CallFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_call(const CallFacts& inst, TranslationContext context) {
+    if (inst.op_code == OpCode::NewObj) return translate_new_obj(inst, context);
+    return wrap_in_ref(CallBuilder(*this, *type_system_, *settings).build(inst), inst.method->return_type());
 }
 
 TranslatedExpression ExpressionBuilder::wrap_in_ref(TranslatedExpression expr, const IType* type) {
@@ -2248,7 +2277,9 @@ TranslatedExpression ExpressionBuilder::ensure_target_not_nullable(TranslatedExp
     return expr;
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_obj(LdObj& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_ld_obj(LdObj& inst, TranslationContext context) { return translate_ld_obj(LdObjFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_obj(const LdObjFacts& inst, TranslationContext context) {
     const IType* load_type = inst.type();
     bool load_type_used_in_generic = inst.unaligned_prefix() != 0 || inst.target()->result_type() == StackType::Ref;
     if (context.type_hint->kind() != TypeKind::Unknown && is_compatible_type_for_memory_access(*context.type_hint, *load_type) &&
@@ -2264,12 +2295,12 @@ TranslatedExpression ExpressionBuilder::visit_ld_obj(LdObj& inst, TranslationCon
         } else {
             pointer = pointer.convert_to(make_pointer_type(known(KnownTypeCode::Void)), *this, false, true);
         }
-        return call_unsafe_intrinsic("ReadUnaligned", {pointer.expression}, load_type, &inst, {load_type});
+        return call_unsafe_intrinsic("ReadUnaligned", {pointer.expression}, load_type, inst.self, {load_type});
     }
     ExpressionWithResolveResult result = ld_obj(inst.target(), load_type);
     // if (target.Type.IsSmallIntegerType() && load_type.IsSmallIntegerType() && target.Type.GetSign() != load_type.GetSign())
     //     return result.ConvertTo(load_type, this);
-    return result.with_il_instruction(&inst);
+    return result.with_il_instruction(inst.self);
 }
 
 ExpressionWithResolveResult ExpressionBuilder::ld_obj(ILInstruction* address, const IType* load_type) {
@@ -2318,7 +2349,9 @@ ExpressionWithResolveResult ExpressionBuilder::ld_obj(ILInstruction* address, co
     return with_rr(make<UnaryOperatorExpression>(UnaryOperatorType::Dereference, target.expression), make<ResolveResult>(load_type));
 }
 
-TranslatedExpression ExpressionBuilder::visit_st_obj(StObj& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_st_obj(StObj& inst, TranslationContext) { return translate_st_obj(StObjFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_st_obj(const StObjFacts& inst) {
     if (inst.unaligned_prefix() != 0 || (inst.target()->result_type() != StackType::Ref && !is_unmanaged_type(inst.type(), settings->introduce_unmanaged_constraint))) {
         return st_obj_via_helper_call(inst);
     }
@@ -2374,10 +2407,10 @@ TranslatedExpression ExpressionBuilder::visit_st_obj(StObj& inst, TranslationCon
                     make<OperatorResolveResult>(target.type(), ExpressionType::Assign, std::vector<ResolveResult*>{lhs_ref_rr, value.resolve_result}));
         return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, assign.expression)).with_rr(lhs_ref_rr);
     }
-    return assignment(target, value).with_il_instruction(&inst);
+    return assignment(target, value).with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::st_obj_via_helper_call(StObj& inst) {
+TranslatedExpression ExpressionBuilder::st_obj_via_helper_call(const StObjFacts& inst) {
     // "unaligned.1; stobj" -> decompile to a call of
     //    Unsafe.WriteUnaligned<T>(void*, T)
     // or Unsafe.WriteUnaligned<T>(ref byte, T)
@@ -2394,9 +2427,9 @@ TranslatedExpression ExpressionBuilder::st_obj_via_helper_call(StObj& inst) {
         value = value.convert_to(inst.type(), *this);
     }
     if (inst.unaligned_prefix() != 0) {
-        return call_unsafe_intrinsic("WriteUnaligned", {pointer.expression, value.expression}, known(KnownTypeCode::Void), &inst);
+        return call_unsafe_intrinsic("WriteUnaligned", {pointer.expression, value.expression}, known(KnownTypeCode::Void), inst.self);
     }
-    return call_unsafe_intrinsic("Write", {pointer.expression, value.expression}, inst.type(), &inst);
+    return call_unsafe_intrinsic("Write", {pointer.expression, value.expression}, inst.type(), inst.self);
 }
 
 TranslatedExpression ExpressionBuilder::visit_ld_len(LdLen& inst, TranslationContext) {
@@ -2422,7 +2455,9 @@ TranslatedExpression ExpressionBuilder::visit_ld_len(LdLen& inst, TranslationCon
     return with_rr(with_il_instruction(make<MemberReferenceExpression>(array_expr.expression, member_name), &inst), rr);
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationContext) { return translate_ld_flda(LdFldaFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_flda(const LdFldaFacts& inst) {
     auto* nested_ld_flda = il::as<LdFlda>(inst.target());
     const IType* element_type = nullptr;
     if (settings->fixed_buffers && inst.field()->name() == "FixedElementField" && nested_ld_flda != nullptr &&
@@ -2431,7 +2466,7 @@ TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationC
         auto* mrr = static_cast<MemberResolveResult*>(get_resolve_result(field_access));
         field_access->remove_annotations<ResolveResult>();
         TranslatedExpression result = with_rr(field_access, make<MemberResolveResult>(mrr->target_result(), mrr->member(), make_pointer_type(element_type)))
-                                          .with_il_instruction(&inst);
+                                          .with_il_instruction(inst.self);
         if (inst.result_type() == StackType::Ref) {
             // `target.field` has pointer-type.
             auto* parent_conv = il::as<Conv>(inst.parent());
@@ -2454,7 +2489,7 @@ TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationC
     const IType* underlying_tuple_type = nullptr;
     ILInstruction* target = nullptr;
     int position = 0;
-    if (il::transforms::TupleTransform::match_tuple_field_access(&inst, &underlying_tuple_type, &target, &position)) {
+    if (il::transforms::TupleTransform::match_tuple_field_access(static_cast<LdFlda*>(inst.self), &underlying_tuple_type, &target, &position)) {
         TranslatedExpression translated_target = translate_target(target, true, false, underlying_tuple_type);
         auto* tuple_type = dynamic_cast<const TupleType*>(translated_target.type());
         if (tuple_type != nullptr && NormalizeTypeVisitor::type_erasure().equivalent_types(tuple_type, underlying_tuple_type) &&
@@ -2463,12 +2498,12 @@ TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationC
             std::string name = element_name.has_value() ? *element_name : "Item" + std::to_string(position);
             // tuple_type.ElementTypes are more accurate w.r.t. nullability/dynamic than inst.Field.Type
             auto* rr = make<MemberResolveResult>(translated_target.resolve_result, inst.field(), tuple_type->element_types()[static_cast<std::size_t>(position - 1)]);
-            expr = with_rr(make<MemberReferenceExpression>(translated_target.expression, name), rr).with_il_instruction(&inst);
+            expr = with_rr(make<MemberReferenceExpression>(translated_target.expression, name), rr).with_il_instruction(inst.self);
         } else {
-            expr = convert_field(inst.field(), inst.target()).with_il_instruction(&inst);
+            expr = convert_field(inst.field(), inst.target()).with_il_instruction(inst.self);
         }
     } else {
-        expr = convert_field(inst.field(), inst.target()).with_il_instruction(&inst);
+        expr = convert_field(inst.field(), inst.target()).with_il_instruction(inst.self);
     }
     if (inst.result_type() == StackType::I) {
         // ldflda producing native pointer
@@ -2480,17 +2515,21 @@ TranslatedExpression ExpressionBuilder::visit_ld_flda(LdFlda& inst, TranslationC
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_lds_flda(LdsFlda& inst, TranslationContext) {
-    TranslatedExpression expr = convert_field(inst.field()).with_il_instruction(&inst);
+TranslatedExpression ExpressionBuilder::visit_lds_flda(LdsFlda& inst, TranslationContext) { return translate_lds_flda(LdsFldaFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_lds_flda(const LdsFldaFacts& inst) {
+    TranslatedExpression expr = convert_field(inst.field()).with_il_instruction(inst.self);
     return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, expr.expression))
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_elema(LdElema& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_elema(LdElema& inst, TranslationContext) { return translate_ld_elema(LdElemaFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_elema(const LdElemaFacts& inst) {
     TranslatedExpression array_expr = translate(inst.array());
     auto* array_type = dynamic_cast<const ArrayType*>(array_expr.type());
     if (array_type == nullptr || !is_compatible_type_for_memory_access(*array_type->element_type(), *inst.type())) {
-        array_type = dynamic_cast<const ArrayType*>(make_array_type(*compilation, inst.type(), inst.indices().count()));
+        array_type = dynamic_cast<const ArrayType*>(make_array_type(*compilation, inst.type(), static_cast<int>(inst.indices().size())));
         array_expr = array_expr.convert_to(array_type, *this);
     }
     std::vector<Expression*> index_expressions;
@@ -2505,7 +2544,7 @@ TranslatedExpression ExpressionBuilder::visit_ld_elema(LdElema& inst, Translatio
         }
     }
     auto* indexer_expr = make<IndexerExpression>(array_expr.expression, index_expressions);
-    TranslatedExpression expr = with_il_instruction(indexer_expr, &inst).with_rr(make<ResolveResult>(array_type->element_type()));
+    TranslatedExpression expr = with_il_instruction(indexer_expr, inst.self).with_rr(make<ResolveResult>(array_type->element_type()));
     return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, expr.expression))
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
@@ -2546,19 +2585,21 @@ TranslatedExpression ExpressionBuilder::convert_array_index(TranslatedExpression
     return input.convert_to(target_type, *this);
 }
 
-bool ExpressionBuilder::is_unbox_any_with_is_inst(UnboxAny& unbox_any, const IType* is_inst_type) {
+bool ExpressionBuilder::is_unbox_any_with_is_inst(const TypedUnaryFacts& unbox_any, const IType* is_inst_type) {
     return unbox_any.type()->equals(is_inst_type) &&
            (is_known_type(unbox_any.type(), KnownTypeCode::NullableOfT) || is_inst_type->is_reference_type() == std::optional<bool>(true));
 }
 
-TranslatedExpression ExpressionBuilder::visit_unbox_any(UnboxAny& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_unbox_any(UnboxAny& inst, TranslationContext) { return translate_unbox_any(TypedUnaryFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_unbox_any(const TypedUnaryFacts& inst) {
     TranslatedExpression arg;
     auto* is_inst = il::as<IsInst>(inst.argument());
     if (is_inst != nullptr && is_unbox_any_with_is_inst(inst, is_inst->type())) {
         // unbox.any T(isinst T(expr)) ==> expr as T
         // This is used for generic types and nullable value types
         arg = unwrap_boxing_conversion(translate(is_inst->argument()));
-        return with_rr(with_il_instruction(make<AsExpression>(arg.expression, convert_type(inst.type())), &inst),
+        return with_rr(with_il_instruction(make<AsExpression>(arg.expression, convert_type(inst.type())), inst.self),
                        make<ConversionResolveResult>(inst.type(), arg.resolve_result, Conversion::try_cast()));
     }
 
@@ -2577,19 +2618,23 @@ TranslatedExpression ExpressionBuilder::visit_unbox_any(UnboxAny& inst, Translat
         arg = arg.convert_to(known(KnownTypeCode::Object), *this);
     }
 
-    return with_rr(with_il_instruction(make<CastExpression>(convert_type(target_type), arg.expression), &inst),
+    return with_rr(with_il_instruction(make<CastExpression>(convert_type(target_type), arg.expression), inst.self),
                    make<ConversionResolveResult>(target_type, arg.resolve_result, Conversion::unboxing_conversion()));
 }
 
-TranslatedExpression ExpressionBuilder::visit_unbox(Unbox& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_unbox(Unbox& inst, TranslationContext) { return translate_unbox(TypedUnaryFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_unbox(const TypedUnaryFacts& inst) {
     TranslatedExpression arg = translate(inst.argument());
     ExpressionWithResolveResult cast_expression = with_rr(make<CastExpression>(convert_type(inst.type()), arg.expression),
                                                           make<ConversionResolveResult>(inst.type(), arg.resolve_result, Conversion::unboxing_conversion()));
-    return with_il_instruction(make<DirectionExpression>(FieldDirection::Ref, cast_expression.expression), &inst)
+    return with_il_instruction(make<DirectionExpression>(FieldDirection::Ref, cast_expression.expression), inst.self)
         .with_rr(make<ByReferenceResolveResult>(cast_expression.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_box(Box& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_box(Box& inst, TranslationContext) { return translate_box(TypedUnaryFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_box(const TypedUnaryFacts& inst) {
     const IType* target_type = inst.type();
     TranslatedExpression arg = translate(inst.argument(), target_type);
     if (settings->native_integers && !arg.type()->equals(target_type)) {
@@ -2601,11 +2646,13 @@ TranslatedExpression ExpressionBuilder::visit_box(Box& inst, TranslationContext)
     }
     arg = arg.convert_to(target_type, *this);
     const IType* obj = known(KnownTypeCode::Object);
-    return with_rr(with_il_instruction(make<CastExpression>(convert_type(obj), arg.expression), &inst),
+    return with_rr(with_il_instruction(make<CastExpression>(convert_type(obj), arg.expression), inst.self),
                    make<ConversionResolveResult>(obj, arg.resolve_result, Conversion::boxing_conversion()));
 }
 
-TranslatedExpression ExpressionBuilder::visit_cast_class(CastClass& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_cast_class(CastClass& inst, TranslationContext) { return translate_cast_class(TypedUnaryFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_cast_class(const TypedUnaryFacts& inst) {
     return translate(inst.argument()).convert_to(inst.type(), *this);
 }
 
@@ -2648,8 +2695,11 @@ TranslatedExpression ExpressionBuilder::visit_ref_any_value(RefAnyValue& inst, T
         .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_block(Block& block, TranslationContext context) {
-    switch (block.kind) {
+TranslatedExpression ExpressionBuilder::visit_block(Block& block, TranslationContext context) { return translate_block(block, block.kind, context); }
+
+// (the initializers' translations read the block's instructions, as the builders' rewrites leave them)
+TranslatedExpression ExpressionBuilder::translate_block(Block& block, BlockKind kind, TranslationContext context) {
+    switch (kind) {
         case BlockKind::ArrayInitializer: return translate_array_initializer(&block);
         case BlockKind::StackAllocInitializer: return translate_stack_alloc_initializer(&block, context.type_hint);
         case BlockKind::CollectionInitializer:
@@ -3073,7 +3123,9 @@ ResolveResult* ExpressionBuilder::adjust_constant_to_type(ResolveResult* rr, con
     return rr;
 }
 
-TranslatedExpression ExpressionBuilder::visit_null_coalescing_instruction(NullCoalescingInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_null_coalescing_instruction(NullCoalescingInstruction& inst, TranslationContext) { return translate_null_coalescing(NullCoalescingFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_null_coalescing(const NullCoalescingFacts& inst) {
     TranslatedExpression value = translate(inst.value_inst());
     TranslatedExpression fallback = translate(inst.fallback_inst());
     fallback = adjust_constant_expression_to_type(fallback, value.type());
@@ -3100,10 +3152,12 @@ TranslatedExpression ExpressionBuilder::visit_null_coalescing_instruction(NullCo
         }
         rr = make<ResolveResult>(target_type);
     }
-    return with_il_instruction(make<BinaryOperatorExpression>(value.expression, BinaryOperatorType::NullCoalescing, fallback.expression), &inst).with_rr(rr);
+    return with_il_instruction(make<BinaryOperatorExpression>(value.expression, BinaryOperatorType::NullCoalescing, fallback.expression), inst.self).with_rr(rr);
 }
 
-TranslatedExpression ExpressionBuilder::visit_if_instruction(IfInstruction& inst, TranslationContext context) {
+TranslatedExpression ExpressionBuilder::visit_if_instruction(IfInstruction& inst, TranslationContext context) { return translate_if(IfFacts::of(inst), context); }
+
+TranslatedExpression ExpressionBuilder::translate_if(const IfFacts& inst, TranslationContext context) {
     TranslatedExpression condition = translate_condition(inst.condition());
     TranslatedExpression true_branch = translate(inst.true_inst(), context.type_hint);
     TranslatedExpression false_branch = translate(inst.false_inst(), context.type_hint);
@@ -3124,12 +3178,12 @@ TranslatedExpression ExpressionBuilder::visit_if_instruction(IfInstruction& inst
     // ILAst LogicAnd/LogicOr can return a different value than 0 or 1
     // if the rhs is evaluated.
     // We can only correctly translate it to C# if the rhs is of type boolean:
-    if (op != BinaryOperatorType::Any && (is_known_type(rhs.type(), KnownTypeCode::Boolean) || IfInstruction::is_in_condition_slot(&inst))) {
+    if (op != BinaryOperatorType::Any && (is_known_type(rhs.type(), KnownTypeCode::Boolean) || IfInstruction::is_in_condition_slot(inst.self))) {
         if (get_size(get_stack_type(*rhs.type())) > 4) {
             rhs = rhs.convert_to(find_type(StackType::I4, get_sign(*rhs.type())), *this);
         }
         rhs = rhs.convert_to_boolean(*this);
-        return with_il_instruction(make<BinaryOperatorExpression>(condition.expression, op, rhs.expression), &inst)
+        return with_il_instruction(make<BinaryOperatorExpression>(condition.expression, op, rhs.expression), inst.self)
             .with_rr(make<ResolveResult>(known(KnownTypeCode::Boolean)));
     }
 
@@ -3174,12 +3228,12 @@ TranslatedExpression ExpressionBuilder::visit_if_instruction(IfInstruction& inst
         // ref (arr != null ? ref trueBranch : ref falseBranch);
         auto* conditional_resolve_result = make<ResolveResult>(dynamic_cast<const ByReferenceType*>(rr->type())->element_type());
         TranslatedExpression conditional =
-            with_il_instruction(make<ConditionalExpression>(condition.expression, true_branch.expression, false_branch.expression), &inst)
+            with_il_instruction(make<ConditionalExpression>(condition.expression, true_branch.expression, false_branch.expression), inst.self)
                 .with_rr(conditional_resolve_result);
         return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, conditional.expression))
             .with_rr(make<ByReferenceResolveResult>(conditional_resolve_result, ReferenceKind::Ref));
     }
-    return with_il_instruction(make<ConditionalExpression>(condition.expression, true_branch.expression, false_branch.expression), &inst).with_rr(rr);
+    return with_il_instruction(make<ConditionalExpression>(condition.expression, true_branch.expression, false_branch.expression), inst.self).with_rr(rr);
 }
 
 ExpressionBuilder::SwitchValue ExpressionBuilder::translate_switch_value(SwitchInstruction& inst, bool is_expression_context) {
@@ -3311,12 +3365,14 @@ TranslatedExpression ExpressionBuilder::visit_switch_instruction(SwitchInstructi
     return with_il_instruction(switch_expr, &inst).with_rr(make<ResolveResult>(result_type));
 }
 
-TranslatedExpression ExpressionBuilder::visit_address_of(AddressOf& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_address_of(AddressOf& inst, TranslationContext) { return translate_address_of(AddressOfFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_address_of(const AddressOfFacts& inst) {
     il::transforms::ExpressionClassification classification = il::transforms::ILInlining::classify_expression(inst.value());
     TranslatedExpression value = translate(inst.value(), inst.type());
     value = value.convert_to(inst.type(), *this);
     auto can_ignore_copy = [&]() {
-        ILInstruction* load_address = &inst;
+        ILInstruction* load_address = inst.self;
         while (auto* parent = il::as<LdFlda>(load_address->parent())) {
             load_address = parent;
         }
@@ -3334,11 +3390,13 @@ TranslatedExpression ExpressionBuilder::visit_address_of(AddressOf& inst, Transl
         value = without_il_instruction(make<CastExpression>(convert_type(inst.type()), value.expression))
                     .with_rr(make<ConversionResolveResult>(inst.type(), value.resolve_result, Conversion::identity_conversion()));
     }
-    return with_il_instruction(make<DirectionExpression>(FieldDirection::Ref, value.expression), &inst)
+    return with_il_instruction(make<DirectionExpression>(FieldDirection::Ref, value.expression), inst.self)
         .with_rr(make<ByReferenceResolveResult>(value.resolve_result, ReferenceKind::Ref));
 }
 
-TranslatedExpression ExpressionBuilder::visit_await(Await& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_await(Await& inst, TranslationContext) { return translate_await(AwaitFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_await(const AwaitFacts& inst) {
     const IType* expected_type = nullptr;
     if (inst.get_awaiter_method != nullptr) {
         if (inst.get_awaiter_method->is_static()) {
@@ -3356,26 +3414,30 @@ TranslatedExpression ExpressionBuilder::visit_await(Await& inst, TranslationCont
     if (expected_type != nullptr) {
         value = value.convert_to(expected_type, *this, false, true);
     }
-    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::Await, value.expression), &inst)
+    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::Await, value.expression), inst.self)
         .with_rr(make<ResolveResult>(inst.get_result_method != nullptr ? inst.get_result_method->return_type() : &SpecialType::unknown_type()));
 }
 
-TranslatedExpression ExpressionBuilder::visit_nullable_rewrap(NullableRewrap& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_nullable_rewrap(NullableRewrap& inst, TranslationContext) { return translate_nullable_rewrap(OperandFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_nullable_rewrap(const OperandFacts& inst) {
     TranslatedExpression arg = translate(inst.argument());
     const IType* type = arg.type();
     if (nullable_type::is_non_nullable_value_type(type)) {
         type = nullable_type::create(*compilation, type);
     }
-    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::NullConditionalRewrap, arg.expression), &inst)
+    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::NullConditionalRewrap, arg.expression), inst.self)
         .with_rr(make<ResolveResult>(type));
 }
 
-TranslatedExpression ExpressionBuilder::visit_nullable_unwrap(NullableUnwrap& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_nullable_unwrap(NullableUnwrap& inst, TranslationContext) { return translate_nullable_unwrap(NullableUnwrapFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_nullable_unwrap(const NullableUnwrapFacts& inst) {
     TranslatedExpression arg = translate(inst.argument());
     if (inst.ref_input && !inst.ref_output() && is<DirectionExpression>(arg.expression)) {
         arg = arg.unwrap_child(static_cast<DirectionExpression*>(arg.expression)->expression());
     }
-    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::NullConditional, arg.expression), &inst)
+    return with_il_instruction(make<UnaryOperatorExpression>(UnaryOperatorType::NullConditional, arg.expression), inst.self)
         .with_rr(make<ResolveResult>(nullable_type::get_underlying_type(arg.type())));
 }
 
@@ -3769,13 +3831,15 @@ TranslatedExpression ExpressionBuilder::visit_dynamic_compound_assign(DynamicCom
         .with_rr(make<OperatorResolveResult>(&SpecialType::dynamic(), inst.operation(), std::vector<ResolveResult*>{target.resolve_result, value.resolve_result}));
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_ftn(LdFtn& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_ftn(LdFtn& inst, TranslationContext) { return translate_ld_ftn(MethodPointerFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_ftn(const MethodPointerFacts& inst) {
     ExpressionWithResolveResult delegate_ref = CallBuilder(*this, *type_system_, *settings).build_method_reference(inst.method(), false);
     if (!inst.method()->is_static()) {
         // C# 9 function pointers don't support instance methods
         return with_rr(make<InvocationExpression>(make<IdentifierExpression>("__ldftn"), std::vector<Expression*>{delegate_ref.expression}),
                        make<ResolveResult>(make_pointer_type(known(KnownTypeCode::Void))))
-            .with_il_instruction(&inst);
+            .with_il_instruction(inst.self);
     }
     // C# 9 function pointer
     srm::SignatureCallingConvention calling_convention = srm::SignatureCallingConvention::Default;
@@ -3832,21 +3896,25 @@ TranslatedExpression ExpressionBuilder::visit_ld_ftn(LdFtn& inst, TranslationCon
         inst.method()->return_type_is_ref_read_only(), std::move(parameter_types), std::move(parameter_reference_kinds)));
     ExpressionWithResolveResult address_of = with_rr(make<UnaryOperatorExpression>(UnaryOperatorType::AddressOf, delegate_ref.expression),
                                                      make<ResolveResult>(&SpecialType::no_type()));
-    address_of.expression->add_annotation(&inst);
+    address_of.expression->add_annotation(inst.self);
     const Conversion* conversion = Conversion::method_group_conversion(inst.method(), false, false);
     return with_rr(make<CastExpression>(convert_type(ftp), address_of.expression), make<ConversionResolveResult>(ftp, address_of.resolve_result, conversion))
         .without_il_instruction();
 }
 
-TranslatedExpression ExpressionBuilder::visit_ld_virt_ftn(LdVirtFtn& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_ld_virt_ftn(LdVirtFtn& inst, TranslationContext) { return translate_ld_virt_ftn(MethodPointerFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_ld_virt_ftn(const MethodPointerFacts& inst) {
     // C# 9 function pointers don't support instance methods
     ExpressionWithResolveResult delegate_ref = CallBuilder(*this, *type_system_, *settings).build_method_reference(inst.method(), true);
     return with_rr(make<InvocationExpression>(make<IdentifierExpression>("__ldvirtftn"), std::vector<Expression*>{delegate_ref.expression}),
                    make<ResolveResult>(make_pointer_type(known(KnownTypeCode::Void))))
-        .with_il_instruction(&inst);
+        .with_il_instruction(inst.self);
 }
 
-TranslatedExpression ExpressionBuilder::visit_call_indirect(CallIndirect& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_call_indirect(CallIndirect& inst, TranslationContext) { return translate_call_indirect(CallIndirectFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_call_indirect(const CallIndirectFacts& inst) {
     if (inst.is_instance()) {
         return error_expression("calli with instance method signature not supportd");
     }
@@ -3858,9 +3926,9 @@ TranslatedExpression ExpressionBuilder::visit_call_indirect(CallIndirect& inst, 
     auto* fpt = dynamic_cast<const FunctionPointerType*>(skip_modifiers(function_pointer.type()));
     auto* invocation = make<InvocationExpression>();
     invocation->set_target(function_pointer.expression);
-    std::size_t count = std::min(static_cast<std::size_t>(inst.arguments.count()), std::min(fpt->parameter_types.size(), fpt->parameter_reference_kinds.size()));
+    std::size_t count = std::min(static_cast<std::size_t>(inst.arguments.size()), std::min(fpt->parameter_types.size(), fpt->parameter_reference_kinds.size()));
     for (std::size_t i = 0; i < count; i++) {
-        ILInstruction* arg_inst = inst.arguments[static_cast<int>(i)];
+        ILInstruction* arg_inst = inst.arguments[i];
         const IType* param_type = fpt->parameter_types[i];
         ReferenceKind param_ref_kind = fpt->parameter_reference_kinds[i];
         TranslatedExpression arg = translate(arg_inst, param_type).convert_to(param_type, *this, false, true);
@@ -3872,11 +3940,11 @@ TranslatedExpression ExpressionBuilder::visit_call_indirect(CallIndirect& inst, 
     if (auto* brt = dynamic_cast<const ByReferenceType*>(skip_modifiers(fpt->return_type))) {
         auto* rr = make<ResolveResult>(brt->element_type());
         ExpressionWithResolveResult inner = with_rr(invocation, rr);
-        return with_rr(make<DirectionExpression>(FieldDirection::Ref, inner.with_il_instruction(&inst).expression),
+        return with_rr(make<DirectionExpression>(FieldDirection::Ref, inner.with_il_instruction(inst.self).expression),
                        make<ByReferenceResolveResult>(rr, ReferenceKind::Ref))
             .without_il_instruction();
     }
-    return with_rr(invocation, make<ResolveResult>(fpt->return_type)).with_il_instruction(&inst);
+    return with_rr(invocation, make<ResolveResult>(fpt->return_type)).with_il_instruction(inst.self);
 }
 
 TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(DeconstructInstruction& inst, TranslationContext) {
@@ -3959,7 +4027,9 @@ TranslatedExpression ExpressionBuilder::visit_deconstruct_instruction(Deconstruc
     return with_rr(with_il_instruction(make<AssignmentExpression>(lhs, rhs.expression), &inst), make<ResolveResult>(known(KnownTypeCode::Void)));
 }
 
-TranslatedExpression ExpressionBuilder::visit_match_instruction(MatchInstruction& inst, TranslationContext) {
+TranslatedExpression ExpressionBuilder::visit_match_instruction(MatchInstruction& inst, TranslationContext) { return translate_match(MatchFacts::of(inst)); }
+
+TranslatedExpression ExpressionBuilder::translate_match(const MatchFacts& inst) {
     TranslatedExpression left = translate(inst.tested_operand());
     // remove boxing conversion if possible, however, we still need a cast in
     // test case PatternMatching.GenericValueTypePatternStringRequiresCastToObject
@@ -3969,11 +4039,11 @@ TranslatedExpression ExpressionBuilder::visit_match_instruction(MatchInstruction
         (crr->input->type()->is_reference_type() != std::optional<bool>(false) || inst.variable()->type()->is_reference_type() == std::optional<bool>(false))) {
         left = left.unwrap_child(cast_expr->expression());
     }
-    ExpressionWithILInstruction right = translate_pattern(&inst, left.type());
+    ExpressionWithILInstruction right = translate_pattern(inst.self, left.type());
 
     return with_rr(make<BinaryOperatorExpression>(left.expression, BinaryOperatorType::IsPattern, right.expression),
                    make<ResolveResult>(known(KnownTypeCode::Boolean)))
-        .with_il_instruction(&inst);
+        .with_il_instruction(inst.self);
 }
 
 ExpressionWithILInstruction ExpressionBuilder::translate_pattern(ILInstruction* pattern, const IType* left_hand_type) {
@@ -4114,6 +4184,13 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
         (annotated != nullptr ? annotated : e.expression)->add_annotation(make<L2NodeAnnotation>(&n));
         return e;
     };
+    // An operand: the instruction its node stands for, while it is still this instruction's operand (a rewrite of the ILAst the
+    // builders make without telling the L2Body, as the deconstruction's replace_with, leaves the node naming an instruction that
+    // moved: the ILAst then translates this one).
+    const auto operand = [&](const ir::Node* child) -> ILInstruction* {
+        ILInstruction* i = l2->instruction(child);
+        return i != nullptr && i->parent() == &inst && inst.get_child(i->child_index()) == i ? i : nullptr;
+    };
     const auto variable_of = [&](const ir::Node* name_node) -> ILVariable* {
         const auto* name = ir::get<ir::Name>(name_node);
         return name != nullptr && name->sym ? l2->variable(name->sym.get()) : nullptr;
@@ -4190,7 +4267,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
         return from(call_unsafe_intrinsic("SizeOf", {}, known(KnownTypeCode::Int32), &inst, {type}));
     }
     if (const auto* length = ir::get<ir::Length>(&n)) {
-        ILInstruction* array = l2->instruction(length->arr);
+        ILInstruction* array = operand(length->arr);
         if (array == nullptr) return std::nullopt;
         const IType* array_type = known(KnownTypeCode::Array);
         TranslatedExpression array_expr = translate(array, array_type);
@@ -4212,7 +4289,7 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
         return from(convert_variable(v).with_il_instruction(&inst));
     }
     if (const auto* unary = ir::get<ir::Unary>(&n)) {
-        if (unary->op == "&" && !ir::has_flag(n, ir::NodeFlag::RValueAddr) && l2->instruction(unary->x) == nullptr) {
+        if (unary->op == "&" && !ir::has_flag(n, ir::NodeFlag::RValueAddr) && ir::is<ir::Name>(unary->x)) {
             ILVariable* v = variable_of(unary->x);
             if (v == nullptr) return std::nullopt;
             TranslatedExpression expr = convert_variable(v).with_il_instruction(&inst);
@@ -4222,11 +4299,11 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
                 .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
         }
         if (unary->op == "~") {
-            ILInstruction* operand = l2->instruction(unary->x);
-            if (operand == nullptr) return std::nullopt;
+            ILInstruction* argument_inst = operand(unary->x);
+            if (argument_inst == nullptr) return std::nullopt;
             const auto underlying_result_type = static_cast<StackType>(unary->left_stk);
             const bool is_lifted = unary->lift != ir::Lift::None;
-            TranslatedExpression argument = translate(operand);
+            TranslatedExpression argument = translate(argument_inst);
             const IType* arg_utype = nullable_type::get_underlying_type(argument.type());
             if (get_size(get_stack_type(*arg_utype)) < get_size(underlying_result_type) ||
                 (arg_utype->kind() == TypeKind::Enum && is_small_integer_type(*arg_utype)) ||
@@ -4243,6 +4320,261 @@ std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const t
                                                          resolver->resolve_unary_operator(UnaryOperatorType::BitNot, argument.resolve_result));
             return from(result.with_il_instruction(&inst));
         }
+        if (unary->op == "*" && !ir::has_flag(n, ir::NodeFlag::IfRef)) {
+            // ldobj (lift.cpp: a dereference; its type the type loaded)
+            ILInstruction* target = operand(unary->x);
+            const IType* type = cil::clr_type(n.type);
+            if (target == nullptr || type == nullptr) return std::nullopt;
+            return from(translate_ld_obj(LdObjFacts{&inst, target, type, cil::unaligned_of(n)}, context));
+        }
+        if (unary->op == "&" && ir::has_flag(n, ir::NodeFlag::RValueAddr)) {
+            // addressof: the address of a value
+            ILInstruction* value = operand(unary->x);
+            const IType* type = cil::clr_type(n.type);
+            if (value == nullptr || type == nullptr) return std::nullopt;
+            return from(translate_address_of(AddressOfFacts{&inst, value, type}));
+        }
+        if (unary->op == "&") {
+            if (const auto* select = ir::get<ir::Select>(unary->x)) {
+                const IField* field = cil::clr_field(select->sym);
+                if (field == nullptr) return std::nullopt;
+                if (ir::is<ir::TypeName>(select->obj)) return from(translate_lds_flda(LdsFldaFacts{&inst, field}));   // ldsflda
+                ILInstruction* target = operand(select->obj);
+                if (target == nullptr) return std::nullopt;
+                return from(translate_ld_flda(LdFldaFacts{&inst, target, field, static_cast<StackType>(n.stack)}));   // ldflda
+            }
+            if (const auto* index = ir::get<ir::Index>(unary->x); index != nullptr && !ir::has_flag(n, ir::NodeFlag::InlineArray)) {
+                // ldelema: the element's address
+                ILInstruction* array = operand(index->arr);
+                const IType* type = cil::clr_type(index->elem);
+                if (array == nullptr || type == nullptr) return std::nullopt;
+                std::vector<ILInstruction*> indices;
+                for (const ir::Node* i : ir::statements(index->index)) {
+                    ILInstruction* x = operand(i);
+                    if (x == nullptr) return std::nullopt;
+                    indices.push_back(x);
+                }
+                return from(translate_ld_elema(LdElemaFacts{&inst, array, std::move(indices), type, ir::has_flag(n, ir::NodeFlag::FromEnd)}));
+            }
+        }
+    }
+    if (const auto* address = ir::get<ir::AddressOf>(&n)) {
+        // ldftn
+        const IMethod* method = cil::clr_method(address->sym);
+        if (method == nullptr) return std::nullopt;
+        return from(translate_ld_ftn(MethodPointerFacts{&inst, method}));
+    }
+    if (const auto* ref = ir::get<ir::MethodRef>(&n); ref != nullptr && ref->mode == "virtual_ptr") {
+        // ldvirtftn (its object is not translated)
+        const IMethod* method = cil::clr_method(ref->sym);
+        if (method == nullptr) return std::nullopt;
+        return from(translate_ld_virt_ftn(MethodPointerFacts{&inst, method}));
+    }
+    if (const auto* awaited = ir::get<ir::Await>(&n)) {
+        ILInstruction* value = operand(awaited->x);
+        if (value == nullptr) return std::nullopt;
+        return from(translate_await(AwaitFacts{&inst, value, cil::clr_method(awaited->awaiter), cil::clr_method(awaited->result)}));
+    }
+    if (const auto* unwrap = ir::get<ir::OptionalUnwrap>(&n)) {
+        // nullable.unwrap (lift.cpp: its result type the node's stack slot)
+        ILInstruction* argument = operand(unwrap->x);
+        if (argument == nullptr) return std::nullopt;
+        return from(translate_nullable_unwrap(NullableUnwrapFacts{&inst, argument, unwrap->ref_in, n.stack == ir::Stack::Ref}));
+    }
+    if (const auto* rewrap = ir::get<ir::OptionalChain>(&n)) {
+        ILInstruction* argument = operand(rewrap->x);
+        if (argument == nullptr) return std::nullopt;
+        return from(translate_nullable_rewrap(OperandFacts{&inst, argument}));
+    }
+    if (const auto* thrown = ir::get<ir::ThrowExpr>(&n); thrown != nullptr && thrown->x != nullptr) {
+        ILInstruction* argument = operand(thrown->x);
+        if (argument == nullptr) return std::nullopt;
+        return from(translate_throw(OperandFacts{&inst, argument}));
+    }
+    if (const auto* token = ir::get<ir::Intrinsic>(&n); token != nullptr && token->name == "cil.ldtoken_type" && !token->targs.empty()) {
+        const IType* type = cil::clr_type(token->targs.front());
+        if (type == nullptr) return std::nullopt;
+        return from(translate_ld_type_token(TypeTokenFacts{&inst, type}));
+    }
+    if (const auto* cond = ir::get<ir::Cond>(&n); cond != nullptr && cond->orelse != nullptr) {
+        // if as an expression
+        auto* self = il::as<IfInstruction>(&inst);
+        ILInstruction* condition = operand(cond->cond);
+        ILInstruction* then = operand(cond->then);
+        ILInstruction* orelse = operand(cond->orelse);
+        if (self == nullptr || condition == nullptr || then == nullptr || orelse == nullptr) return std::nullopt;
+        return from(translate_if(IfFacts{self, condition, then, orelse, static_cast<StackType>(n.stack)}, context));
+    }
+    if (const auto* match = ir::get<ir::PatternMatch>(&n)) {
+        // match (lift.cpp: the variable the pattern's; the value tested)
+        auto* self = il::as<il::MatchInstruction>(&inst);
+        ILInstruction* tested = operand(match->tested);
+        ILVariable* v = match->var ? l2->variable(match->var.get()) : nullptr;
+        if (self == nullptr || tested == nullptr || v == nullptr) return std::nullopt;
+        return from(translate_match(MatchFacts{self, tested, v}));
+    }
+    if (const auto* block = ir::get<ir::BlockExpr>(&n); block != nullptr && block->role) {
+        // a block of another kind than control flow: an initializer, a named-argument call, an interpolated string (its role)
+        const auto kind = cil::block_kind_from(block->role);
+        auto* self = il::as<Block>(&inst);
+        if (!kind || self == nullptr) return std::nullopt;
+        return from(translate_block(*self, *kind, context));
+    }
+    if (ir::is<ir::Lambda>(&n)) {
+        // a lambda, an anonymous method or an expression tree (lift.cpp: the delegate type the node's type)
+        auto* function = il::as<ILFunction>(&inst);
+        if (function == nullptr) return std::nullopt;
+        return from(translate_function(cil::clr_type(n.type), function).with_il_instruction(&inst));
+    }
+    const auto call_facts = [&](il::OpCode op_code, const ir::SymP& sym, const ir::Node* target, const std::vector<ir::Node*>& args) -> std::optional<CallFacts> {
+        // call, callvirt, newobj (lift.cpp: the method the symbol's; the `this` argument the target; the prefixes flags and cil.constrained)
+        const IMethod* method = cil::clr_method(sym);
+        if (method == nullptr || inst.op_code != op_code) return std::nullopt;
+        CallFacts facts{static_cast<il::CallInstruction*>(&inst), op_code, method, {}, nullptr, ir::has_flag(n, ir::NodeFlag::Tail)};
+        facts.arguments.reserve(args.size() + 1);
+        if (target != nullptr) {
+            ILInstruction* t = operand(target);
+            if (t == nullptr) return std::nullopt;
+            facts.arguments.push_back(t);
+        }
+        for (const ir::Node* a : args) {
+            ILInstruction* x = operand(a);
+            if (x == nullptr) return std::nullopt;
+            facts.arguments.push_back(x);
+        }
+        if (const auto* t = n.info.get_as<ir::TypeP>("cil.constrained")) facts.constrained_to = cil::clr_type(*t);
+        return facts;
+    };
+    if (const auto* call = ir::get<ir::Call>(&n); call != nullptr && call->form == ir::CallForm::Indirect) {
+        // calli (lift.cpp: the target the function pointer; the signature's type cil.calli_sig, whether it takes `this` its FnType's)
+        const auto* sig = n.info.get_as<ir::TypeP>("cil.calli_sig");
+        const auto* ptr = sig != nullptr && *sig ? std::get_if<ir::FnPtrType>(&(*sig)->body) : nullptr;
+        const auto* fn = ptr != nullptr && ptr->fn ? std::get_if<ir::FnType>(&ptr->fn->body) : nullptr;
+        ILInstruction* pointer = operand(call->target);
+        if (fn == nullptr || pointer == nullptr) return std::nullopt;
+        CallIndirectFacts facts{&inst, pointer, dynamic_cast<const FunctionPointerType*>(cil::clr_type(*sig)), fn->has_this, {}};
+        facts.arguments.reserve(call->args.size());
+        for (const ir::Node* a : call->args) {
+            ILInstruction* x = operand(a);
+            if (x == nullptr) return std::nullopt;
+            facts.arguments.push_back(x);
+        }
+        return from(translate_call_indirect(facts));
+    }
+    if (const auto* call = ir::get<ir::Call>(&n); call != nullptr && call->form != ir::CallForm::Indirect && !ir::has_flag(n, ir::NodeFlag::PinnableRef)) {
+        const auto facts = call_facts(call->form == ir::CallForm::Virtual ? OpCode::CallVirt : OpCode::Call, call->sym, call->target, call->args);
+        if (!facts) return std::nullopt;
+        return from(translate_call(*facts, context));
+    }
+    if (const auto* new_object = ir::get<ir::New>(&n)) {
+        const auto facts = call_facts(OpCode::NewObj, new_object->sym, nullptr, new_object->args);
+        if (!facts) return std::nullopt;
+        return from(translate_new_obj(*facts, context));
+    }
+    if (const auto* new_array = ir::get<ir::NewArray>(&n); new_array != nullptr && new_array->init.empty()) {
+        // newarr: the element type, the lengths
+        const IType* type = cil::clr_type(new_array->elem);
+        if (type == nullptr) return std::nullopt;
+        std::vector<ILInstruction*> dims;
+        for (const ir::Node* d : new_array->dims) {
+            ILInstruction* x = operand(d);
+            if (x == nullptr) return std::nullopt;
+            dims.push_back(x);
+        }
+        return from(translate_new_arr(NewArrFacts{&inst, type, std::move(dims)}));
+    }
+    if (const auto* assign = ir::get<ir::Assign>(&n)) {
+        if (!assign->op && !assign->eval && !assign->sym && ir::is<ir::Name>(assign->target)) {
+            // stloc (lift.cpp: an Assign to a Name)
+            ILVariable* v = variable_of(assign->target);
+            ILInstruction* value = operand(assign->value);
+            if (v == nullptr || value == nullptr) return std::nullopt;
+            return from(translate_st_loc(StLocFacts{&inst, v, value}));
+        }
+        if (assign->eval) {
+            // a compound assignment (lift.cpp: one with an eval mode; a user-defined one names its operator)
+            ILInstruction* target = operand(assign->target);
+            ILInstruction* value = operand(assign->value);
+            if (target == nullptr || value == nullptr) return std::nullopt;
+            const auto eval = static_cast<il::CompoundEvalMode>(*assign->eval);
+            const auto via = static_cast<il::CompoundTargetKind>(assign->via.value_or(ir::Via::Address));
+            if (assign->sym) {
+                const IMethod* method = cil::clr_method(assign->sym);
+                if (method == nullptr) return std::nullopt;
+                return from(translate_user_defined_compound_assign(UserDefinedCompoundAssignFacts{&inst, method, eval, via, target, value}));
+            }
+            const auto op = assign->op ? cil::binary_op_from(*assign->op) : std::nullopt;
+            const IType* type = cil::clr_type(n.type);
+            if (!op || type == nullptr) return std::nullopt;
+            const auto left_type = static_cast<StackType>(assign->left_stk);
+            const auto right_type = static_cast<StackType>(assign->right_stk);
+            return from(translate_numeric_compound_assign(NumericCompoundAssignFacts{
+                &inst, *op, cil::sign_from(assign->is_signed), assign->overflow == ir::Overflow::Trap, left_type, right_type, assign->lift == ir::Lift::CSharp,
+                il::BinaryNumericInstruction::compute_result_type(*op, left_type, right_type), type, eval, via, target, value}));
+        }
+        const auto* deref = ir::get<ir::Unary>(assign->target);
+        if (!assign->op && !assign->eval && !assign->sym && deref != nullptr && deref->op == "*") {
+            // stobj (lift.cpp: an Assign to a dereference; the type and the prefixes the dereference's)
+            ILInstruction* target = operand(deref->x);
+            ILInstruction* value = operand(assign->value);
+            const IType* type = cil::clr_type(assign->target->type);
+            if (target == nullptr || value == nullptr || type == nullptr) return std::nullopt;
+            return from(translate_st_obj(StObjFacts{&inst, target, value, type, cil::unaligned_of(*assign->target)}));
+        }
+        return std::nullopt;
+    }
+    if (const auto* cast = ir::get<ir::Cast>(&n)) {
+        const ir::ConvKind conv = cast->conv.value_or(ir::ConvKind::Invalid);
+        const auto typed = [&](TranslatedExpression (ExpressionBuilder::*translate_kind)(const TypedUnaryFacts&)) -> std::optional<TranslatedExpression> {
+            // box, unbox, unbox.any, castclass, isinst (lift.cpp: the conversion kind; the type the node's)
+            ILInstruction* argument = operand(cast->x);
+            const IType* type = cil::clr_type(n.type);
+            if (argument == nullptr || type == nullptr) return std::nullopt;
+            return from((this->*translate_kind)(TypedUnaryFacts{&inst, argument, type}));
+        };
+        switch (conv) {
+            case ir::ConvKind::Box: return typed(&ExpressionBuilder::translate_box);
+            case ir::ConvKind::Unbox: return typed(&ExpressionBuilder::translate_unbox);
+            case ir::ConvKind::UnboxAny: return typed(&ExpressionBuilder::translate_unbox_any);
+            case ir::ConvKind::RefCast: return typed(&ExpressionBuilder::translate_cast_class);
+            case ir::ConvKind::TryCast: return typed(&ExpressionBuilder::translate_is_inst);
+            case ir::ConvKind::ExprTree: return std::nullopt;
+            default: break;
+        }
+        // conv (lift.cpp: the target from the node's type, the rest from the Cast's slots)
+        ILInstruction* argument = operand(cast->x);
+        const auto target = n.type ? cil::conv_target_from(*n.type, n.info.get_as<bool>("cil.target_r") != nullptr) : std::nullopt;
+        if (argument == nullptr || !target) return std::nullopt;
+        return from(translate_conv(ConvFacts{&inst, argument, static_cast<StackType>(cast->from_stk), cil::sign_from(cast->from_signed), *target,
+                                             static_cast<ConversionKind>(conv), cast->overflow == ir::Overflow::Trap, cast->lift == ir::Lift::CSharp},
+                                   context));
+    }
+    if (const auto* binary = ir::get<ir::Binary>(&n)) {
+        if (binary->sym || (binary->lift == ir::Lift::ThreeValued && (binary->op == "&&" || binary->op == "||"))) return std::nullopt;
+        ILInstruction* left = operand(binary->left);
+        ILInstruction* right = operand(binary->right);
+        if (left == nullptr || right == nullptr) return std::nullopt;
+        if (binary->op == "??") {
+            // a ?? b (lift.cpp: the kind of coalescing; the underlying result type the left operand's stack slot)
+            return from(translate_null_coalescing(NullCoalescingFacts{&inst, left, right,
+                                                                      static_cast<il::NullCoalescingKind>(binary->coalesce.value_or(ir::Coalesce::Ref)),
+                                                                      static_cast<StackType>(binary->left_stk)}));
+        }
+        const auto left_type = static_cast<StackType>(binary->left_stk);
+        const auto right_type = static_cast<StackType>(binary->right_stk);
+        if (const auto kind = cil::comparison_from(binary->op)) {
+            // comp (lift.cpp: the comparison operator; its input type the left operand's)
+            return from(translate_comp_facts(CompFacts{&inst, *kind, static_cast<il::ComparisonLiftingKind>(binary->lift), left_type,
+                                                       cil::sign_from(binary->is_signed), left, right}));
+        }
+        if (const auto op = cil::binary_op_from(binary->op)) {
+            // binary.<op>
+            return from(translate_binary_numeric(BinaryNumericFacts{&inst, *op, left, right, left_type, right_type, binary->overflow == ir::Overflow::Trap,
+                                                                    cil::sign_from(binary->is_signed), binary->lift == ir::Lift::CSharp,
+                                                                    il::BinaryNumericInstruction::compute_result_type(*op, left_type, right_type)},
+                                                 context));
+        }
+        return std::nullopt;
     }
     return std::nullopt;
 }

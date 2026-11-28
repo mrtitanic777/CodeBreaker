@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "dotnet/decompiler/csharp/instruction_facts.hpp"
 #include "dotnet/decompiler/csharp/syntax/syntax.hpp"
 #include "dotnet/decompiler/csharp/translated_expression.hpp"
 #include "dotnet/decompiler/csharp/translated_statement.hpp"
@@ -154,9 +155,24 @@ private:
     syntax::LocalFunctionDeclarationStatement* translate_function(il::ILFunction* function);
 
     std::string ensure_unique_label(il::Block* block);
-    // Stage 14: the statement kinds read from the instruction's L2 node (Empty, Throw, If); null for another kind, which the ILAst
-    // visitor converts.
+    // Stage 14: the statement kinds read from the instruction's L2 node (statement_builder.cpp lists them); null for another kind, which
+    // the ILAst visitor converts.
     Statement* convert_from_l2(const translate::ir::Node& node, il::ILInstruction& inst);
+    // Each kind's translation from its facts (instruction_facts.hpp), which its visitor reads from the instruction and convert_from_l2 from
+    // the node.
+    TranslatedStatement translate_branch(const BranchFacts& inst);
+    TranslatedStatement translate_leave(const LeaveFacts& inst);
+    TranslatedStatement translate_yield_return(const YieldReturnFacts& inst);
+    TranslatedStatement translate_try_catch(const TryCatchFacts& inst);
+    TranslatedStatement translate_try_finally(const TryHandlerFacts& inst);
+    TranslatedStatement translate_try_fault(const TryHandlerFacts& inst);
+    TranslatedStatement translate_lock(const LockFacts& inst);
+    TranslatedStatement translate_block_container(const BlockContainerFacts& facts);
+    TranslatedStatement translate_block(const BlockFacts& facts);
+    TranslatedStatement translate_using(const UsingFacts& inst);
+    TranslatedStatement translate_pinned_region(const PinnedRegionFacts& inst);
+    // An expression in a statement place (ExpressionStatement; stloc and stobj without the top-level ref, isinst as `is`).
+    TranslatedStatement translate_expression_statement(il::ILInstruction& inst, bool strip_ref);
     static bool is_final_leave(il::Leave* leave);
 
     std::unique_ptr<ExpressionBuilder> expr_builder_;

@@ -145,7 +145,7 @@ Statement* StatementBuilder::convert(il::ILInstruction* inst) {
     if (L2Body* l2 = expr_builder().l2) {
         Statement* from_l2 = nullptr;
         if (const translate::ir::Node* node = l2->node(inst)) from_l2 = convert_from_l2(*node, *inst);
-        l2->count(from_l2 != nullptr);
+        l2->count(from_l2 != nullptr, *inst);
         if (from_l2 != nullptr) return from_l2;
     }
     return il::accept_visitor(*inst, *this);
@@ -153,17 +153,29 @@ Statement* StatementBuilder::convert(il::ILInstruction* inst) {
 
 // Each is the visitor below reading the same facts from the node (ILAST_TO_L2.md section 1.2): Empty (nop: its comment is the note), Throw
 // (throw: the operand; rethrow: none), If in a statement place (if: the condition, then the branches; an absent or empty else branch is
-// a nop). An operand is translated through its own instruction (which reads its node in turn).
+// a nop), Return and Break (leave), Goto (br), YieldReturn, Sync (lock), Fixed (fixed), Try (using, try-finally, try-fault, try-catch),
+// a Block or a container's Labeled block, a Region (a container: a loop, a switch, a block), and an expression in a statement place.
+// An operand or a body is translated through its own instruction (which reads its node in turn).
 Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::ILInstruction& inst) {
     namespace ir = translate::ir;
     L2Body& l2 = *expr_builder().l2;
-    const auto instruction_of = [&](const ir::Node* child) -> il::ILInstruction* {
+    // An operand or a body: the instruction its node was lifted to, while it is still where the node is (see translate_from_l2), below
+    // `parent` (this instruction, or a handler).
+    const auto instruction_of = [&](const ir::Node* child, const il::ILInstruction* parent = nullptr) -> il::ILInstruction* {
         while (const auto* e = ir::get<ir::ExprStmt>(child)) child = e->expr;
-        return child != nullptr ? l2.instruction(child) : nullptr;
+        il::ILInstruction* i = child != nullptr ? l2.instruction(child) : nullptr;
+        const il::ILInstruction* holder = parent != nullptr ? parent : &inst;
+        return i != nullptr && i->parent() == holder && holder->get_child(i->child_index()) == i ? i : nullptr;
     };
     const auto from = [&](Statement* s) {
         s->add_annotation(make<L2NodeAnnotation>(&n));
         return s;
+    };
+    const auto container_of = [&](const std::string& label) -> il::BlockContainer* {
+        // a region's label is its entry block's: the Labeled block, in the Region the container was lowered to
+        ir::Node* labeled = l2.index().block(label);
+        ir::Node* region = labeled != nullptr ? l2.index().place(labeled).parent : nullptr;
+        return region != nullptr ? il::as<il::BlockContainer>(l2.instruction(region)) : nullptr;
     };
     if (const auto* empty = ir::get<ir::Empty>(&n)) {
         auto* stmt = make<syntax::EmptyStatement>();
@@ -190,7 +202,138 @@ Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::I
         Statement* false_statement = no_else ? nullptr : convert(else_inst);
         return from(with_il_instruction(make<syntax::IfElseStatement>(condition, true_statement, false_statement), &inst));
     }
+    if (const auto* ret = ir::get<ir::Return>(&n)) {
+        // leave out of the function's body (lift.cpp: a Return leaves the body of the function it is in)
+        il::ILInstruction* value = ret->expr != nullptr ? instruction_of(ret->expr) : nullptr;
+        if ((ret->expr != nullptr && value == nullptr) || current_return_container == nullptr) return nullptr;
+        return from(translate_leave(LeaveFacts{&inst, current_return_container, value}));
+    }
+    if (const auto* brk = ir::get<ir::Break>(&n)) {
+        // leave out of another container: the region whose entry block the label names
+        il::BlockContainer* container = brk->label ? container_of(*brk->label) : nullptr;
+        il::ILInstruction* value = brk->value != nullptr ? instruction_of(brk->value) : nullptr;
+        if (container == nullptr || (brk->value != nullptr && value == nullptr)) return nullptr;
+        return from(translate_leave(LeaveFacts{&inst, container, value}));
+    }
+    if (const auto* jump = ir::get<ir::Goto>(&n)) {
+        // br: the block the label names
+        const ir::Node* labeled = jump->label ? l2.index().block(*jump->label) : nullptr;
+        auto* block = labeled != nullptr ? il::as<il::Block>(l2.instruction(labeled)) : nullptr;
+        if (block == nullptr) return nullptr;
+        return from(translate_branch(BranchFacts{&inst, block}));
+    }
+    if (const auto* yield = ir::get<ir::YieldReturn>(&n)) {
+        il::ILInstruction* value = instruction_of(yield->expr);
+        if (value == nullptr) return nullptr;
+        return from(translate_yield_return(YieldReturnFacts{&inst, value}));
+    }
+    if (const auto* sync = ir::get<ir::Sync>(&n)) {
+        il::ILInstruction* on = instruction_of(sync->lock);
+        il::ILInstruction* body = instruction_of(sync->body);
+        if (on == nullptr || body == nullptr) return nullptr;
+        return from(translate_lock(LockFacts{&inst, on, body}));
+    }
+    if (const auto* fixed = ir::get<ir::Fixed>(&n)) {
+        // fixed (lift.cpp: the pinned variable a Local of the variable, its value the Local's)
+        const auto* local = ir::get<ir::Local>(fixed->var);
+        il::ILVariable* v = local != nullptr && local->sym ? l2.variable(local->sym.get()) : nullptr;
+        il::ILInstruction* init = local != nullptr ? instruction_of(local->init) : nullptr;
+        il::ILInstruction* body = instruction_of(fixed->body);
+        if (v == nullptr || init == nullptr || body == nullptr) return nullptr;
+        return from(translate_pinned_region(PinnedRegionFacts{&inst, v, init, body}));
+    }
+    if (const auto* attempt = ir::get<ir::Try>(&n)) {
+        // using, try-finally, try-fault, try-catch (lift.cpp: by the resources and handlers the Try has)
+        il::ILInstruction* body = instruction_of(attempt->body);
+        if (body == nullptr) return nullptr;
+        if (!attempt->resources.empty()) {
+            const auto* resource = attempt->resources.size() == 1 ? ir::get<ir::Local>(attempt->resources.front()) : nullptr;
+            auto* self = il::as<il::UsingInstruction>(&inst);
+            il::ILVariable* v = resource != nullptr && resource->sym ? l2.variable(resource->sym.get()) : nullptr;
+            il::ILInstruction* init = resource != nullptr ? instruction_of(resource->init) : nullptr;
+            if (self == nullptr || v == nullptr || init == nullptr) return nullptr;
+            const auto has = [&](std::string_view mod) { return std::find(resource->mods.begin(), resource->mods.end(), mod) != resource->mods.end(); };
+            return from(translate_using(UsingFacts{self, v, init, body, has("await"), has("ref_struct")}));
+        }
+        if (attempt->finally_body != nullptr || attempt->fault_body != nullptr) {
+            const bool fault = attempt->finally_body == nullptr;
+            il::ILInstruction* handler = instruction_of(fault ? attempt->fault_body : attempt->finally_body);
+            if (handler == nullptr) return nullptr;
+            const TryHandlerFacts facts{&inst, body, handler};
+            return from(fault ? translate_try_fault(facts) : translate_try_finally(facts));
+        }
+        TryCatchFacts facts{&inst, body, {}};
+        facts.handlers.reserve(attempt->catches.size());
+        for (const ir::Node* c : attempt->catches) {
+            const auto* katch = ir::get<ir::Catch>(c);
+            auto* handler = il::as<il::TryCatchHandler>(l2.instruction(c));
+            il::ILVariable* v = katch != nullptr && katch->sym ? l2.variable(katch->sym.get()) : nullptr;
+            il::ILInstruction* filter = katch != nullptr && handler != nullptr ? instruction_of(katch->filter, handler) : nullptr;
+            il::ILInstruction* handler_body = katch != nullptr && handler != nullptr ? instruction_of(katch->body, handler) : nullptr;
+            if (handler == nullptr || v == nullptr || filter == nullptr || handler_body == nullptr) return nullptr;
+            facts.handlers.push_back({handler, v, filter, handler_body});
+        }
+        return from(translate_try_catch(facts));
+    }
+    // a container's block: the Labeled, its statements the Block in it
+    const ir::Node* block_node = &n;
+    if (const auto* labeled = ir::get<ir::Labeled>(&n)) {
+        const auto* body = std::get_if<ir::Node*>(&labeled->body);
+        block_node = body != nullptr ? *body : nullptr;
+    }
+    if (ir::is<ir::Block>(block_node) || (ir::is<ir::BlockExpr>(block_node) && !ir::get<ir::BlockExpr>(block_node)->role)) {
+        // a control-flow block (lift.cpp: a Block, or a BlockExpr without a role whose result is the final instruction); a block of
+        // another kind is an expression
+        auto* block = il::as<il::Block>(&inst);
+        if (block == nullptr) return nullptr;
+        BlockFacts facts{block, nullptr};
+        if (const auto* e = ir::get<ir::BlockExpr>(block_node); e != nullptr && e->result != nullptr && !ir::is<ir::Empty>(e->result)) {
+            facts.final_instruction = l2.instruction(e->result);
+            if (facts.final_instruction == nullptr) return nullptr;
+        }
+        return from(translate_block(facts));
+    }
+    if (const auto* region = ir::get<ir::Region>(&n)) {
+        // a container (lift.cpp: a Region of Labeled blocks, the first the entry): a loop when it is one whose entry is jumped to again
+        // (the region's own entry counts one), a switch when its entry holds a switch alone, else a block of statements
+        auto* container = il::as<il::BlockContainer>(&inst);
+        const auto* entry = region->blocks.empty() ? nullptr : ir::get<ir::Labeled>(region->blocks.front());
+        if (container == nullptr || entry == nullptr || !entry->label) return nullptr;
+        BlockContainerFacts facts{container, region->kind != ir::RegionKind::Normal && l2.index().incoming(*entry->label) > 1, nullptr};
+        const ir::Node* entry_body = std::get_if<ir::Node*>(&entry->body) != nullptr ? std::get<ir::Node*>(entry->body) : nullptr;
+        const std::vector<ir::Node*>* stmts = nullptr;
+        if (const auto* b = ir::get<ir::Block>(entry_body)) stmts = &b->stmts;
+        else if (const auto* e = ir::get<ir::BlockExpr>(entry_body)) stmts = &e->stmts;
+        if (stmts == nullptr) return nullptr;
+        if (stmts->size() == 1 && ir::is<ir::Switch>(stmts->front())) {
+            facts.switch_inst = il::as<il::SwitchInstruction>(l2.instruction(stmts->front()));
+            if (facts.switch_inst == nullptr) return nullptr;
+        }
+        return from(translate_block_container(facts));
+    }
+    // An expression in a statement place (the kinds the visitor gives an ExpressionStatement: stloc and stobj without a top-level ref).
+    if (const auto* assign = ir::get<ir::Assign>(&n)) {
+        const auto* deref = ir::get<ir::Unary>(assign->target);
+        const bool plain = !assign->op && !assign->eval && !assign->sym && (ir::is<ir::Name>(assign->target) || (deref != nullptr && deref->op == "*"));
+        return from(translate_expression_statement(inst, plain));
+    }
+    // (isinst is an `is`; initblk, cpblk and ckfinite have statements of their own)
+    const auto* cast = ir::get<ir::Cast>(&n);
+    const auto* intrinsic = ir::get<ir::Intrinsic>(&n);
+    if (ir::category(n) == ir::Category::Expression && !(cast != nullptr && cast->conv == ir::ConvKind::TryCast) &&
+        !(intrinsic != nullptr && (intrinsic->name == "mem.copy" || intrinsic->name == "mem.fill" || intrinsic->name == "cil.ckfinite"))) {
+        return from(translate_expression_statement(inst, false));
+    }
     return nullptr;
+}
+
+TranslatedStatement StatementBuilder::translate_expression_statement(il::ILInstruction& inst, bool strip_ref) {
+    TranslatedExpression expr = expr_builder().translate(&inst);
+    // strip top-level ref on ref re-assignment
+    if (strip_ref) {
+        if (auto* dir_expr = syntax::as<syntax::DirectionExpression>(expr.expression)) expr = expr.unwrap_child(dir_expr->expression());
+    }
+    return with_il_instruction(make<syntax::ExpressionStatement>(expr), &inst);
 }
 
 syntax::BlockStatement* StatementBuilder::convert_as_block(il::ILInstruction* inst) {
@@ -408,30 +551,34 @@ void StatementBuilder::convert_switch_section_body(syntax::SwitchSection* ast_se
 
 // ---- branches, leaves, jumps -----------------------------------------------------------------------------------------------------
 
-TranslatedStatement StatementBuilder::visit_branch(il::Branch& inst) {
+TranslatedStatement StatementBuilder::visit_branch(il::Branch& inst) { return translate_branch(BranchFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_branch(const BranchFacts& inst) {
     if (inst.target_block() == continue_target_) {
         continue_count_++;
-        return with_il_instruction(make<syntax::ContinueStatement>(), &inst);
+        return with_il_instruction(make<syntax::ContinueStatement>(), inst.self);
     }
     if (case_label_mapping_.has_value()) {
         auto found = case_label_mapping_->find(inst.target_block());
         if (found != case_label_mapping_->end()) {
             ConstantResolveResult* label = found->second;
-            if (label == nullptr) return with_il_instruction(make<syntax::GotoDefaultStatement>(), &inst);
+            if (label == nullptr) return with_il_instruction(make<syntax::GotoDefaultStatement>(), inst.self);
             auto* goto_case = make<syntax::GotoCaseStatement>();
             goto_case->set_label_expression(expr_builder().convert_constant_value(label, true));
-            return with_il_instruction(goto_case, &inst);
+            return with_il_instruction(goto_case, inst.self);
         }
     }
-    return with_il_instruction(make<syntax::GotoStatement>(ensure_unique_label(inst.target_block())), &inst);
+    return with_il_instruction(make<syntax::GotoStatement>(ensure_unique_label(inst.target_block())), inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_leave(il::Leave& inst) {
-    if (inst.target_container() == break_target_) return with_il_instruction(make<syntax::BreakStatement>(), &inst);
+TranslatedStatement StatementBuilder::visit_leave(il::Leave& inst) { return translate_leave(LeaveFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_leave(const LeaveFacts& inst) {
+    if (inst.target_container() == break_target_) return with_il_instruction(make<syntax::BreakStatement>(), inst.self);
     if (inst.target_container() == current_return_container) {
         if (current_is_iterator) {
-            return with_il_instruction(make<syntax::YieldBreakStatement>(), &inst);
-        } else if (!inst.value()->match_nop()) {
+            return with_il_instruction(make<syntax::YieldBreakStatement>(), inst.self);
+        } else if (inst.has_value()) {
             bool is_lambda_or_expr_tree =
                 current_function_->kind() == il::ILFunctionKind::ExpressionTree || current_function_->kind() == il::ILFunctionKind::Delegate;
             TranslatedExpression expr =
@@ -450,9 +597,9 @@ TranslatedStatement StatementBuilder::visit_leave(il::Leave& inst) {
                 expr = with_rr(cast, make<ConversionResolveResult>(current_result_type, expr.resolve_result, semantics::Conversion::identity_conversion()))
                            .without_il_instruction();
             }
-            return with_il_instruction(make<syntax::ReturnStatement>(expr), &inst);
+            return with_il_instruction(make<syntax::ReturnStatement>(expr), inst.self);
         } else {
-            return with_il_instruction(make<syntax::ReturnStatement>(), &inst);
+            return with_il_instruction(make<syntax::ReturnStatement>(), inst.self);
         }
     }
     std::string label;
@@ -471,7 +618,7 @@ TranslatedStatement StatementBuilder::visit_leave(il::Leave& inst) {
     } else {
         label = existing->second;
     }
-    return with_il_instruction(make<syntax::GotoStatement>(label), &inst);
+    return with_il_instruction(make<syntax::GotoStatement>(label), inst.self);
 }
 
 TranslatedStatement StatementBuilder::visit_throw(il::Throw& inst) {
@@ -481,7 +628,9 @@ TranslatedStatement StatementBuilder::visit_throw(il::Throw& inst) {
 
 TranslatedStatement StatementBuilder::visit_rethrow(il::Rethrow& inst) { return with_il_instruction(make<syntax::ThrowStatement>(), &inst); }
 
-TranslatedStatement StatementBuilder::visit_yield_return(il::YieldReturn& inst) {
+TranslatedStatement StatementBuilder::visit_yield_return(il::YieldReturn& inst) { return translate_yield_return(YieldReturnFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_yield_return(const YieldReturnFacts& inst) {
     const IType* element_type = current_function_->async_return_type;
     if (element_type == nullptr) {
         std::optional<bool> is_generic;
@@ -490,7 +639,7 @@ TranslatedStatement StatementBuilder::visit_yield_return(il::YieldReturn& inst) 
     TranslatedExpression expr = expr_builder().translate(inst.value(), element_type).convert_to(element_type, expr_builder(), false, true);
     auto* stmt = make<syntax::YieldReturnStatement>();
     stmt->set_expression(expr);
-    return with_il_instruction(stmt, &inst);
+    return with_il_instruction(stmt, inst.self);
 }
 
 // ---- try, lock --------------------------------------------------------------------------------------------------------------------
@@ -505,13 +654,15 @@ syntax::TryCatchStatement* StatementBuilder::make_try_catch(il::ILInstruction* t
     return try_catch;
 }
 
-TranslatedStatement StatementBuilder::visit_try_catch(il::TryCatch& inst) {
+TranslatedStatement StatementBuilder::visit_try_catch(il::TryCatch& inst) { return translate_try_catch(TryCatchFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_try_catch(const TryCatchFacts& inst) {
     auto* try_catch = make<syntax::TryCatchStatement>();
     try_catch->set_try_block(convert_as_block(inst.try_block()));
-    for (il::TryCatchHandler* handler : inst.handlers) {
+    for (const TryCatchFacts::Handler& handler : inst.handlers) {
         auto* catch_clause = make<syntax::CatchClause>();
-        catch_clause->add_annotation(handler);
-        il::ILVariable* v = handler->variable();
+        catch_clause->add_annotation(handler.self);
+        il::ILVariable* v = handler.variable();
         if (v != nullptr) {
             catch_clause->add_annotation(make<ILVariableResolveResult>(v, v->type()));
             if (v->store_count() > 1 || v->load_count() > 0 || v->address_count() > 0) {
@@ -521,20 +672,24 @@ TranslatedStatement StatementBuilder::visit_try_catch(il::TryCatch& inst) {
                 catch_clause->set_type(expr_builder().convert_type(v->type()));
             }
         }
-        if (!handler->filter()->match_ldc_i4(1)) catch_clause->set_condition(expr_builder().translate_condition(handler->filter()));
-        catch_clause->set_body(convert_as_block(handler->body()));
+        if (!handler.filter()->match_ldc_i4(1)) catch_clause->set_condition(expr_builder().translate_condition(handler.filter()));
+        catch_clause->set_body(convert_as_block(handler.body()));
         try_catch->catch_clauses().add(catch_clause);
     }
-    return with_il_instruction(try_catch, &inst);
+    return with_il_instruction(try_catch, inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_try_finally(il::TryFinally& inst) {
+TranslatedStatement StatementBuilder::visit_try_finally(il::TryFinally& inst) { return translate_try_finally(TryHandlerFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_try_finally(const TryHandlerFacts& inst) {
     syntax::TryCatchStatement* try_catch = make_try_catch(inst.try_block());
     try_catch->set_finally_block(convert_as_block(inst.finally_block()));
-    return with_il_instruction(try_catch, &inst);
+    return with_il_instruction(try_catch, inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_try_fault(il::TryFault& inst) {
+TranslatedStatement StatementBuilder::visit_try_fault(il::TryFault& inst) { return translate_try_fault(TryHandlerFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_try_fault(const TryHandlerFacts& inst) {
     auto* try_catch = make<syntax::TryCatchStatement>();
     try_catch->set_try_block(convert_as_block(inst.try_block()));
     syntax::BlockStatement* fault_block = convert_as_block(inst.fault_block());
@@ -544,22 +699,26 @@ TranslatedStatement StatementBuilder::visit_try_fault(il::TryFault& inst) {
     auto* catch_clause = make<syntax::CatchClause>();
     catch_clause->set_body(fault_block);
     try_catch->catch_clauses().add(catch_clause);
-    return with_il_instruction(try_catch, &inst);
+    return with_il_instruction(try_catch, inst.self);
 }
 
-TranslatedStatement StatementBuilder::visit_lock_instruction(il::LockInstruction& inst) {
+TranslatedStatement StatementBuilder::visit_lock_instruction(il::LockInstruction& inst) { return translate_lock(LockFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_lock(const LockFacts& inst) {
     auto* stmt = make<syntax::LockStatement>();
     stmt->set_expression(expr_builder().translate(inst.on_expression()));
     stmt->set_embedded_statement(convert_as_block(inst.body()));
-    return with_il_instruction(stmt, &inst);
+    return with_il_instruction(stmt, inst.self);
 }
 
 // ---- using and foreach -----------------------------------------------------------------------------------------------------------
 
-TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstruction& inst) {
+TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstruction& inst) { return translate_using(UsingFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_using(const UsingFacts& inst) {
     Expression* resource = expr_builder().translate(inst.resource_expression()).expression;
-    Statement* transformed = transform_to_foreach(&inst, resource);
-    if (transformed != nullptr) return with_il_instruction(transformed, &inst);
+    Statement* transformed = transform_to_foreach(inst.self, resource);
+    if (transformed != nullptr) return with_il_instruction(transformed, inst.self);
     AstNode* using_init = resource;
     il::ILVariable* var = inst.variable();
     KnownTypeCode known_type_code;
@@ -575,7 +734,7 @@ TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstructi
         dispose_type = compilation.find_type(KnownTypeCode::IDisposable);
         dispose_type_method_name = "Dispose";
     }
-    auto is_valid_in_csharp = [&](il::UsingInstruction* using_inst, KnownTypeCode code) {
+    auto is_valid_in_csharp = [&](const UsingFacts* using_inst, KnownTypeCode code) {
         if (using_inst->resource_expression()->match_ld_null()) return true;
         if (using_inst->is_ref_struct()) return true;
         for (const IType* b : typesystem::get_all_base_types(typesystem::nullable_type::get_underlying_type(var->type()))) {
@@ -618,7 +777,7 @@ TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstructi
         }
         try_catch->set_finally_block(finally_block);
         result->add(static_cast<Statement*>(try_catch));
-        return with_il_instruction(result, &inst);
+        return with_il_instruction(result, inst.self);
     } else {
         if (var->load_count() > 0 || var->address_count() > 0) {
             AstType* type = settings_->anonymous_types && contains_anonymous_type(var->type()) ? static_cast<AstType*>(make<syntax::SimpleType>("var"))
@@ -631,7 +790,7 @@ TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstructi
         using_stmt->set_resource_acquisition(using_init);
         using_stmt->set_is_async(inst.is_async());
         using_stmt->set_embedded_statement(convert_as_block(inst.body()));
-        return with_il_instruction(using_stmt, &inst);
+        return with_il_instruction(using_stmt, inst.self);
     }
 }
 
@@ -1115,7 +1274,9 @@ bool StatementBuilder::parent_is_current_getter(il::ILInstruction* inst) {
 
 // ---- fixed ------------------------------------------------------------------------------------------------------------------------
 
-TranslatedStatement StatementBuilder::visit_pinned_region(il::PinnedRegion& inst) {
+TranslatedStatement StatementBuilder::visit_pinned_region(il::PinnedRegion& inst) { return translate_pinned_region(PinnedRegionFacts::of(inst)); }
+
+TranslatedStatement StatementBuilder::translate_pinned_region(const PinnedRegionFacts& inst) {
     auto* fixed_stmt = make<syntax::FixedStatement>();
     fixed_stmt->set_type(expr_builder().convert_type(inst.variable()->type()));
     Expression* init_expr;
@@ -1161,13 +1322,18 @@ TranslatedStatement StatementBuilder::visit_pinned_region(il::PinnedRegion& inst
     with_il_variable(initializer, inst.variable());
     fixed_stmt->variables().add(initializer);
     fixed_stmt->set_embedded_statement(convert(inst.body()));
-    return with_il_instruction(fixed_stmt, &inst);
+    return with_il_instruction(fixed_stmt, inst.self);
 }
 
 // ---- blocks and containers -------------------------------------------------------------------------------------------------------
 
 TranslatedStatement StatementBuilder::visit_block(il::Block& block) {
     if (block.kind != il::BlockKind::ControlFlow) return default_visit(block);
+    return translate_block(BlockFacts{&block, block.final_instruction()->op_code != il::OpCode::Nop ? block.final_instruction() : nullptr});
+}
+
+TranslatedStatement StatementBuilder::translate_block(const BlockFacts& facts) {
+    il::Block& block = *facts.self;   // (its instructions are read as the foreach pattern changes them)
     // Block without container
     auto* block_statement = make<syntax::BlockStatement>();
     for (int i = 0; i < block.instructions.count(); i++) {
@@ -1177,12 +1343,19 @@ TranslatedStatement StatementBuilder::visit_block(il::Block& block) {
         }
         block_statement->add(convert(block.instructions[i]));
     }
-    if (block.final_instruction()->op_code != il::OpCode::Nop) block_statement->add(convert(block.final_instruction()));
+    if (facts.final_instruction != nullptr) block_statement->add(convert(facts.final_instruction));
     return with_il_instruction(block_statement, &block);
 }
 
 TranslatedStatement StatementBuilder::visit_block_container(il::BlockContainer& container) {
-    if (container.kind() != il::ContainerKind::Normal && container.entry_point()->incoming_edge_count() > 1) {
+    BlockContainerFacts facts{&container, container.kind() != il::ContainerKind::Normal && container.entry_point()->incoming_edge_count() > 1, nullptr};
+    if (container.entry_point()->instructions.count() == 1) facts.switch_inst = il::as<il::SwitchInstruction>(container.entry_point()->instructions[0]);
+    return translate_block_container(facts);
+}
+
+TranslatedStatement StatementBuilder::translate_block_container(const BlockContainerFacts& facts) {
+    il::BlockContainer& container = *facts.self;
+    if (facts.is_loop) {
         il::Block* old_continue_target = continue_target_;
         int old_continue_count = continue_count_;
         il::BlockContainer* old_break_target = break_target_;
@@ -1192,9 +1365,8 @@ TranslatedStatement StatementBuilder::visit_block_container(il::BlockContainer& 
         continue_count_ = old_continue_count;
         break_target_ = old_break_target;
         return with_il_instruction(loop, &container);
-    } else if (container.entry_point()->instructions.count() == 1 && il::is<il::SwitchInstruction>(container.entry_point()->instructions[0])) {
-        auto* switch_inst = static_cast<il::SwitchInstruction*>(container.entry_point()->instructions[0]);
-        return with_il_instruction(translate_switch(&container, switch_inst), &container);
+    } else if (facts.switch_inst != nullptr) {
+        return with_il_instruction(translate_switch(&container, facts.switch_inst), &container);
     } else {
         syntax::BlockStatement* block_stmt = convert_block_container(&container, false);
         return with_il_instruction(block_stmt, &container);

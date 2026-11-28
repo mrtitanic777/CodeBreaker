@@ -252,7 +252,10 @@ const typesystem::IParameter* CallBuilder::make_default_parameter(const IType* t
 CallBuilder::CallBuilder(ExpressionBuilder& expression_builder, const typesystem::ICompilation& type_system, const DecompilerSettings& settings)
     : settings_(settings), expression_builder_(expression_builder), resolver_(expression_builder.resolver), type_system_(type_system) {}
 
-TranslatedExpression CallBuilder::build(CallInstruction* inst, const IType* type_hint) {
+TranslatedExpression CallBuilder::build(CallInstruction* inst, const IType* type_hint) { return build(CallFacts::of(*inst), type_hint); }
+
+TranslatedExpression CallBuilder::build(const CallFacts& facts, const IType* type_hint) {
+    CallInstruction* inst = facts.self;   // (the patterns below match its operands)
     if (auto* newobj = il::as<NewObj>(inst)) {
         const IMethod* delegate_method = nullptr;
         il::ILInstruction* delegate_target = nullptr;
@@ -264,7 +267,7 @@ TranslatedExpression CallBuilder::build(CallInstruction* inst, const IType* type
     std::vector<il::ILInstruction*> tuple_elements;
     if (settings_.tuple_types && il::as<NewObj>(inst) != nullptr &&
         il::transforms::TupleTransform::match_tuple_construction(il::as<NewObj>(inst), &tuple_elements) && tuple_elements.size() >= 2) {
-        std::optional<std::vector<const IType*>> element_types = typesystem::TupleType::get_tuple_element_types(inst->method->declaring_type());
+        std::optional<std::vector<const IType*>> element_types = typesystem::TupleType::get_tuple_element_types(facts.method->declaring_type());
         std::vector<std::optional<std::string>> element_names;
         if (auto* tt = dynamic_cast<const typesystem::TupleType*>(type_hint)) element_names = tt->element_names();
         assert(element_types.has_value() && "MatchTupleConstruction should not succeed unless we got a valid tuple type.");
@@ -283,18 +286,18 @@ TranslatedExpression CallBuilder::build(CallInstruction* inst, const IType* type
             }
             element_rrs.push_back(translated_element.resolve_result);
         }
-        const typesystem::ITypeDefinition* tuple_definition = inst->method->declaring_type()->get_definition();
+        const typesystem::ITypeDefinition* tuple_definition = facts.method->declaring_type()->get_definition();
         return with_rr(tuple, make<TupleResolveResult>(*expression_builder_.compilation, element_rrs, element_names,
                                                        tuple_definition != nullptr ? tuple_definition->parent_module() : nullptr))
             .with_il_instruction(inst);
     }
     std::vector<std::pair<il::ILInstruction*, KnownTypeCode>> operands;
     if (settings_.string_concat && is_span_based_string_concat(inst, &operands)) {
-        return build_string_concat(inst->method, operands).with_il_instruction(inst);
+        return build_string_concat(facts.method, operands).with_il_instruction(inst);
     }
     TranslatedExpression result =
-        build(inst->op_code, inst->method, inst->arguments().items(), std::nullopt, inst->constrained_to).with_il_instruction(inst);
-    if (inst->is_tail) {
+        build(facts.op_code, facts.method, facts.arguments, std::nullopt, facts.constrained_to).with_il_instruction(inst);
+    if (facts.is_tail) {
         // Surface the IL 'tail.' prefix as an inline marker, e.g. '/*tail.*/Callee(x)'.
         // F# emits tail calls pervasively, and the prefix is otherwise dropped entirely.
         result.expression->add_leading_trivia(make<Comment>("tail.", CommentType::MultiLine));

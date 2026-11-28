@@ -1,6 +1,7 @@
 // dotnet/decompiler/csharp/csharp_decompiler.cpp -- see csharp_decompiler.hpp.
 #include "dotnet/decompiler/csharp/csharp_decompiler.hpp"
 
+#include <chrono>
 #include <algorithm>
 #include <cassert>
 #include <deque>
@@ -2156,6 +2157,8 @@ void CSharpDecompiler::decompile_body(const IMethod* method, EntityDeclaration* 
         il::transforms::ILTransformContext context(function, *type_system_, local_settings);
         context.cancellation_token = cancellation_token;
         context.decompile_run = &decompile_run;
+        if (l2_lane_ == nullptr) l2_lane_ = std::make_unique<L2Lane>();
+        const auto transforms_start = std::chrono::steady_clock::now();
         for (auto& transform : il_transforms_) {
             cancellation_token.throw_if_cancellation_requested();
             transform->run(function, context);
@@ -2165,28 +2168,17 @@ void CSharpDecompiler::decompile_body(const IMethod* method, EntityDeclaration* 
             if (!local_settings.decompile_member_bodies && dynamic_cast<il::control_flow::AsyncAwaitDecompiler*>(transform.get()) != nullptr) break;
         }
 
+        l2_lane_->transforms_time += std::chrono::steady_clock::now() - transforms_start;
         // Generate C# AST only if bodies should be displayed.
         if (local_settings.decompile_member_bodies) {
-            // Stage 14: the builders read the body as L2 (the ILAst lowered and lifted back, l2_body.hpp), and the lifted ILAst where they
-            // do not read a kind from L2 yet. The declaration's annotations then name the lifted function, and each parameter's the lifted
-            // variable where the function still has it (they were made before the transforms, as upstream makes them).
-            if (l2_lane_ == nullptr) l2_lane_ = std::make_unique<L2Lane>();
+            // Stage 14: the builders read the body as L2 (the ILAst lowered, each node linked to its instruction, l2_body.hpp), and the
+            // ILAst where they do not read a kind from L2 yet.
             std::unique_ptr<L2Body> l2 = L2Body::make(*function, *l2_lane_);
-            if (l2 != nullptr) {
-                il::ILFunction* original = function;
-                function = l2->function();
-                entity_decl->replace_annotation(original, function);
-                for (ParameterDeclaration* parameter : entity_decl->get_children(Slots::parameter)) {
-                    for (il::ArenaObject* a : parameter->annotations()) {
-                        auto* rr = dynamic_cast<ILVariableResolveResult*>(a);
-                        if (rr == nullptr) continue;
-                        if (il::ILVariable* now = l2->lifted(rr->variable)) rr->variable = now;
-                    }
-                }
-            }
             add_defines_for_conditional_attributes(function, decompile_run);
             StatementBuilder statement_builder(*type_system_, decompilation_context, function, local_settings, decompile_run, cancellation_token, l2.get());
+            const auto builders_start = std::chrono::steady_clock::now();
             body = statement_builder.convert_as_block(function->body());
+            l2_lane_->builders_time += std::chrono::steady_clock::now() - builders_start;
 
             Statement* warning_anchor = body->statements().first_or_null();
             for (const std::string& warning : function->warnings) {

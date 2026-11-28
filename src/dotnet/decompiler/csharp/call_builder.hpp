@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "dotnet/decompiler/csharp/annotations.hpp"
+#include "dotnet/decompiler/csharp/instruction_facts.hpp"
 #include "dotnet/decompiler/csharp/resolver/csharp_invocation_resolve_result.hpp"
 #include "dotnet/decompiler/csharp/resolver/csharp_resolver.hpp"
 #include "dotnet/decompiler/csharp/resolver/method_group_resolve_result.hpp"
@@ -54,6 +55,8 @@ public:
 
     // The C# of a call, newobj or delegate construction instruction (`type_hint` is the type the surroundings expect, for tuples).
     TranslatedExpression build(il::CallInstruction* inst, const IType* type_hint = nullptr);
+    // ... from its facts (read from the instruction or from its L2 node, stage 14).
+    TranslatedExpression build(const CallFacts& facts, const IType* type_hint = nullptr);
 
     // Whether the method is string.Concat(ReadOnlySpan<char>, ...): the C# compiler's translation of `a + b` on strings with spans.
     static bool is_span_based_string_concat(const typesystem::IMethod* method);

@@ -15,6 +15,7 @@
 #include "dotnet/decompiler/csharp/csharp_decompiler.hpp"
 #include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/decompiler_settings.hpp"
+#include "dotnet/decompiler/il/instruction_output_il.hpp"
 #include "dotnet/decompiler/metadata/universal_assembly_resolver.hpp"
 #include "dotnet/decompiler/typesystem/metadata_module.hpp"
 
@@ -100,6 +101,14 @@ CB_TEST("dotnet.decompiler.csharp.wip_dump", [] {
         std::ofstream(std::filesystem::path(*stats), std::ios::binary)
             << std::format("bodies {} refused {} from_l2 {} from_ilast {}\n", lane ? lane->bodies : 0, lane ? lane->refused : 0,
                            lane ? lane->from_l2 : 0, lane ? lane->from_ilast : 0);
+        if (lane != nullptr) {
+            std::ofstream by_op(std::filesystem::path(*stats), std::ios::binary | std::ios::app);
+            const auto ms = [](std::chrono::steady_clock::duration d) { return std::chrono::duration<double, std::milli>(d).count(); };
+            by_op << std::format("time transforms_ms {:.1f} lowering_ms {:.1f} builders_ms {:.1f}\n", ms(lane->transforms_time), ms(lane->lowering_time),
+                                 ms(lane->builders_time));
+            for (std::size_t op = 0; op < lane->from_ilast_by_op.size(); ++op)
+                if (lane->from_ilast_by_op[op] != 0) by_op << std::format("ilast {} {}\n", il::opcode_name(static_cast<il::OpCode>(op)), lane->from_ilast_by_op[op]);
+        }
     }
     if (!decompiler.errors().empty()) {
         std::cerr << "While decompiling " << *in << ":\n";
