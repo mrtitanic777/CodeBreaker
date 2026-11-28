@@ -1,7 +1,21 @@
 {
   "platform": "coleco",
-  "title": "ColecoVision cartridge",
+  "title": "ColecoVision",
   "description": "A cartridge as it sits from $8000, written from the start address and the vectors the BIOS jumps through (start, rst08 .. rst30, irq, nmi). The header ($AA55 / $55AA, the five table pointers, the title) is data, said in the head comment.",
+  "machine": {
+    "family": "z80",
+    "container": "cartridge image (.col)",
+    "cpu": {
+      "language": "z80:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "z80",
+      "registers": ["A", "F", "BC", "DE", "HL", "IX", "IY", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL", "IX", "IY"],
+    "toolchain": "CodeBreaker's own assembler, or sjasmplus / pasmo"
+  },
   "shape": "z80-block",
   "dialect": "sjasmplus",
   "ports": "ports",

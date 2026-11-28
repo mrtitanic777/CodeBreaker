@@ -166,19 +166,6 @@ Platform win32() {
     return p;
 }
 
-Platform zx() {
-    MachineSpec s;
-    s.name = "zx";
-    s.title = "ZX Spectrum";
-    s.family = "z80";
-    s.container = "snapshot or tape (.sna, .z80, .tap)";
-    s.cpu = {"z80:LE:16:default", 8, Endian::Little, OwnDecoder::Z80,
-             {"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"}, "SP"};
-    s.results = {"A", "F", "BC", "DE", "HL", "IX", "IY"};
-    s.toolchain = "CodeBreaker's own assembler, or sjasmplus / pasmo";
-    return machine(s);
-}
-
 // ---- the registry --------------------------------------------------------------------------------------------------------
 void Registry::add(Platform platform) {
     for (const Platform& p : platforms_)

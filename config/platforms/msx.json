@@ -1,7 +1,21 @@
 {
   "platform": "msx",
-  "title": "MSX cartridge",
+  "title": "MSX",
   "description": "A cartridge of up to 48 KB, written from its INIT, STATEMENT and DEVICE entries, with the MSX's I/O ports and BIOS entry points and system variables.",
+  "machine": {
+    "family": "z80",
+    "container": "cartridge image (.rom)",
+    "cpu": {
+      "language": "z80:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "z80",
+      "registers": ["A", "F", "BC", "DE", "HL", "IX", "IY", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL", "IX", "IY"],
+    "toolchain": "CodeBreaker's own assembler, or sjasmplus / pasmo"
+  },
   "shape": "z80-block",
   "dialect": "sjasmplus",
   "ports": "ports",

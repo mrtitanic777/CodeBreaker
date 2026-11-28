@@ -1,14 +1,10 @@
 // Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
-#include "platforms/coleco.hpp"
-#include "platforms/cpc.hpp"
-#include "platforms/gb.hpp"
 #include "platforms/gba.hpp"
 #include "platforms/genesis.hpp"
 #include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
 #include "platforms/ps1.hpp"
 #include "platforms/nes.hpp"
-#include "platforms/sms.hpp"
 
 #include "core/testing.hpp"
 
@@ -56,7 +52,7 @@ CB_TEST("platforms.nes.descriptor", [] {
 });
 
 CB_TEST("platforms.sms.descriptor", [] {
-    const Platform p = sms();
+    const Platform p = described("sms");
     check_machine(p, Id::Machine, "sms", "Master System / Game Gear", "z80", "cartridge image (.sms, .gg, .sg, .sc)");
     CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
     CB_CHECK_EQ(*p.cpu.bits, 8u);
@@ -68,7 +64,7 @@ CB_TEST("platforms.sms.descriptor", [] {
 });
 
 CB_TEST("platforms.gb.descriptor", [] {
-    const Platform p = gb();
+    const Platform p = described("gb");
     check_machine(p, Id::Machine, "gb", "Game Boy / Game Boy Color", "sm83", "cartridge image (.gb, .gbc)");
     CB_CHECK_EQ(p.cpu.language, "sm83:LE:16:default");
     CB_CHECK_EQ(*p.cpu.bits, 8u);
@@ -122,8 +118,8 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     };
     Registry registry;
     registry.add(taking(nes(), ".nes"));
-    registry.add(taking(sms(), ".sms"));
-    registry.add(taking(gb(), ".gb"));
+    registry.add(taking(described("sms"), ".sms"));
+    registry.add(taking(described("gb"), ".gb"));
     registry.add(taking(genesis(), ".md"));
     registry.add(taking(ps1(), ".psx"));
     registry.add(taking(gba(), ".gba"));
@@ -154,7 +150,7 @@ CB_TEST("platforms.gba.descriptor", [] {
 });
 
 CB_TEST("platforms.coleco.descriptor", [] {
-    const Platform p = coleco();
+    const Platform p = described("coleco");
     check_machine(p, Id::Machine, "coleco", "ColecoVision", "z80", "cartridge image (.col)");
     CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
     CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Z80);
@@ -164,7 +160,7 @@ CB_TEST("platforms.coleco.descriptor", [] {
 });
 
 CB_TEST("platforms.cpc.descriptor", [] {
-    const Platform p = cpc();
+    const Platform p = described("cpc");
     check_machine(p, Id::Machine, "cpc", "Amstrad CPC", "z80", "disk (.dsk), snapshot (.sna), AMSDOS binary (.bin)");
     CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
     CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Z80);

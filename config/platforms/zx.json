@@ -1,13 +1,30 @@
 {
   "platform": "zx",
-  "title": "ZX Spectrum program",
+  "title": "ZX Spectrum",
   "description": "A tape's code block or a 48K snapshot's program, written from the USR calls, the snapshot's PC and an IM 2 handler, with the ULA port, the ROM routines and the system variables by name.",
+  "machine": {
+    "family": "z80",
+    "container": "snapshot or tape (.sna, .z80, .tap)",
+    "cpu": {
+      "language": "z80:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "z80",
+      "registers": ["A", "F", "BC", "DE", "HL", "IX", "IY", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL", "IX", "IY"],
+    "toolchain": "CodeBreaker's own assembler, or sjasmplus / pasmo"
+  },
   "shape": "z80-block",
   "dialect": "sjasmplus",
   "ports": "ports",
   "fixed": "firmware",
   "head": [
     "ZX Spectrum {kind} {file}; {size} bytes at ${origin:04X}",
-    {"line": "registers at the snapshot: A={a:02X} B={b:02X} C={c:02X} D={d:02X} E={e:02X} F={f:02X} H={h:02X} I={i:02X} IM={im:02X} IX={ix:04X} IY={iy:04X} L={l:02X} SP={sp:04X}", "when": "registers"}
+    {
+      "line": "registers at the snapshot: A={a:02X} B={b:02X} C={c:02X} D={d:02X} E={e:02X} F={f:02X} H={h:02X} I={i:02X} IM={im:02X} IX={ix:04X} IY={iy:04X} L={l:02X} SP={sp:04X}",
+      "when": "registers"
+    }
   ]
 }

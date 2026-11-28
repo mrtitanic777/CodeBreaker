@@ -2,13 +2,11 @@
 
 #include <set>
 
+#include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "platforms/dos.hpp"
 #include "platforms/java.hpp"
-#include "platforms/msx.hpp"
-#include "platforms/coleco.hpp"
-#include "platforms/cpc.hpp"
 
 // Behaviour pinned here:
 //   * a descriptor is data: other areas' pieces (the opener, the runner, the compiler, the writer ...) are not carried --
@@ -265,8 +263,13 @@ CB_TEST("platforms.package.small_descriptors", [] {
     CB_CHECK(*j.convention.pops == Pops::Callee);
 });
 
+CB_TEST("platforms.package.a_machine_described_as_data_needs_its_file", [] {
+    CB_CHECK_THROWS_AS(UsageError, described("no-such-machine"));   // (config/platforms/<name>.json)
+    CB_CHECK_EQ(described("gb").title, "Game Boy / Game Boy Color");
+});
+
 CB_TEST("platforms.package.machine_platforms", [] {
-    const Platform m = msx();       // harvested
+    const Platform m = described("msx");       // harvested
     CB_CHECK_EQ(m.name, "msx");
     CB_CHECK_EQ(m.title, "MSX");
     CB_CHECK_EQ(m.family, "z80");
@@ -288,7 +291,7 @@ CB_TEST("platforms.package.machine_platforms", [] {
     CB_CHECK(*m.compiler.language == Language::Asm);
     CB_CHECK_EQ(m.compiler.toolchain, "CodeBreaker's own assembler, or sjasmplus / pasmo");
 
-    const Platform z = zx();
+    const Platform z = described("zx");
     CB_CHECK_EQ(z.title, "ZX Spectrum");
     CB_CHECK_EQ(z.loader.container, "snapshot or tape (.sna, .z80, .tap)");
     // machine() with the default toolchain

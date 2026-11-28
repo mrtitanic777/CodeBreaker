@@ -149,11 +149,16 @@ struct MachineSpec {
 };
 Platform machine(const MachineSpec& spec);
 
-// The descriptors this module holds (the others are in their own files: dos, msx, java, win16, vxd, nes, sms, gb, genesis, ps1, gba).
+// The descriptors this module holds (the others are in their own files: dos, java, win16, vxd, nes, genesis, ps1, gba ...).
 Platform xbox360();   // PowerPC code (Xenon) in a big-endian PE image inside a XEX2 container
 Platform xbe();       // the original Xbox: x86 code in an XBE (it goes down the 32-bit Windows lane as a PE image)
 Platform win32();     // PE images for the 386 and later (machine type 0x14C)
-Platform zx();        // the ZX Spectrum: Z80 programs in snapshots and on tapes
+
+// A machine described as data (platforms/described.cpp): config/platforms/<name>.json, the one file a console is described in, gives its
+// title and, in its "machine" section, the family, the container, the processor (SLEIGH language, bits, endian, decoder, registers, stack),
+// the registers a run is compared on and the toolchain; machine() makes the descriptor. The Game Boy, Master System, ZX Spectrum, MSX,
+// ColecoVision and Amstrad CPC are described so. UsageError when there is no such file or it has no "machine" section.
+Platform described(std::string_view name);
 
 // ---- recognising a file ------------------------------------------------------------------------------------------
 // The class of an executable by its header.

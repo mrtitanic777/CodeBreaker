@@ -20,16 +20,11 @@
 #include "formats/read.hpp"
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
-#include "platforms/coleco.hpp"
-#include "platforms/cpc.hpp"
-#include "platforms/gb.hpp"
 #include "platforms/gba.hpp"
 #include "platforms/genesis.hpp"
-#include "platforms/msx.hpp"
 #include "platforms/nes.hpp"
 #include "platforms/package.hpp"
 #include "platforms/ps1.hpp"
-#include "platforms/sms.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -107,7 +102,7 @@ void register_nes_lane() {
 void register_sms_lane() {
     register_lane({
         .name = "sms",
-        .platform = platforms::sms,
+        .platform = [] { return platforms::described("sms"); },
         .probe = [](const std::filesystem::path& p) { return formats::sms::probe(p); },
         .program_extensions = {".sms", ".gg", ".sg"},
     });
@@ -116,7 +111,7 @@ void register_sms_lane() {
 void register_gb_lane() {
     register_lane({
         .name = "gb",
-        .platform = platforms::gb,
+        .platform = [] { return platforms::described("gb"); },
         .probe = [](const std::filesystem::path& p) { return formats::gb::probe(p); },
         .program_extensions = {".gb", ".gbc"},
     });
@@ -153,7 +148,7 @@ void register_gba_lane() {
 void register_zx_lane() {
     register_lane({
         .name = "zx",
-        .platform = platforms::zx,
+        .platform = [] { return platforms::described("zx"); },
         .probe = [](const std::filesystem::path& p) { return formats::zx::probe(p); },
         .program_extensions = {".sna", ".z80", ".tap"},
     });
@@ -162,7 +157,7 @@ void register_zx_lane() {
 void register_msx_lane() {
     register_lane({
         .name = "msx",
-        .platform = platforms::msx,
+        .platform = [] { return platforms::described("msx"); },
         .probe = [](const std::filesystem::path& p) { return formats::msx::probe(p); },
     });
 }
@@ -170,7 +165,7 @@ void register_msx_lane() {
 void register_coleco_lane() {
     register_lane({
         .name = "coleco",
-        .platform = platforms::coleco,
+        .platform = [] { return platforms::described("coleco"); },
         .probe = [](const std::filesystem::path& p) { return formats::coleco::probe(p); },
     });
 }
@@ -178,7 +173,7 @@ void register_coleco_lane() {
 void register_cpc_lane() {
     register_lane({
         .name = "cpc",
-        .platform = platforms::cpc,
+        .platform = [] { return platforms::described("cpc"); },
         .probe = [](const std::filesystem::path& p) { return formats::cpc::probe(p); },
     });
 }

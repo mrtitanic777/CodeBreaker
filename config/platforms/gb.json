@@ -1,7 +1,21 @@
 {
   "platform": "gb",
-  "title": "Game Boy / Game Boy Color cartridge",
+  "title": "Game Boy / Game Boy Color",
   "description": "A cartridge of 16 KB banks: bank 0 at $0000 and bank 1 at $4000 at power-on, where flow is followed from the entry and the interrupt vectors, around the header at $0104-$014F, which is data with its fields named. I/O and bank-controller registers in hardware.inc's spelling, written in RGBDS.",
+  "machine": {
+    "family": "sm83",
+    "container": "cartridge image (.gb, .gbc)",
+    "cpu": {
+      "language": "sm83:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "sm83",
+      "registers": ["A", "F", "BC", "DE", "HL", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL"],
+    "toolchain": "CodeBreaker's own assembler, or RGBDS"
+  },
   "shape": "banked",
   "dialect": "rgbds",
   "head": [
@@ -16,7 +30,9 @@
     "slots": ["0x0000", "0x4000"],
     "power_on": "0x8000",
     "bank_blocks": ["rom0", "romx"],
-    "data": [["0x0104", "0x0150"]],
+    "data": [
+      ["0x0104", "0x0150"]
+    ],
     "data_floor": "0x0150",
     "no_data_labels": ["LD (nn)"],
     "header_fields": [

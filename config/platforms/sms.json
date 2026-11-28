@@ -1,7 +1,21 @@
 {
   "platform": "sms",
-  "title": "Master System / Game Gear / SG-1000 cartridge",
+  "title": "Master System / Game Gear",
   "description": "A cartridge of 16 KB pages: pages 0-2 in slots 0-2 at power-on, where flow is followed from the reset, IRQ and NMI vectors. The VDP, PSG and controller ports and the mapper's registers by name (the Game Gear's own ports for a Game Gear; the SG-1000 has no mapper, memory control, I/O control or V counter, and its SC-3000 8255 at $DC-$DF), written in WLA-DX.",
+  "machine": {
+    "family": "z80",
+    "container": "cartridge image (.sms, .gg, .sg, .sc)",
+    "cpu": {
+      "language": "z80:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "z80",
+      "registers": ["A", "F", "BC", "DE", "HL", "IX", "IY", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL", "IX", "IY"],
+    "toolchain": "CodeBreaker's own assembler, or WLA-DX"
+  },
   "shape": "banked",
   "dialect": "wla-dx",
   "head": [
@@ -29,8 +43,16 @@
     "variants": {
       "by": "system",
       "each": {
-        "Game Gear": {"hardware": [{"section": "game_gear_ports", "as": "port", "digits": 2}]},
-        "SG-1000": {"constants": false, "drop_ports": ["0x3E", "0x3F", "0x7E"], "add_ports": {"PPI_C": "0xDE", "PPI_CONTROL": "0xDF"}}
+        "Game Gear": {
+          "hardware": [
+            {"section": "game_gear_ports", "as": "port", "digits": 2}
+          ]
+        },
+        "SG-1000": {
+          "constants": false,
+          "drop_ports": ["0x3E", "0x3F", "0x7E"],
+          "add_ports": {"PPI_C": "0xDE", "PPI_CONTROL": "0xDF"}
+        }
       }
     }
   }

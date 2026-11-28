@@ -1,13 +1,30 @@
 {
   "platform": "cpc",
-  "title": "Amstrad CPC program",
+  "title": "Amstrad CPC",
   "description": "An AMSDOS binary, a disk's binary file or a snapshot's program, written from its entry with the firmware's jumpblock by name.",
+  "machine": {
+    "family": "z80",
+    "container": "disk (.dsk), snapshot (.sna), AMSDOS binary (.bin)",
+    "cpu": {
+      "language": "z80:LE:16:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "z80",
+      "registers": ["A", "F", "BC", "DE", "HL", "IX", "IY", "SP"],
+      "stack": "SP"
+    },
+    "results": ["A", "F", "BC", "DE", "HL", "IX", "IY"],
+    "toolchain": "CodeBreaker's own assembler, or sjasmplus / pasmo"
+  },
   "shape": "z80-block",
   "dialect": "sjasmplus",
   "fixed": "firmware",
   "head": [
     "Amstrad CPC {kind} {file}{disk? (file {name})|}; {size} bytes at ${origin:04X}",
     {"line": "disk file: {it}", "each": "files"},
-    {"line": "registers at the snapshot: A={a:02X} B={b:02X} C={c:02X} D={d:02X} E={e:02X} F={f:02X} H={h:02X} I={i:02X} IM={im:02X} IX={ix:04X} IY={iy:04X} L={l:02X} SP={sp:04X} PC={pc:04X}", "when": "registers"}
+    {
+      "line": "registers at the snapshot: A={a:02X} B={b:02X} C={c:02X} D={d:02X} E={e:02X} F={f:02X} H={h:02X} I={i:02X} IM={im:02X} IX={ix:04X} IY={iy:04X} L={l:02X} SP={sp:04X} PC={pc:04X}",
+      "when": "registers"
+    }
   ]
 }
