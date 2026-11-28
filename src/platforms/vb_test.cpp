@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/vb.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.vb.descriptor", [] {
-    const Platform p = vb();
+    const Platform p = described("vb");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "vb");
     CB_CHECK_EQ(p.title, "Nintendo Virtual Boy");

@@ -11,9 +11,10 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_v810.hpp"
 #include "formats/read.hpp"
-#include "platforms/vb.hpp"
 #include "formats/vb.hpp"
-#include "source/vb_writer.hpp"
+#include "knowledge/package.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -64,8 +65,9 @@ vl::State vb_state(int a, int b, int c, int d, int fill) { return {{"a", a}, {"b
 
 // A register of the machine's devices by name, else its address.
 std::string place(std::uint32_t address) {
-    const auto it = source::vb_writer::hardware().find(address);
-    return it != source::vb_writer::hardware().end() ? it->second : std::format("{:08X}", address);
+    static const source::image_writer::Names hardware = knowledge::standard().hardware_names("vb", "hardware");   // (config/knowledge/vb/registers.json)
+    const auto it = hardware.find(address);
+    return it != hardware.end() ? it->second : std::format("{:08X}", address);
 }
 
 vl::Effects vb_effects(const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
@@ -117,7 +119,7 @@ vl::Effects vb_effects(const stdfs::path& path, std::uint32_t entry, const vl::S
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::vb_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("vb", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -149,7 +151,7 @@ vl::ImageLaneSpec vb_lane_spec() {
 void register_vb_lane() {
     register_lane({
         .name = "vb",
-        .platform = platforms::vb,
+        .platform = [] { return platforms::described("vb"); },
         .probe = [](const stdfs::path& p) { return formats::vb::probe(p); },
         .make_spec = vb_lane_spec,
         .detectors = {{.priority = 340, .detect = formats::detect::info_vb}},

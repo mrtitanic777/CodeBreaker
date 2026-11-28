@@ -1,8 +1,11 @@
 // cb-unity: alone
-// source/vb_writer.cpp -- a Virtual Boy cartridge as V810 source that builds back into it (vb_writer.hpp).
+// source/console_v810.cpp -- the console writer's `vectored` shape for a V810 program (console_writer.hpp): the Virtual Boy, its ROM written as
+// V810 source at the top of its window. Code is what flow reaches from the loader's entries (the reset and interrupt vectors); a jump through a
+// register just loaded with `movhi` / `movea` is followed. An address the code builds with `movhi` and the instruction that completes it is
+// written `hi(name)` / `lo(name)` over a label of the ROM or a hardware register's name (an `.equ`), when that text assembles back to the
+// same bytes; an instruction whose text would not is its bytes. The header is written field by field, as the description lists them.
 
-#include "source/vb_writer.hpp"
-#include "knowledge/package.hpp"
+#include "source/console_shapes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,13 +13,15 @@
 #include <set>
 
 #include "build/asm_text.hpp"
+#include "core/error.hpp"
 #include "core/fs.hpp"
 #include "decompile/v810.hpp"
+#include "knowledge/package.hpp"
 #include "source/described_source.hpp"
 #include "source/dialect.hpp"
 #include "source/processors.hpp"
 
-namespace cb::source::vb_writer {
+namespace cb::source::console_writer::v810_code {
 
 namespace dv = decompile::v810;
 namespace iw = image_writer;
@@ -85,14 +90,14 @@ std::optional<std::string> with_immediate(const dv::Insn& insn, const std::strin
 
 class VbFlow final : public iw::CodeModel<dv::Insn> {
 public:
-    explicit VbFlow(const formats::vb::Rom& rom) : rom_(rom) {}
+    VbFlow(ByteView rom, std::uint32_t base) : rom_(rom), base_(base) {}
 
     std::optional<dv::Insn> decode(std::uint32_t pc) const override {
         if (!inside(pc)) return std::nullopt;
-        const std::size_t offset = pc - formats::vb::kBase;
-        std::optional<dv::Insn> insn = dv::decode(rom_.data, offset, pc);
+        const std::size_t offset = pc - base_;
+        std::optional<dv::Insn> insn = dv::decode(rom_, offset, pc);
         if (insn && insn->id == dv::id::kJmp && insn->r1 != 31 && offset >= 8) {   // movhi / movea / jmp [reg]: a jump to a constant address
-            const std::optional<dv::Insn> hi = dv::decode(rom_.data, offset - 8, pc - 8), lo = dv::decode(rom_.data, offset - 4, pc - 4);
+            const std::optional<dv::Insn> hi = dv::decode(rom_, offset - 8, pc - 8), lo = dv::decode(rom_, offset - 4, pc - 4);
             if (hi && lo && hi->id == dv::id::kMovhi && hi->r1 == 0 && hi->r2 == insn->r1 && lo->id == dv::id::kMovea && lo->r1 == insn->r1 && lo->r2 == insn->r1) {
                 insn->target = (static_cast<std::uint32_t>(hi->imm) << 16) + static_cast<std::uint32_t>(lo->imm);
                 insn->flow = dv::Flow::Jump;
@@ -102,8 +107,8 @@ public:
     }
     std::uint32_t size(const dv::Insn& insn) const override { return insn.size; }
     std::optional<std::uint32_t> target(const dv::Insn& insn) const override { return insn.target; }
-    bool inside(std::uint32_t pc) const override { return pc >= formats::vb::kBase && pc - formats::vb::kBase < rom_.data.size() && (pc & 1) == 0; }
-    bool fits(std::uint32_t pc, const dv::Insn& insn) const override { return pc - formats::vb::kBase + insn.size <= rom_.data.size(); }
+    bool inside(std::uint32_t pc) const override { return pc >= base_ && pc - base_ < rom_.size() && (pc & 1) == 0; }
+    bool fits(std::uint32_t pc, const dv::Insn& insn) const override { return pc - base_ + insn.size <= rom_.size(); }
     bool follows(const dv::Insn& insn) const override {
         return insn.target && inside(*insn.target) && (insn.flow == dv::Flow::Branch || insn.flow == dv::Flow::Jump || insn.flow == dv::Flow::Call);
     }
@@ -114,17 +119,19 @@ public:
     bool starts_function(const dv::Insn& insn) const override { return insn.flow == dv::Flow::Call; }
 
 private:
-    const formats::vb::Rom& rom_;
+    ByteView rom_;
+    std::uint32_t base_;
 };
 
+// One ROM written as lines; the header field by field (the description's fields, at the loader's `header_at`), when no code lies in it.
 class VbListing final : public iw::Listing<dv::Insn> {
 public:
-    VbListing(translate::l2::Assembly& out, const formats::vb::Rom& rom, const std::map<std::uint32_t, dv::Insn>& code, const std::map<std::uint32_t, std::string>& text,
-              bool header_is_data)
-        : out_(out), rom_(rom), code_(code), text_(text), header_is_data_(header_is_data) {}
+    VbListing(translate::l2::Assembly& out, const Vectored& shape, const Loaded& program, std::uint32_t base, const std::map<std::uint32_t, dv::Insn>& code,
+              const std::map<std::uint32_t, std::string>& text, std::optional<std::size_t> header_at)
+        : out_(out), shape_(shape), program_(program), base_(base), code_(code), text_(text), header_at_(header_at) {}
 
-    std::uint8_t byte(std::uint32_t offset) const override { return rom_.data[offset]; }
-    std::uint32_t address(std::uint32_t offset) const override { return rom_.address(offset); }
+    std::uint8_t byte(std::uint32_t offset) const override { return program_.image[offset]; }
+    std::uint32_t address(std::uint32_t offset) const override { return base_ + offset; }
     const dv::Insn* code_at(std::uint32_t, std::uint32_t address) const override {
         const auto it = code_.find(address);
         return it == code_.end() ? nullptr : &it->second;
@@ -135,53 +142,49 @@ public:
 
     // The header: title, reserved bytes, maker, game code, version.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
-        if (!header_is_data_ || offset != rom_.header_offset()) return 0;
+        if (!header_at_ || offset != *header_at_) return 0;
         flush();
-        const ByteView d = ByteView(rom_.data).subspan(offset, 0x20);
-        const auto field = [&](std::size_t at, std::size_t n, const char* what) {
-            const ByteView f = d.subspan(at, n);
-            if (printable(f)) {
-                out_.append(std::format("        .ascii \"{}\"  ; {}", std::string(reinterpret_cast<const char*>(f.data()), f.size()), what));
+        std::uint32_t took = 0;
+        for (const VectorField& f : shape_.fields) {
+            const ByteView part = ByteView(program_.image).subspan(offset + f.at, f.size);
+            if (f.as == "byte") {
+                out_.append(std::format("        .byte {}  ; {}", hex8(part[0]), f.what));
+            } else if (f.as == "text" && printable(part)) {
+                out_.append(std::format("        .ascii \"{}\"  ; {}", std::string(reinterpret_cast<const char*>(part.data()), part.size()), f.what));
             } else {
-                out_.extend(iw::commented(described_source::data_lines(f), what));
+                out_.extend(iw::commented(described_source::data_lines(part), f.what));
             }
-        };
-        field(0, 20, "title");
-        out_.extend(iw::commented(described_source::data_lines(d.subspan(20, 5)), "reserved"));
-        field(25, 2, "maker");
-        field(27, 4, "game code");
-        out_.append(std::format("        .byte {}  ; version", hex8(d[31])));
-        return 0x20;
+            took = std::max(took, f.at + f.size);
+        }
+        return took;
     }
 
 private:
     translate::l2::Assembly& out_;
-    const formats::vb::Rom& rom_;
+    const Vectored& shape_;
+    const Loaded& program_;
+    std::uint32_t base_;
     const std::map<std::uint32_t, dv::Insn>& code_;
     const std::map<std::uint32_t, std::string>& text_;
-    bool header_is_data_;
+    std::optional<std::size_t> header_at_;
 };
 
 }  // namespace
 
-const std::map<std::uint32_t, std::string>& hardware() {
-    // config/knowledge/vb/registers.json
-    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("vb", "hardware");
-    return table;
-}
-
-iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const std::filesystem::path& folder) {
-    namespace vb = formats::vb;
+image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder) {
+    const Vectored& shape = d.vectored;
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-    const VbFlow flow(rom);
-    iw::Names names;
-    std::vector<std::uint32_t> entries;
-    for (const vb::Rom::Entry& e : rom.entries()) {
-        const std::uint32_t a = rom.address(e.offset);
-        entries.push_back(a);
-        names.try_emplace(a, e.name == "reset" ? std::string("reset") : "vector_" + std::string(e.name));
-    }
+    const std::string stem = std::get<std::string>(values.at("stem"));
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    if (program.segments.pieces.empty()) throw UsageError(std::format("console platform {}: the loader gives no program piece", d.name));
+    const Piece& rom_piece = program.segments.pieces.front();
+    const ByteView image = program.image;
+    const std::uint32_t rom_base = rom_piece.address;
+    const auto address_of = [&](std::size_t offset) { return rom_base + static_cast<std::uint32_t>(offset); };
+    const iw::Names hardware = knowledge::standard().hardware_names(d.platform, shape.registers);
+    const VbFlow flow(image, rom_base);
+    iw::Names names = program.entries;
+    const std::vector<std::uint32_t>& entries = program.starts;
     const iw::Walked<dv::Insn> walked = iw::walk<dv::Insn>(flow, entries);
     const std::map<std::uint32_t, dv::Insn>& code = walked.code;
     const iw::Functions functions = iw::name_functions(walked.starts, names, kSub);
@@ -189,7 +192,7 @@ iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const
     for (const auto& [at, insn] : code) {
         for (std::uint32_t a = at + 1; a < at + insn.size; ++a) inside_insn.insert(a);
     }
-    const auto line_start = [&](std::uint32_t a) { return a >= vb::kBase && a - vb::kBase < rom.data.size() && !inside_insn.contains(a); };
+    const auto line_start = [&](std::uint32_t a) { return a >= rom_base && a - rom_base < image.size() && !inside_insn.contains(a); };
     iw::Names labels = iw::make_labels(walked.targets, names, line_start, kLocal);
 
     // constants the code builds with movhi and a completing instruction, that are the address of something named
@@ -200,7 +203,7 @@ iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const
         };
         std::array<std::optional<Known>, 32> known;
         std::uint32_t expected = 0;
-        const auto named = [&](std::uint32_t v) { return hardware().contains(v) || (line_start(v) && v >= vb::kBase); };
+        const auto named = [&](std::uint32_t v) { return hardware.contains(v) || (line_start(v) && v >= rom_base); };
         for (const auto& [at, insn] : code) {
             if (at != expected || labels.contains(at)) known = {};
             expected = at + insn.size;
@@ -230,12 +233,12 @@ iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const
     // the labels those constants name
     std::set<std::uint32_t> used;
     for (const AddressPair& p : pairs) {
-        if (hardware().contains(p.value)) used.insert(p.value);
+        if (hardware.contains(p.value)) used.insert(p.value);
         else labels.try_emplace(p.value, kData(p.value));
     }
     decompile::AddressLabels address_labels;
     for (const auto& [a, n] : labels) address_labels[a] = n;
-    for (const std::uint32_t a : used) address_labels[a] = hardware().at(a);
+    for (const std::uint32_t a : used) address_labels[a] = hardware.at(a);
 
     // each instruction as the description's text, a jump, branch or call target written as its label, a constant's halves as hi(name) / lo(name),
     // or as bytes when the text would not assemble back to them
@@ -268,7 +271,7 @@ iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const
         const auto half = halves.find(at);
         if (half != halves.end()) {
             instruction_text[at] = half->second.first;
-            if (hardware().contains(half->second.second)) equates.insert(half->second.second);
+            if (hardware.contains(half->second.second)) equates.insert(half->second.second);
             continue;
         }
         std::optional<std::string> t = described_source::checked_text(v810_cpu(), insn.bytes(), at, insn.size);
@@ -283,37 +286,29 @@ iw::Written write(const formats::vb::Rom& rom, std::string_view file_name, const
         instruction_text[at] = described_source::byte_line(v810_cpu(), insn.bytes(), at, {}, "");
     }
 
-    const std::size_t header_at = rom.header_offset();
+    const std::size_t header_at = static_cast<std::size_t>(std::get<std::int64_t>(values.at("header_at")));
+    std::uint32_t header_size = 0;
+    for (const VectorField& f : shape.fields) header_size = std::max(header_size, f.at + f.size);
     bool header_is_data = true;
-    for (std::size_t k = 0; k < 0x20; ++k) {
-        const std::uint32_t a = rom.address(header_at + k);
+    for (std::size_t k = 0; k < header_size; ++k) {
+        const std::uint32_t a = address_of(header_at + k);
         if (code.contains(a) || inside_insn.contains(a)) header_is_data = false;
     }
 
-    translate::l2::Assembly out({std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                 std::format("; Virtual Boy cartridge, {} bytes, \"{}\", reset at 0x{:08X}", rom.data.size(), rom.header.title, rom.reset_address()), ""},
-                                "v810", std::string(file_name));
-    for (const std::uint32_t a : equates) out.append(std::format(".equ {}, 0x{:08x}", hardware().at(a), a));
+    const dialect::Dialect& said = dialect::find(d.dialect);
+    translate::l2::Assembly out(head_comment(d, values), shape.assembler.empty() ? d.dialect : shape.assembler, file_name);
+    for (const std::uint32_t a : equates) out.append(std::format(".equ {}, 0x{:08x}", hardware.at(a), a));
     if (!equates.empty()) out.append("");
-    out.part("ROM", "segment", std::nullopt, rom.data.size());
-    out.append(std::format("        .org 0x{:08x}", vb::kBase));
-    VbListing listing(out, rom, code, instruction_text, header_is_data);
-    iw::emit<dv::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
+    out.part(rom_piece.segment, "segment", std::nullopt, image.size());
+    out.append(std::format("        .org 0x{:08x}", rom_base));
+    VbListing listing(out, shape, program, rom_base, code, instruction_text, header_is_data ? std::optional<std::size_t>(header_at) : std::nullopt);
+    iw::emit<dv::Insn>(out, 0, static_cast<std::uint32_t>(image.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = dialect::find("v810").print(iw::text(out) + "\n");   // (said as a V810 assembler does: config/dialects/v810.json)
-    iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(
-        r,
-        [&] {
-            return described_source::assemble(v810_cpu(), dialect::find("v810").parse(source), folder);
-        },
-        rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    const std::string source = said.print(iw::text(out) + "\n");   // (said as a V810 assembler does: config/dialects/v810.json)
+    iw::Written r = iw::finish(folder, stem + "." + shape.source, source, functions, iw::code_bytes(code, flow), program.segments.measured);
+    iw::assembled(r, [&] { return described_source::assemble(v810_cpu(), said.parse(source), folder); }, image, folder / fill(shape.built, values));
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& rom_file, const std::filesystem::path& folder) {
-    return write(formats::vb::read(rom_file), rom_file.filename().string(), folder);
-}
-
-}  // namespace cb::source::vb_writer
+}  // namespace cb::source::console_writer::v810_code

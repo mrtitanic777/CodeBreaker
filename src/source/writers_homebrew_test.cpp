@@ -12,7 +12,6 @@
 #include "source/psp_writer.hpp"
 #include "source/saturn_writer.hpp"
 #include "source/sega32x_writer.hpp"
-#include "source/vb_writer.hpp"
 #include "source/vita_writer.hpp"
 
 namespace cb::source {
@@ -163,7 +162,7 @@ CB_TEST("source.writers.homebrew.playstation_2_and_portable", [] {
 CB_TEST("source.writers.homebrew.playstation_vita", [] { rebuild("vita/eboot_safe.bin", 80, vita_writer::reconstruct); });
 
 // (the Virtual Boy's V810: hi(name) / lo(name) for the halves of an address)
-CB_TEST("source.writers.homebrew.virtual_boy", [] { rebuild("vb/multi-color/Multi Color Demo.vb", 1, vb_writer::reconstruct); });
+CB_TEST("source.writers.homebrew.virtual_boy", [] { rebuild("vb/multi-color/Multi Color Demo.vb", 1, console("vb")); });
 
 // (the 3DS's ARM11: a 3DSX is large, so the one test is the smallest)
 CB_TEST("source.writers.homebrew.nintendo_3ds", [] { rebuild("3ds/FBI.3dsx", 1000, n3ds_writer::reconstruct); });

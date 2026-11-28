@@ -1,0 +1,36 @@
+{
+  "platform": "vb",
+  "title": "Nintendo Virtual Boy",
+  "description": "A cartridge ROM at $07000000 written as V810 source: flow from the reset slot and the interrupt vectors that hold code, the addresses the code builds with movhi as hi(name)/lo(name) over labels and the VIP's, VSU's and hardware control registers' names, the header (title, reserved, maker, game code, version) field by field.",
+  "machine": {
+    "family": "V810",
+    "container": "cartridge (.vb, .vboy)",
+    "cpu": {"language": "V810:LE:32:default", "bits": 32, "endian": "little", "decoder": "v810",
+            "registers": ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20",
+                          "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31", "PSW"], "stack": "r3"},
+    "results": ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20",
+                "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31", "PSW"],
+    "toolchain": "CodeBreaker's own assembler (GNU V810 syntax), or the GNU assembler for the V810"
+  },
+  "shape": "vectored",
+  "dialect": "v810",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Virtual Boy cartridge, {size} bytes, \"{title}\", reset at 0x{reset:08X}",
+    ""
+  ],
+  "vectored": {
+    "cpu": "v810",
+    "assembler": "v810",
+    "source": "s",
+    "built": "{stem}.built{ext}",
+    "registers": "hardware",
+    "fields": [
+      {"at": 0, "size": 20, "as": "text", "what": "title"},
+      {"at": 20, "size": 5, "as": "rows", "what": "reserved"},
+      {"at": 25, "size": 2, "as": "text", "what": "maker"},
+      {"at": 27, "size": 4, "as": "text", "what": "game code"},
+      {"at": 31, "size": 1, "as": "byte", "what": "version"}
+    ]
+  }
+}

@@ -31,6 +31,7 @@
 #include "formats/nes.hpp"
 #include "formats/psx.hpp"
 #include "formats/sms.hpp"
+#include "formats/vb.hpp"
 #include "formats/zx.hpp"
 
 namespace cb::source::console_writer {
@@ -437,6 +438,22 @@ Loaded load_neogeo_sound_file(const std::filesystem::path& path) {
     return load_neogeo_sound(file.view(), path.filename().string());
 }
 
+// The Virtual Boy: the ROM at $07000000, its header $220 bytes from the end, the reset slot and the interrupt vectors that hold code.
+Loaded load_vb(const std::filesystem::path& path) {
+    const formats::vb::Rom rom = formats::vb::read(path);
+    Loaded l;
+    l.image = rom.data;
+    for (const formats::vb::Rom::Entry& e : rom.entries()) {
+        const std::uint32_t a = rom.address(e.offset);
+        l.starts.push_back(a);
+        l.entries.try_emplace(a, e.name == "reset" ? std::string("reset") : "vector_" + std::string(e.name));
+    }
+    l.segments.pieces.push_back({"ROM", "ROM", "", 0, static_cast<std::uint32_t>(rom.data.size()), formats::vb::kBase, true});
+    l.segments.measured = rom.data.size();
+    l.values = {{"title", rom.header.title}, {"reset", Num{rom.reset_address()}}, {"header_at", Num(rom.header_offset())}, {"ext", path.extension().string()}};
+    return l;
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -461,6 +478,7 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"ps1", load_ps1},
     {"sms", load_sms},
     {"snes", snes_code::load_snes_file},
+    {"vb", load_vb},
     {"zx", load_zx},
 };
 

@@ -1,7 +1,7 @@
 // decompile/v810.hpp -- the NEC V810's instructions: the table, a disassembler, an assembler.
 //
 // The V810 is the Virtual Boy's (and the PC-FX's) 32-bit RISC: 32 registers (r0 is zero), 16- and 32-bit instructions in little-endian halfwords. One table serves the
-// disassembler, the assembler that rebuilds the source the Virtual Boy lane writes (source/vb_writer) and the interpreter (emulate/v810).
+// disassembler, the assembler that rebuilds the source the Virtual Boy lane writes (source/console_writer, config/platforms/vb.json) and the interpreter (emulate/v810).
 //
 //     decode(code, at, pc)         the instruction at code[at:] running at address pc, or nullopt
 //     text(insn, labels)           "mov r1,r2"  "movea -4,r3,r3"  "ld.w 8[r5],r6"  "bne L_0040"  "jmp [r31]"

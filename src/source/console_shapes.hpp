@@ -35,6 +35,11 @@ namespace arm_code {
 image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder);
 }
 
+// The `vectored` shape for a V810 program (console_v810.cpp): `values` has `header_at` (the header's offset).
+namespace v810_code {
+image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder);
+}
+
 // The `vectored` shape (console_vectored.cpp).
 image_writer::Written write_vectored(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                      std::string_view file_name, const std::filesystem::path& folder);

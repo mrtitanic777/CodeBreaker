@@ -339,6 +339,7 @@ image_writer::Written write_shape(const Description& description, const Loaded& 
     values.try_emplace("stem", std::filesystem::path(file_name).stem().string());
     const std::string stem = std::get<std::string>(values.at("stem"));   // (a loader may name the source otherwise: the Neo Geo's `<name>.m1`)
     if (description.shape == "vectored" && description.vectored.cpu == "arm") return arm_code::write(description, program, values, folder);   // (their heads name what flow found)
+    if (description.shape == "vectored" && description.vectored.cpu == "v810") return v810_code::write(description, program, values, folder);
     if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);
     const std::vector<std::string> head = head_lines(description, values);
     if (description.shape == "z80-block") return write_z80_block(description, program, head, stem, folder);

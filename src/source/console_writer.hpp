@@ -150,7 +150,7 @@ struct VectorField {
     unsigned row = 12;                // ("rows") the bytes in a row
 };
 struct Vectored {
-    std::string cpu;                  // "m68k"; "mips" (the R3000A), "r4300" (console_mips.cpp); "arm" (the ARM7TDMI: console_arm.cpp)
+    std::string cpu;                  // "m68k"; "mips" (the R3000A), "r4300" (console_mips.cpp); "arm" (the ARM7TDMI: console_arm.cpp); "v810" (console_v810.cpp)
     std::string assembler;            // the L2 assembly's syntax ("asm68k", "gas")
     std::string source = "asm";       // the source's extension
     std::string built;                // the rebuilt file's name, a template

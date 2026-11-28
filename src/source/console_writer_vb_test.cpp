@@ -1,7 +1,9 @@
 // cb-unity: alone
 // The Virtual Boy writer over a small cartridge: the source it writes, built again by the one assembler (the V810 SLEIGH description), is the cartridge.
 
-#include "source/vb_writer.hpp"
+#include "formats/vb.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/dialect.hpp"
 #include "source/processors.hpp"
@@ -9,13 +11,27 @@
 #include "core/testing.hpp"
 #include "formats/vb_test_image.hpp"
 
-namespace cb::source::vb_writer {
+namespace cb::source::console_writer::vb_test {
+namespace {
+
+// The cartridge written to `folder` as `name` and its source written beside it.
+image_writer::Written write(const Bytes& file, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), file);
+    return console_writer::reconstruct("vb", folder / std::string(name), folder);
+}
+const image_writer::Names& hardware() {   // (config/knowledge/vb/registers.json)
+    static const image_writer::Names table = knowledge::standard().hardware_names("vb", describe("vb").vectored.registers);
+    return table;
+}
+
+}  // namespace
 
 namespace ti = formats::vb::test_image;
 
-CB_TEST("source.vb_writer.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
-    fs::ScopedTempDir dir("cb_vb_writer");
-    const image_writer::Written r = write(formats::vb::parse(ti::cartridge()), "demo.vb", dir.path());
+CB_TEST("source.console_writer.vb.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
+    fs::ScopedTempDir dir("cb_vb_cw");
+    const image_writer::Written r = write(ti::cartridge(), "demo.vb", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0x07000030, "sub_07000030"}, {0x07003E40, "vector_vip"}, {0x07003FF0, "reset"}}));
@@ -27,9 +43,9 @@ CB_TEST("source.vb_writer.a_cartridge_comes_back_as_source_that_builds_the_same_
     }
 });
 
-CB_TEST("source.vb_writer.an_edited_source_builds_a_different_file", [] {
+CB_TEST("source.console_writer.vb.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_vb_edit");
-    const image_writer::Written r = write(formats::vb::parse(ti::cartridge()), "demo.vb", dir.path());
+    const image_writer::Written r = write(ti::cartridge(), "demo.vb", dir.path());
     std::string s = fs::read_text(r.source);
     const std::size_t at = s.find("shl 1,r10");
     CB_CHECK(at != std::string::npos);
@@ -39,7 +55,7 @@ CB_TEST("source.vb_writer.an_edited_source_builds_a_different_file", [] {
     CB_CHECK(processors::assemble_described(processors::find("v810"), dialect::find("v810").parse(s), ".").data == expected);
 });
 
-CB_TEST("source.vb_writer.the_hardware_registers_have_names", [] {
+CB_TEST("source.console_writer.vb.the_hardware_registers_have_names", [] {
     CB_CHECK_EQ(hardware().at(0x5F822), "VIP_DPCTRL");
     CB_CHECK_EQ(hardware().at(0x01000400), "VSU_S1INT");
     CB_CHECK_EQ(hardware().at(0x0100051C), "VSU_S5SWP");
@@ -47,4 +63,4 @@ CB_TEST("source.vb_writer.the_hardware_registers_have_names", [] {
     CB_CHECK(!hardware().contains(0x01000598));
 });
 
-}  // namespace cb::source::vb_writer
+}  // namespace cb::source::console_writer::vb_test
