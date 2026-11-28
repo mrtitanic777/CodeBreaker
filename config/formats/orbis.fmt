@@ -1,0 +1,105 @@
+# orbis.fmt -- the PlayStation 4 and 5's programs (formats/orbis): the x86-64 ELF64 a homebrew toolchain links (a plain
+# one, or OpenOrbis's Orbis ELF), and the unencrypted ("fake") SELF that wraps one. The ELF's own structures are
+# elf.fmt's (64-bit, little-endian).
+#
+# The reader reads in steps, each from a struct of its own: the file header and program headers (Elf64), the dynamic
+# table in the dynamic segment it finds (Dynamic: $dyn_at, $dyn_end), the symbol and relocation tables the dynamic
+# tags place (Tables), a plain ELF's static symbol tables (the section headers in Elf64, part `sections`; the entries in
+# Statics), and a SELF's headers (Self). Where the tables are (an address, or an offset in the SCE dynamic-data
+# segment), how many entries they hold and what a table outside the file means are the reader's: the tables are read
+# tolerantly (`try`) and the reader checks them. The strings the entries name are looked up by the reader.
+
+format orbis
+endian le
+use elf
+
+# The file header, the program headers at the header's entry size (each where phoff + phentsize * i says; one not wholly
+# in the file is not in the tree; more than 256 are the reader's error, so none is read) and, as a part, the section
+# headers a plain ELF's static symbol tables are found by (up to 4096, of 64 bytes or more).
+struct Elf64 {
+    let is64 = 1
+    ident    : Ident
+    header   : Header
+    segments : PhdrAt[header.phnum <= 256 ? header.phnum : 0]
+    sections : ShAt[header.shoff != 0 && header.shentsize >= 64 && header.shnum <= 4096 ? header.shnum : 0] part sections
+}
+
+struct PhdrAt {
+    entry @ header.phoff + header.phentsize * _index : Segment try
+}
+
+struct ShAt {
+    entry @ header.shoff + header.shentsize * _index : ShHead
+}
+
+# The fields of a section header the reader needs, each one read when it is in the file (a missing one is not read).
+struct ShHead {
+    name_offset : u32 try
+    type        : u32 try
+    flags       : u64 try
+    address     : u64 try
+    offset      : u64 try
+    size        : u64 try
+    link        : u32 try
+}
+
+# The dynamic table: 16-byte entries (tag, value) from $dyn_at while they are in the file and start before $dyn_end,
+# up to the entry whose tag is 0.
+struct Dynamic {
+    entries @ $dyn_at : Dyn[while $pos + 16 <= $size && $pos < $dyn_end until _.tag == 0]
+}
+
+struct Dyn {
+    tag   : i64
+    value : u64
+}
+
+# The tables the dynamic tags place: the dynamic symbols and the two relocation tables (the entries wholly in the file).
+struct Tables {
+    symbols @ $sym_at    : Sym24[$sym_count] if $sym_at != 0 try
+    rela    @ $rela_at   : Rela[$rela_count] if $rela_at != 0 try
+    jmprel  @ $jmprel_at : Rela[$jmprel_count] if $jmprel_at != 0 try
+}
+
+# A static symbol table's entries ($at, $count: the reader's, inside the file).
+struct Statics {
+    symbols @ $at : Sym24[$count] try
+}
+
+struct Sym24 {
+    name_offset : u32
+    info        : u8
+    other       : u8
+    section     : u16
+    value       : u64
+    size        : u64
+}
+
+struct Rela {
+    offset : u64
+    info   : u64      # the symbol in the high 32 bits, the type in the low
+    addend : i64
+}
+
+# A fake SELF: the magic, the number of segment entries at $18, the entries (32 bytes from $20: properties, offset,
+# size), then the copy of the ELF header and program headers and, 16-byte aligned after them, the extended info (the
+# program authority id and the program type, 1 for fake).
+struct Self {
+    magic       : bytes(4) == "\x4f\x15\x3d\x1d"
+    entry_count @ 0x18 : u16 try
+    entries     @ 0x20 : SelfEntry[entry_count <= 1024 ? entry_count : 0] try
+    let elf_at = 0x20 + entry_count * 0x20
+    let is64   = 1
+    ident  @ elf_at : Ident try
+    header @ elf_at + 16 : Header try
+    let ext_at = align(elf_at + 0x40 + peek16(elf_at + 56) * 56, 16)
+    paid         @ ext_at : u64 try
+    program_type @ ext_at + 8 : u64 try
+}
+
+struct SelfEntry {
+    properties : u64
+    offset     : u64
+    size       : u64
+    rest       : bytes(min(8, $remaining))
+}
