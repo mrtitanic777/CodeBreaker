@@ -9,7 +9,7 @@
 #include "engine/machine_m68k.hpp"
 #include "formats/neogeo.hpp"
 #include "formats/segacd.hpp"
-#include "source/neogeo_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/segacd_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
@@ -43,12 +43,12 @@ void rebuild(std::string_view relative, std::size_t functions_at_least, Writer&&
 
 // Neo Geo P-ROMs: Refrain's (word-swapped, built with GCC, 1 MB) and the DATlib demo's (68000 in the order the CPU sees it).
 CB_TEST("source.m68k_consoles.homebrew.neo_geo", [] {
-    rebuild("neogeo/refrain-202-p1.p1", 12, neogeo_writer::reconstruct);
-    rebuild("neogeo/datdemo-dev_p1.rom", 10, neogeo_writer::reconstruct);
+    rebuild("neogeo/refrain-202-p1.p1", 12, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("neogeo", f, d); });
+    rebuild("neogeo/datdemo-dev_p1.rom", 10, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("neogeo", f, d); });
 });
 
 // The Z80 sound program of the Neo Geo: Mezz-Estate's audio driver (MIT), 24 KB of Z80 written for the M-ROM.
-CB_TEST("source.m68k_consoles.homebrew.neo_geo_sound", [] { rebuild("neogeo/mezz-estate-driver.m1", 3, neogeo_writer::reconstruct_sound); });
+CB_TEST("source.m68k_consoles.homebrew.neo_geo_sound", [] { rebuild("neogeo/mezz-estate-driver.m1", 3, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("neogeo_sound", f, d); }); });
 
 // Sega CD: ProjectCD's minimal disc (an IP that starts the sub CPU's program, and the SP) and the boot sectors it was built from.
 CB_TEST("source.m68k_consoles.homebrew.sega_cd", [] {

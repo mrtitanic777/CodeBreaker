@@ -3,7 +3,9 @@
 // byte; the writer is held to what it is for -- the source it writes, built again, is the P-ROM it came from -- and to the text it writes, a golden file
 // that was read through for correctness (testdata/writers/neogeo.golden.asm).
 
-#include "source/neogeo_writer.hpp"
+#include "formats/neogeo.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 
 #include <cstring>
 
@@ -11,8 +13,26 @@
 #include "core/testing.hpp"
 #include "core/text.hpp"
 
-namespace cb::source::neogeo_writer {
+namespace cb::source::console_writer::neogeo_test {
 namespace {
+
+// The P-ROM written to `folder` as `name` and its source written beside it.
+image_writer::Written write(const Bytes& file, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), file);
+    return console_writer::reconstruct("neogeo", folder / std::string(name), folder);
+}
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) { return console_writer::reconstruct("neogeo", file, folder); }
+image_writer::Written write_sound(ByteView sound, std::string_view name, const std::filesystem::path& folder) {
+    return console_writer::write(describe("neogeo_sound"), load_neogeo_sound(sound, name), name, folder);
+}
+image_writer::Written reconstruct_sound(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("neogeo_sound", file, folder);
+}
+const image_writer::Names& hardware() {   // (config/knowledge/neogeo/registers.json)
+    static const image_writer::Names table = knowledge::standard().hardware_names("neogeo", describe("neogeo").vectored.registers);
+    return table;
+}
 
 void put_long(Bytes& b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
@@ -57,10 +77,10 @@ void check_golden(std::string_view name, const std::string& actual) {
     CB_CHECK_EQ(actual, golden(name));
 }
 
-CB_TEST("source.neogeo_writer.the_prom_comes_back_as_source_that_builds_the_same_prom", [] {
+CB_TEST("source.console_writer.neogeo.the_prom_comes_back_as_source_that_builds_the_same_prom", [] {
     fs::ScopedTempDir dir("cb_ng");
     const Bytes image = prom();
-    const image_writer::Written r = write(formats::neogeo::parse(image), "demo-p1.p1", dir.path());
+    const image_writer::Written r = write(image, "demo-p1.p1", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     // where the callbacks jump to are the functions (the header's JMPs are code, not functions); the callbacks that share a place take the first name
@@ -72,7 +92,7 @@ CB_TEST("source.neogeo_writer.the_prom_comes_back_as_source_that_builds_the_same
     check_golden("neogeo.golden.asm", fs::read_text(r.source));
 });
 
-CB_TEST("source.neogeo_writer.the_golden_names_what_the_code_touches", [] {
+CB_TEST("source.console_writer.neogeo.the_golden_names_what_the_code_touches", [] {
     // Read for what it says: the LSPC's port and the BIOS's call by name, the vector table naming its handlers, the header's fields as data with their names,
     // the callbacks' jumps in the header.
     const std::string text = golden("neogeo.golden.asm");
@@ -88,10 +108,10 @@ CB_TEST("source.neogeo_writer.the_golden_names_what_the_code_touches", [] {
     CB_CHECK_EQ(longs, 64u + 6u);   // the vector table, and the header's program size, backup RAM, settings (three) and security code
 });
 
-CB_TEST("source.neogeo_writer.a_word_swapped_prom_is_written_from_the_68000s_order", [] {
+CB_TEST("source.console_writer.neogeo.a_word_swapped_prom_is_written_from_the_68000s_order", [] {
     fs::ScopedTempDir dir("cb_ng");
     const Bytes plain = prom();
-    const image_writer::Written r = write(formats::neogeo::parse(formats::neogeo::swap_words(plain)), "swapped.p1", dir.path());
+    const image_writer::Written r = write(formats::neogeo::swap_words(plain), "swapped.p1", dir.path());
     CB_CHECK(r.same);
     CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == plain);   // what it builds back is the P-ROM in the 68000's order
@@ -99,11 +119,11 @@ CB_TEST("source.neogeo_writer.a_word_swapped_prom_is_written_from_the_68000s_ord
     CB_CHECK_EQ(r.functions.size(), 5u);
 });
 
-CB_TEST("source.neogeo_writer.the_second_megabyte_is_written_at_the_bank_window", [] {
+CB_TEST("source.console_writer.neogeo.the_second_megabyte_is_written_at_the_bank_window", [] {
     fs::ScopedTempDir dir("cb_ng");
     Bytes big = prom(0x180000);
     for (std::size_t i = 0x100000; i < 0x100040; ++i) big[i] = static_cast<std::uint8_t>(i * 5);   // data in the bank
-    const image_writer::Written r = write(formats::neogeo::parse(big), "big-p1.p1", dir.path());
+    const image_writer::Written r = write(big, "big-p1.p1", dir.path());
     CB_CHECK(r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK_EQ(r.image_bytes, 0x180000u);
@@ -112,28 +132,28 @@ CB_TEST("source.neogeo_writer.the_second_megabyte_is_written_at_the_bank_window"
     CB_CHECK(fs::read_file(*r.built) == big);
 });
 
-CB_TEST("source.neogeo_writer.banks_past_the_second_megabyte_are_said_not_to_be_written", [] {
+CB_TEST("source.console_writer.neogeo.banks_past_the_second_megabyte_are_said_not_to_be_written", [] {
     fs::ScopedTempDir dir("cb_ng");
-    const image_writer::Written r = write(formats::neogeo::parse(prom(0x280000)), "huge-p1.p1", dir.path());
+    const image_writer::Written r = write(prom(0x280000), "huge-p1.p1", dir.path());
     CB_CHECK(!r.same);
     CB_CHECK_EQ(r.notes.size(), 1u);
     CB_CHECK(r.notes[0].find("banks after the second megabyte") != std::string::npos);
 });
 
-CB_TEST("source.neogeo_writer.a_shared_handler_is_the_catch_all_and_a_missing_callback_is_data", [] {
+CB_TEST("source.console_writer.neogeo.a_shared_handler_is_the_catch_all_and_a_missing_callback_is_data", [] {
     Bytes rom = prom();
     put_long(rom, 4 * 2, 0x500);   // bus error, address error and the vblank all go where vblank goes
     put_long(rom, 4 * 3, 0x500);
     put_bytes(rom, 0x128, {0, 0, 0, 0, 0, 0});   // no player_start
     fs::ScopedTempDir dir("cb_ng");
-    const image_writer::Written r = write(formats::neogeo::parse(rom), "shared-p1.p1", dir.path());
+    const image_writer::Written r = write(rom, "shared-p1.p1", dir.path());
     CB_CHECK(r.same);
     CB_CHECK_EQ(r.functions.at(0x500), "exception");
     CB_CHECK(!r.functions.contains(0x410) || r.functions.at(0x410) != "player_start");
     CB_CHECK(fs::read_text(r.source).find("        dc.l exception  ; vblank") != std::string::npos);
 });
 
-CB_TEST("source.neogeo_writer.a_file_with_no_header_is_refused", [] {
+CB_TEST("source.console_writer.neogeo.a_file_with_no_header_is_refused", [] {
     fs::ScopedTempDir dir("cb_ng");
     fs::write_file(dir.path() / "short.p1", Bytes(0x100, 0));
     fs::write_file(dir.path() / "none.p1", Bytes(0x400, 0));
@@ -142,7 +162,7 @@ CB_TEST("source.neogeo_writer.a_file_with_no_header_is_refused", [] {
     CB_CHECK_THROWS_AS(IoError, reconstruct(dir.path() / "missing.p1", dir.path() / "out"));
 });
 
-CB_TEST("source.neogeo_writer.reconstruct_reads_the_file", [] {
+CB_TEST("source.console_writer.neogeo.reconstruct_reads_the_file", [] {
     fs::ScopedTempDir dir("cb_ng");
     fs::write_file(dir.path() / "game-p1.p1", prom());
     const image_writer::Written r = reconstruct(dir.path() / "game-p1.p1", dir.path() / "out");
@@ -160,7 +180,7 @@ Bytes sound_program() {
     return m;
 }
 
-CB_TEST("source.neogeo_writer.the_sound_program_is_written_with_the_sound_ports_by_name", [] {
+CB_TEST("source.console_writer.neogeo.the_sound_program_is_written_with_the_sound_ports_by_name", [] {
     fs::ScopedTempDir dir("cb_ng");
     const Bytes m = sound_program();
     const image_writer::Written r = write_sound(m, "game-m1.m1", dir.path());
@@ -178,7 +198,7 @@ CB_TEST("source.neogeo_writer.the_sound_program_is_written_with_the_sound_ports_
     CB_CHECK_EQ(banked.notes.size(), 1u);
 });
 
-CB_TEST("source.neogeo_writer.a_neo_container_is_written_with_its_sound_program_beside_it", [] {
+CB_TEST("source.console_writer.neogeo.a_neo_container_is_written_with_its_sound_program_beside_it", [] {
     fs::ScopedTempDir dir("cb_ng");
     Bytes file(4096, 0);
     put_bytes(file, 0, {'N', 'E', 'O', 1});
@@ -202,7 +222,7 @@ CB_TEST("source.neogeo_writer.a_neo_container_is_written_with_its_sound_program_
     CB_CHECK(reconstruct_sound(dir.path() / "driver.m1", dir.path() / "out").same);
 });
 
-CB_TEST("source.neogeo_writer.the_registers_and_bios_calls_are_the_documented_ones", [] {
+CB_TEST("source.console_writer.neogeo.the_registers_and_bios_calls_are_the_documented_ones", [] {
     CB_CHECK_EQ(hardware().at(0x3C0002), "REG_VRAMRW");
     CB_CHECK_EQ(hardware().at(0x3C0006), "REG_LSPCMODE");
     CB_CHECK_EQ(hardware().at(0xC0044A), "SYSTEM_IO");
@@ -211,4 +231,4 @@ CB_TEST("source.neogeo_writer.the_registers_and_bios_calls_are_the_documented_on
 });
 
 }  // namespace
-}  // namespace cb::source::neogeo_writer
+}  // namespace cb::source::console_writer::neogeo_test

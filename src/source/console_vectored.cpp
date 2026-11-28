@@ -117,10 +117,18 @@ public:
         for (const VectorField& f : shape_.fields) {
             if (f.at == offset && (f.when.empty() || is_set(f.when))) field = &f;
         }
-        if (!field) return 0;
+        if (!field || offset + field->size > program_.image.size()) return 0;
         flush();
         const ByteView bytes = ByteView(program_.image).subspan(offset, field->size);
-        if (field->as == "long") {
+        if (field->as == "ascii") {
+            out_.extend(iw::commented({said("        .ascii \"" + std::string(as_text(bytes)) + "\"")}, field->what));
+        } else if (field->as == "number") {   // a word or a long, else a byte
+            std::uint32_t v = 0;
+            for (const std::uint8_t b : bytes) v = v << 8 | b;
+            const std::string line = field->size == 2 || field->size == 4 ? std::format("        {} 0x{:0{}x}", field->size == 2 ? ".half" : ".long", v, field->size * 2)
+                                                                          : std::format("        .byte 0x{:02x}", bytes[0]);
+            out_.extend(iw::commented({said(line)}, field->what));
+        } else if (field->as == "long") {
             out_.append(said(std::format("        .long 0x{:08x}  ; {}", long_at(bytes, 0), field->what)));
         } else if (field->as == "pointer") {
             const std::uint32_t v = long_at(bytes, 0);
@@ -168,7 +176,8 @@ image_writer::Written write_vectored(const Description& d, const Loaded& program
     const std::map<std::uint32_t, m68k::Insn>& code = walked.code;
 
     iw::Names names = program.entries;
-    const iw::Functions functions = iw::name_functions(walked.starts, names, kVecSub);
+    const iw::Functions functions =
+        iw::name_functions(program.segments.functions.empty() ? std::span<const std::uint32_t>(walked.starts) : std::span<const std::uint32_t>(program.segments.functions), names, kVecSub);
     const std::set<std::uint32_t> inside_insn = iw::covered(code, flow);
     const auto line_start = [&](std::uint32_t a) { return flow.line_start(a) && !inside_insn.contains(a); };
     iw::Names labels = iw::make_labels(walked.targets, names, line_start, kVecLocal);
@@ -186,7 +195,7 @@ image_writer::Written write_vectored(const Description& d, const Loaded& program
     }
 
     translate::l2::Assembly out(head, shape.assembler.empty() ? d.dialect : shape.assembler, std::string(file_name));
-    for (const std::uint32_t a : used) out.append(say(risc_source::equ(registers.at(a), a, 6)));
+    for (const std::uint32_t a : used) out.append(shape.whole ? risc_source::equ(registers.at(a), a, 6) : said.line(risc_source::equ(registers.at(a), a, 6), static_cast<int>(shape.equ_width)));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -194,7 +203,8 @@ image_writer::Written write_vectored(const Description& d, const Loaded& program
 
     for (const Piece& piece : program.segments.pieces) {
         out.part(piece.segment, piece.role == "vectors" ? "vector table" : "segment", std::nullopt, piece.size);
-        if (piece.org) out.append(say(std::format("        .org 0x{:0{}x}", piece.address, shape.org_digits)));
+        if (piece.blank_before) out.append("");
+        if (piece.org) out.append(say(std::format("        .org 0x{:0{}x}", piece.address, shape.org_digits) + (piece.org_note.empty() ? std::string() : "   ; " + piece.org_note)));
         if (piece.role == "vectors") {   // each long the handler's label (after the plain ones), with what the vector is
             std::vector<std::string> what;
             if (const auto it = values.find(shape.vector_names); it != values.end() && std::holds_alternative<std::vector<std::string>>(it->second)) {
@@ -227,7 +237,7 @@ image_writer::Written write_vectored(const Description& d, const Loaded& program
             Bytes image = risc_source::assemble(shape.cpu, said.parse(source), folder);
             return program.segments.rebuilt ? program.segments.rebuilt(image) : image;
         },
-        program.image, folder / fill(shape.built, values));
+        program.segments.original.empty() ? program.image : program.segments.original, folder / fill(shape.built, values));
     return r;
 }
 

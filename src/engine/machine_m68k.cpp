@@ -12,11 +12,11 @@
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
-#include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
 #include "formats/neogeo.hpp"
 #include "formats/segacd.hpp"
-#include "source/neogeo_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 #include "source/segacd_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
@@ -211,7 +211,7 @@ vl::Effects neogeo_effects(const stdfs::path& path, std::uint32_t entry, const v
                          vl::Effect(std::move(vram))});
 }
 
-vl::Written neogeo_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::neogeo_writer::reconstruct(module, out)); }
+vl::Written neogeo_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("neogeo", module, out)); }
 
 // ---- the Sega CD -----------------------------------------------------------------------------------------------------
 
@@ -297,7 +297,7 @@ vl::ImageLaneSpec segacd_lane_spec() {
 void register_m68k_lanes() {
     register_lane({
         .name = "neogeo",
-        .platform = platforms::neogeo,
+        .platform = [] { return platforms::described("neogeo"); },
         .probe = [](const stdfs::path& p) { return formats::neogeo::probe(p); },
         .make_spec = neogeo_lane_spec,
     });

@@ -115,6 +115,7 @@ Vectored vectored_of(const nlohmann::ordered_json& j) {
     v.calls_start_functions = j.value("calls_start_functions", false);
     v.org_digits = number_of(j, "org_digits", 6);
     v.blank_after_piece = j.value("blank_after_piece", false);
+    v.equ_width = number_of(j, "equ_width", 0);
     if (const auto fields = j.find("fields"); fields != j.end()) {
         for (const auto& f : *fields) {
             v.fields.push_back({number_of(f.at("at")), number_of(f.at("size")), text_of(f, "what"), f.value("as", std::string("text")), text_of(f, "when"), number_of(f, "row", 12)});
@@ -318,14 +319,25 @@ std::vector<std::string> head_comment(const Description& d, const Values& values
     return comment;
 }
 
+image_writer::Written write_shape(const Description& description, const Loaded& program, Values values, std::string_view file_name,
+                                  const std::filesystem::path& folder);
+
 image_writer::Written write(const Description& description, const Loaded& program, std::string_view file_name, const std::filesystem::path& folder) {
     Values values = program.values;
+    values.try_emplace("file", std::string(file_name));
+    image_writer::Written r = write_shape(description, program, values, file_name, folder);
+    if (program.segments.after) program.segments.after(r, values, folder);
+    return r;
+}
+
+image_writer::Written write_shape(const Description& description, const Loaded& program, Values values, std::string_view file_name,
+                                  const std::filesystem::path& folder) {
     values.try_emplace("file", std::string(file_name));   // (a loader may name the program otherwise: a disc's boot file)
     values.insert_or_assign("size", static_cast<std::int64_t>(program.image.size()));
     values.insert_or_assign("kb", static_cast<std::int64_t>(program.image.size() / 1024));
     values.insert_or_assign("origin", static_cast<std::int64_t>(program.origin));
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-    values.try_emplace("stem", stem);
+    values.try_emplace("stem", std::filesystem::path(file_name).stem().string());
+    const std::string stem = std::get<std::string>(values.at("stem"));   // (a loader may name the source otherwise: the Neo Geo's `<name>.m1`)
     if (description.shape == "vectored" && description.vectored.cpu == "arm") return arm_code::write(description, program, values, folder);   // (their heads name what flow found)
     if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);
     const std::vector<std::string> head = head_lines(description, values);

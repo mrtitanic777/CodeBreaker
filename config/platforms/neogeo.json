@@ -1,0 +1,39 @@
+{
+  "platform": "neogeo",
+  "title": "Neo Geo (AES / MVS)",
+  "description": "A cartridge P-ROM (word-swapped or not) or a .neo file: the 64-long vector table, the header at $100 field by field, the program in the first megabyte from the header's callbacks and jump table, the second megabyte at the bank window as data, in vasm's Motorola syntax. The LSPC's, the I/O's and the BIOS's names; a .neo file's Z80 sound program is written beside it (neogeo_sound.json).",
+  "machine": {
+    "family": "68000",
+    "container": "cartridge P-ROM (.p1, .bin, word-swapped or not) or .neo file",
+    "cpu": {"language": "68000:BE:32:default", "bits": 32, "endian": "big", "decoder": "m68k",
+            "registers": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "SR"], "stack": "A7"},
+    "results": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6"],
+    "toolchain": "CodeBreaker's own assembler"
+  },
+  "shape": "vectored",
+  "dialect": "vasm-m68k",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Neo Geo, NGH {ngh:04X}, {kb} KB P-ROM ({layout})",
+    ""
+  ],
+  "vectored": {
+    "cpu": "m68k",
+    "assembler": "asm68k",
+    "built": "{stem}.built.p1",
+    "registers": "hardware",
+    "immediate_floor": "0x400",
+    "org_digits": 1,
+    "equ_width": 20,
+    "vector_names": "vector_names",
+    "vectors_plain": 1,
+    "fields": [
+      {"at": "0x100", "size": 7, "what": "magic", "as": "ascii"}, {"at": "0x107", "size": 1, "what": "system version", "as": "number"},
+      {"at": "0x108", "size": 2, "what": "NGH number", "as": "number"}, {"at": "0x10A", "size": 4, "what": "program size", "as": "number"},
+      {"at": "0x10E", "size": 4, "what": "backup RAM", "as": "number"}, {"at": "0x112", "size": 2, "what": "save data size", "as": "number"},
+      {"at": "0x114", "size": 1, "what": "eye-catcher", "as": "number"}, {"at": "0x115", "size": 1, "what": "eye-catcher sprite bank", "as": "number"},
+      {"at": "0x116", "size": 4, "what": "Japan settings", "as": "number"}, {"at": "0x11A", "size": 4, "what": "US settings", "as": "number"},
+      {"at": "0x11E", "size": 4, "what": "Europe settings", "as": "number"}, {"at": "0x182", "size": 4, "what": "security code", "as": "number"}
+    ]
+  }
+}

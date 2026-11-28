@@ -1,0 +1,11 @@
+{
+  "platform": "neogeo",
+  "title": "Neo Geo sound program (Z80)",
+  "description": "An M-ROM (or a .neo file's sound program): the Z80's fixed first 32 KB as one block at 0 from its reset and interrupt entries, the sound ports by name; the banks after it are not written. Written as <name>.m1.asm in sjasmplus.",
+  "shape": "z80-block",
+  "dialect": "sjasmplus",
+  "ports": "sound_ports",
+  "head": [
+    "Neo Geo sound program (Z80) from {file}: {bytes} bytes{banked?; the first 32 KB, the rest is banked data|}"
+  ]
+}

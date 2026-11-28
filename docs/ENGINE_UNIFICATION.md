@@ -194,3 +194,4 @@ tests only what it changes.
   among them) and the Genesis golden. Next: the MIPS pair (PS1 and N64, near-duplicate writers), then GBA, then `executable`.
 - 2026-11-28: item 7: PS1 and N64 on `vectored`'s MIPS processor, byte-identical on 137 homebrew programs. Next: GBA, Neo Geo, Virtual Boy.
 - 2026-11-28: item 7: GBA on `vectored`'s ARM processor, byte-identical on its 41 homebrew programs. Next: Neo Geo, Virtual Boy.
+- 2026-11-28: item 7: Neo Geo (P-ROM and M-ROM) on `vectored` and `z80-block`, byte-identical on its homebrew programs. Next: Virtual Boy.

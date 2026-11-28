@@ -1,5 +1,4 @@
 // Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
-#include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
 
 #include "core/testing.hpp"
@@ -165,7 +164,7 @@ CB_TEST("platforms.cpc.descriptor", [] {
 });
 
 CB_TEST("platforms.neogeo.descriptor", [] {
-    const Platform p = neogeo();
+    const Platform p = described("neogeo");
     check_machine(p, Id::Machine, "neogeo", "Neo Geo (AES / MVS)", "68000", "cartridge P-ROM (.p1, .bin, word-swapped or not) or .neo file");
     CB_CHECK_EQ(p.cpu.language, "68000:BE:32:default");
     CB_CHECK(*p.cpu.endian == Endian::Big);

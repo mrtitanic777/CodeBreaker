@@ -141,7 +141,8 @@ struct Segmented {
 struct VectorField {
     std::uint32_t at = 0, size = 0;   // the image offset of a field of the header, and its length
     std::string what;                 // its name, said beside it
-    std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label);
+    std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label),
+                                      // "ascii" (always), "number" (`.half`, `.long` or `.byte` by its size);
                                       // (MIPS) "ascii", "zeros" (`.space` or bytes), "word", "address" (a word, by its label), "bytes" (`.space`, `.ascii` or bytes),
                                       // "byte" (a byte row), "items" (data rows) -- each but the first two with `what` (a template) as its comment;
                                       // (ARM) "comment" (`what` as a line), "byte_rows" (rows of `row` bytes), "padded" (a text and its zeros, or bytes)
@@ -160,6 +161,7 @@ struct Vectored {
     bool calls_start_functions = false;  // every JSR and BSR target is a function (else the loader's starts are)
     unsigned org_digits = 6;          // the hex digits of a piece's `.org`
     bool blank_after_piece = false;   // an empty line after each piece
+    unsigned equ_width = 0;           // the width the `.equ` names are lined up to (0 the dialect's)
     std::vector<VectorField> fields;
     std::string vector_names;         // (a "vectors" piece) the loader's list of what each long of the table is
     unsigned vectors_plain = 0;       // ... the first longs of it that are numbers, never labels (the initial stack pointer)
@@ -219,6 +221,8 @@ struct Piece {
     std::uint32_t address = 0;            // the start of its memory area: where code is linked
     bool code = false;
     bool org = false;                     // (vectored) an `.org` of its address opens it
+    bool blank_before = false;            // ... after an empty line
+    std::string org_note;                 // ... with this comment
 };
 // (segmented) The code of a program whose flow keeps a state the plain one does not -- the PC Engine's bank mapping, the SNES's register widths --
 // as its loader gives it (console_pce.cpp, console_snes.cpp): it follows the code and writes the code pieces; the shape writes the rest. A
@@ -246,6 +250,10 @@ struct Segments {
     std::vector<Range> code_ranges;       // (vectored) the address ranges code may stand in
     std::function<Bytes(const Bytes&)> rebuilt;   // (vectored) the file the assembled image makes ("" the image itself)
     Bytes original;                       // (vectored) what the rebuilt file is compared with ("" the image)
+    std::vector<std::uint32_t> functions; // (vectored) the function starts ("" what flow found: the starts, and the call targets when they are functions)
+    // What is still to do once the program is written (`values` has `file`): a second program in the file (the Neo Geo's Z80 sound program),
+    // or what makes the result not the whole file.
+    std::function<void(image_writer::Written&, const Values& values, const std::filesystem::path& folder)> after;
 };
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
@@ -266,6 +274,9 @@ Loaded load(std::string_view platform, const std::filesystem::path& file);
 // The Lynx's loader for a program read already: a cartridge's loaded segments are set by the caller, who can play its boot ROM
 // (engine/lynx_boot, which the writer does not link). load("lynx", file) reads one without them: a cartridge is then all data.
 Loaded load_lynx(const formats::lynx::Program& program);
+
+// The Neo Geo's sound program (an M-ROM's bytes, from its own file or a .neo container's) as the loader of the `neogeo_sound` platform reads it.
+Loaded load_neogeo_sound(ByteView sound, std::string_view file_name);
 
 // The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/sega32x_writer).
 Loaded load_genesis(const formats::genesis::Rom& rom);

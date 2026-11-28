@@ -11,6 +11,7 @@
 #include <set>
 
 #include "core/error.hpp"
+#include "core/fs.hpp"
 #include "core/text.hpp"
 #include "source/isa.hpp"
 #include "source/isa_r4300.hpp"
@@ -26,6 +27,7 @@
 #include "formats/lynx.hpp"
 #include "formats/msx.hpp"
 #include "formats/n64.hpp"
+#include "formats/neogeo.hpp"
 #include "formats/nes.hpp"
 #include "formats/psx.hpp"
 #include "formats/sms.hpp"
@@ -359,6 +361,82 @@ Loaded load_gba(const std::filesystem::path& path) {
     return l;
 }
 
+// The Neo Geo's P-ROM: the vector table, the header from $100 field by field, the program in the first megabyte (flow from the header's callbacks
+// and jump table), the second megabyte written at the bank window as data. A handler is named for the callback or the vector that names it; one
+// many vectors share is the program's catch-all. A .neo container's Z80 sound program is written beside it (the `neogeo_sound` platform).
+Loaded load_neogeo(const std::filesystem::path& path) {
+    namespace ng = formats::neogeo;
+    const auto rom = std::make_shared<const ng::Rom>(ng::read(path));
+    const Bytes& data = rom->data;
+    const std::uint32_t first = static_cast<std::uint32_t>(std::min(data.size(), ng::kRomWindow));       // the bytes the flow runs through
+    const std::uint32_t second = static_cast<std::uint32_t>(std::min(data.size(), ng::kRomWindow * 2));  // ... and those written as the bank
+    Loaded l;
+    l.image = data;
+    l.memory.assign(data.begin(), data.begin() + first);
+    const std::vector<std::uint32_t> function_starts = rom->functions(isa::m68k_decoder());
+    l.starts = function_starts;   // flow also starts from the header's JMPs, which are not functions of their own
+    for (const std::uint32_t jump : rom->callback_jumps()) l.starts.push_back(jump);
+    const std::set<std::uint32_t> starts(function_starts.begin(), function_starts.end());
+    std::vector<std::pair<std::string, std::uint32_t>> vector_list = {{"ssp", rom->initial_ssp}, {"reset", rom->reset}};
+    for (const ng::Vector& v : rom->vectors) vector_list.emplace_back(v.name, v.address);
+    std::map<std::uint32_t, std::vector<std::string>> sharing;
+    for (const auto& [name, at] : vector_list) sharing[at].push_back(name);
+    image_writer::Names& names = l.entries;
+    for (std::size_t i = 0; i < rom->header.callbacks.size(); ++i) {   // (where a callback jumps to is the function; two callbacks to one place take the first's name)
+        const std::uint32_t target = rom->header.callbacks[i];
+        if (target != 0 && starts.contains(target)) names.try_emplace(target, std::string(ng::kCallbackNames[i]));
+    }
+    if (rom->header.security != 0 && starts.contains(rom->header.security)) names.try_emplace(rom->header.security, "security");
+    for (const auto& [at, vecs] : sharing) {
+        if (!starts.contains(at) || names.contains(at) || (vecs.size() == 1 && vecs[0] == "ssp")) continue;
+        std::string main_name;
+        for (const std::string& v : vecs) {
+            if (v == "reset" || v == "vblank" || v == "timer") {
+                main_name = v;
+                break;
+            }
+        }
+        names[at] = vecs.size() > 2 ? "exception" : !main_name.empty() ? main_name : vecs[0];
+    }
+    Segments& s = l.segments;
+    s.functions = function_starts;
+    Piece vectors{"vectors", "vectors", "vectors", 0, 0x100, 0, false};
+    vectors.org = true;
+    s.pieces.push_back(std::move(vectors));
+    s.pieces.push_back({"rom", "rom", "", 0x100, first - 0x100, 0x100, true});
+    if (second > ng::kRomWindow) {
+        Piece window{"window", "window", "", static_cast<std::uint32_t>(ng::kRomWindow), second - static_cast<std::uint32_t>(ng::kRomWindow), ng::Rom::address_of(static_cast<std::uint32_t>(ng::kRomWindow)), true};
+        window.org = window.blank_before = true;
+        window.org_note = "the bank window: the P-ROM's second megabyte";
+        s.pieces.push_back(std::move(window));
+    }
+    s.code_ranges.push_back({static_cast<std::uint32_t>(ng::kFirstCode), first});
+    s.measured = data.size();
+    s.original.assign(data.begin(), data.begin() + second);
+    s.after = [rom, second](image_writer::Written& r, const Values& values, const std::filesystem::path& folder) {
+        if (rom->data.size() > second) {
+            r.same = false;
+            r.notes.push_back(std::format("the P-ROM holds {} bytes: the banks after the second megabyte are not written", rom->data.size()));
+        }
+        if (rom->sound.empty()) return;   // (a .neo container: its Z80 program is written beside the 68000's)
+        const std::string& file = std::get<std::string>(values.at("file"));
+        const image_writer::Written sound = write(describe("neogeo_sound"), load_neogeo_sound(rom->sound, file), file, folder);
+        if (!sound.same) {
+            r.same = false;
+            r.notes.push_back("the Z80 sound program (M-ROM) did not rebuild" + (sound.notes.empty() ? std::string() : ": " + sound.notes.front()));
+        }
+    };
+    std::vector<std::string> what = {"initial stack pointer", "reset"};
+    for (unsigned i = 2; i < 64; ++i) what.push_back(ng::vector_name(i));
+    l.values = {{"ngh", Num{rom->header.ngh}}, {"layout", std::string(ng::layout_text(rom->layout))}, {"vector_names", what}};
+    return l;
+}
+
+Loaded load_neogeo_sound_file(const std::filesystem::path& path) {
+    const fs::MappedFile file(path);
+    return load_neogeo_sound(file.view(), path.filename().string());
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -376,6 +454,8 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"lynx", load_lynx_file},
     {"msx", load_msx},
     {"n64", load_n64},
+    {"neogeo", load_neogeo},
+    {"neogeo_sound", load_neogeo_sound_file},
     {"nes", load_nes},
     {"pce", pce_code::load_pce_file},
     {"ps1", load_ps1},
@@ -479,6 +559,24 @@ Loaded load_genesis(const formats::genesis::Rom& rom) {
     for (unsigned i = 2; i < 64; ++i) what.push_back(formats::genesis::vector_name(i));
     const formats::genesis::Header& h = rom.header;
     l.values = {{"domestic", h.domestic_name}, {"overseas", h.overseas_name}, {"serial", h.serial}, {"smd", Num{rom.smd}}, {"vector_names", what}};
+    return l;
+}
+
+// The Neo Geo's Z80 sound program: the first 32 KB (the Z80's fixed window) as one block at 0 with its reset and interrupt entries; the rest of
+// an M-ROM is banked into $8000-$FFFF and is not written (the result says so). The source is named `<name>.m1`.
+Loaded load_neogeo_sound(ByteView sound, std::string_view file_name) {
+    constexpr std::size_t kFixed = 0x8000;
+    Loaded l;
+    l.image.assign(sound.begin(), sound.begin() + static_cast<std::ptrdiff_t>(std::min(sound.size(), kFixed)));
+    l.origin = 0;
+    l.entries = {{0x0000, "reset"}, {0x0038, "irq"}, {0x0066, "nmi"}};
+    const std::size_t size = sound.size();
+    l.values = {{"bytes", Num(size)}, {"banked", Num{size > kFixed}}, {"stem", std::filesystem::path(file_name).stem().string() + ".m1"}};
+    l.segments.after = [size](image_writer::Written& r, const Values&, const std::filesystem::path&) {
+        if (size <= kFixed) return;
+        r.same = false;
+        r.notes.push_back(std::format("the M-ROM holds {} bytes: the banks after the first 32 KB are not written", size));
+    };
     return l;
 }
 
