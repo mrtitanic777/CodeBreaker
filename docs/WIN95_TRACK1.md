@@ -109,3 +109,11 @@ Measure (work/win95-track1/measure.py; the build folders before, the source form
    what is named from where), as the Reconstruction Standard asks.
 4. Then the Setup programs (`regress setup` builds them all assembly) the same way, and the rest of the tree as the engine's
    output (A2), module by module.
+
+### Done in the tree (2026-11-28, Logan approved steps 1 to 3)
+
+Windows95 commit 32c1b125: 14 of the 15 MINI.CAB modules in their source form with a generated RECOVERY.md, build.mk and
+STATUS.md removed (core/kernel/KRNL386, core/gdi, core/user, drivers/keyboard (new), vga, system, msmous31, nomouse, lmouse31,
+sound, comm, unsorted/MINIKBD, base/ver, base/math/WIN87EM). Proof: regress all15 PASS on the same build, --check-source "same
+image" for all 15, each tree folder made alone with wmake links the build's image. LZEXPAND is left as it is: its curated C is the
+readable bar the build's form does not reach yet; replacing it is Logan's call.

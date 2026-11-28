@@ -51,6 +51,7 @@ struct SourceForm {
     std::size_t c_files = 0, asm_files = 0;
     std::map<std::string, std::string> renamed;   // build symbol -> written name
     std::size_t named_parameters = 0;             // a<N> placeholders given the SDK's parameter name
+    std::map<std::string, std::map<std::string, std::string>> parameters_named;   // function -> {a<N>: name}
     std::vector<std::string> missing;             // objects the link uses whose making the build did not note
 };
 
@@ -61,6 +62,25 @@ SourceForm write(const Input& in);
 // they are the same bytes, else what differed.
 std::string check(const SourceForm& form, const toolchain::watcom::OpenWatcom& ow, const std::filesystem::path& scratch,
                   const std::filesystem::path& image);
+
+// What RECOVERY.md says of a module: where it came from, how it is made, what each function is (C, or assembly and why) and where
+// every name that is not the binary's own came from.
+struct RecoveryInput {
+    std::string module;                  // the original's file name
+    std::uint64_t size = 0;
+    std::string sha256;
+    struct Unit {
+        std::string name;                // as the build named it
+        std::uint32_t seg = 0, off = 0;
+        bool c = false;                  // rebuilt from C (else its instructions, as assembly)
+        std::string reason;              // why it is assembly
+    };
+    std::vector<Unit> units;             // in address order
+    std::map<std::string, std::string> import_of;   // build symbol of an import by number -> "MODULE.ordinal"
+    std::map<std::string, std::string> sources;     // "MODULE.ordinal" / "seg:off" -> where its name is from
+    std::map<std::string, std::string> headers;     // export -> the SDK header declaring it
+};
+std::string recovery(const RecoveryInput& in, const SourceForm& form);
 
 // ---- the parts (shared with the tests) ---------------------------------------------------------------------------------------
 

@@ -89,6 +89,28 @@ CB_TEST("build.source_form.written_folder", [] {
     CB_CHECK(!sf_has(mk, "C:/") && !sf_has(mk, "C:\\"));
 });
 
+CB_TEST("build.source_form.recovery_record", [] {
+    sf::SourceForm form;
+    form.renamed = {{"KERNEL_18", "GlobalLock"}, {"sub_3_1614", "_aFlshl"}};
+    form.named_parameters = 1;
+    form.parameters_named["VERQUERYVALUE"] = {{"a1", "lpuLen"}};
+    sf::RecoveryInput in;
+    in.module = "ver.dll";
+    in.size = 9008;
+    in.sha256 = "ab";
+    in.units = {{"VERQUERYVALUE", 3, 0x943, true, ""}, {"sub_3_1614", 3, 0x1614, false, "written in assembly: argument in CX"}};
+    in.import_of = {{"KERNEL_18", "KERNEL.18"}};
+    in.sources = {{"KERNEL.18", "KERNEL's exports (krnl386.exe)"}, {"3:1614", "runtime library: C runtime"}};
+    in.headers = {{"VERQUERYVALUE", "ver.h"}};
+    const std::string md = sf::recovery(in, form);
+    CB_CHECK(sf_has(md, "# ver.dll: recovery record"));
+    CB_CHECK(sf_has(md, "2 functions: 1 rebuilt from C"));
+    CB_CHECK(sf_has(md, "| _aFlshl | 3:1614 | assembly | written in assembly: argument in CX |"));
+    CB_CHECK(sf_has(md, "| KERNEL.18 | GlobalLock | KERNEL's exports (krnl386.exe) |"));
+    CB_CHECK(sf_has(md, "| sub_3_1614 | _aFlshl | runtime library: C runtime |"));
+    CB_CHECK(sf_has(md, "| VERQUERYVALUE | ver.h | a1 = lpuLen |"));
+});
+
 CB_TEST("build.source_form.sdk_parameter_names", [] {
     // DWORD WINAPI GetFileResourceSize(LPCSTR lpszFileName, LPCSTR lpszResType, LPCSTR lpszResID, DWORD FAR* lpdwFileOffset):
     // Pascal, so the last is lowest (a1, a whole far pointer); the others came out of the decompiler as halves

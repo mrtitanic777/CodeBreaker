@@ -1,5 +1,6 @@
 // engine/lane_kit_build.cpp -- the module builder's services and the 16-bit gate's tables, wired (see lane_kit.hpp).
 #include <algorithm>
+#include <format>
 
 #include "analyze/origin.hpp"
 #include "core/error.hpp"
@@ -311,16 +312,23 @@ build::module::Services LaneKit::module_services() {
             const symbols::names::ModuleNames named = bench.namer().of_module(file);
             for (const symbols::names::FunctionName& f : named.functions)
             {
-                if (f.source != "(none)" && !f.name.starts_with("sub_") && text::is_identifier(f.name)) out.functions[text::lower(f.key)] = f.name;
+                if (f.source != "(none)" && !f.name.starts_with("sub_") && text::is_identifier(f.name)) {
+                    out.functions[text::lower(f.key)] = f.name;
+                    out.sources[text::lower(f.key)] = f.source;
+                }
                 if (f.source != "export") continue;
                 if (const symbols::prototypes::Prototype* p = kb.prototype("win16", f.name)) {
                     std::vector<std::pair<std::string, std::string>> params;
                     for (const symbols::prototypes::Parameter& a : p->parameters) params.emplace_back(a.type, a.name);
                     out.parameters[f.name] = std::move(params);
+                    out.headers[f.name] = p->header;
                 }
             }
             for (const symbols::names::ImportName& i : named.imports)
-                if (i.ordinal && text::is_identifier(i.name)) out.imports[{text::upper(i.module), *i.ordinal}] = i.name;
+                if (i.ordinal && text::is_identifier(i.name)) {
+                    out.imports[{text::upper(i.module), *i.ordinal}] = i.name;
+                    out.sources[std::format("{}.{}", text::upper(i.module), *i.ordinal)] = i.source;
+                }
         } catch (const Error&) {   // (no symbol tables: the build's own names stay)
         }
         return out;
