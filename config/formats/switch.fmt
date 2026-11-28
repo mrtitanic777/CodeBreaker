@@ -1,7 +1,127 @@
-# switch.fmt -- how the Nintendo Switch's files are told (formats/detect): homebrew NRO and NSO executables, an AArch64
-# ELF (devkitA64's output), and the encrypted NSP and XCI containers (recognised, not handled).
+# switch.fmt -- the Nintendo Switch's programs (formats/nro): a homebrew NRO, a NSO and the AArch64 ELF devkitA64 links
+# them from; how the files are told (formats/detect) is at the end, with the encrypted NSP and XCI containers
+# (recognised, not handled).
+#
+# What a segment outside the file, an asset block or a MOD0 block that is not there means is the reader's: those parts are
+# read tolerantly (`try`) and the reader checks them. A NSO's MOD0 block and every image's dynamic section are in the
+# loaded image (a NSO's segments may be LZ4-compressed), not in the file: the reader finds them there.
 
 format switch
+endian le
+use elf
+
+struct File {
+    if peek32(0x10) == 0x304F524E {
+        nro : Nro
+    } else if peek32(0) == 0x304F534E {
+        nso : Nso
+    } else {
+        elf : Aarch64Elf
+    }
+}
+
+# A NRO: the offset of the MOD0 block at 4, "NRO0", the file's size, the three segments (text, read-only data, data:
+# offset and size, the offset being the address), the bss size and the build id; past the size the file gives, the
+# asset section ("ASET": the icon, the NACP control data and a RomFS, each an offset from the section and a size).
+struct Nro {
+    mod_offset @ 0x04 : u32
+    magic      @ 0x10 : bytes(4) == "NRO0"
+    size       @ 0x18 : u32
+    segments   @ 0x20 : NroSegment[3]
+    bss        @ 0x38 : u32
+    build_id   @ 0x40 : bytes(0x20)
+    assets     @ size : Assets try
+    mod0       @ mod_offset : Mod0 try
+}
+
+struct NroSegment {
+    offset : u32
+    size   : u32
+}
+
+struct Assets {
+    magic   : bytes(4) == "ASET"
+    version : u32
+    icon    : AssetPart
+    nacp    : AssetPart
+    romfs   : AssetPart
+}
+
+struct AssetPart {
+    offset : u64
+    size   : u64
+}
+
+# The module's MOD0 block: the offset of the .dynamic section from the block, then those of the bss, the exception
+# frame header and the module object.
+struct Mod0 {
+    magic   : bytes(4) == "MOD0"
+    dynamic : i32
+    rest    : bytes(20)
+}
+
+# A NSO: "NSO0", the flags (bit i: segment i is LZ4-compressed), then for text, read-only data and data the offset in the
+# file, the offset in memory, the size and a fourth word (the data segment's is the bss size), the build id at $40 and the
+# compressed sizes at $60.
+struct Nso {
+    magic      : bytes(4) == "NSO0"
+    version    : u32
+    reserved   : u32
+    flags      : u32
+    segments   : NsoSegment[3]
+    build_id   : bytes(0x20)
+    compressed : u32[3]
+}
+
+struct NsoSegment {
+    file_offset   : u32
+    memory_offset : u32
+    size          : u32
+    extra         : u32     # the module name's offset or size; the data segment's: the bss size
+}
+
+# An AArch64 ELF64: elf.fmt's identification and file header, the program headers and section headers at the header's
+# entry sizes (each where phoff + phentsize * i says; one not wholly in the file is not in the tree) and, as a part, the
+# entries of each symbol table that lie in the file.
+struct Aarch64Elf {
+    let is64 = 1
+    ident    : Ident
+    header   : Header
+    segments : PhdrAt[header.phnum]
+    sections : ShdrAt[header.shoff != 0 && header.shentsize >= 64 ? header.shnum : 0]
+}
+
+struct PhdrAt {
+    entry @ header.phoff + header.phentsize * _index : Segment try
+}
+
+struct ShdrAt {
+    entry @ header.shoff + header.shentsize * _index : SectionEntry try
+}
+
+struct SectionEntry {
+    name_offset : u32
+    type        : u32
+    flags       : u64
+    address     : u64
+    offset      : u64
+    size        : u64
+    link        : u32
+    info        : u32
+    align       : u64
+    entsize     : u64
+    # a symbol table's entries: those that are wholly in the file and in the section
+    symbols @ offset : Symbol24[offset <= $size ? min(size / 24, ($size - offset) / 24) : 0] if type == 2 part symbols try
+}
+
+struct Symbol24 {
+    name_offset : u32
+    info        : u8
+    other       : u8
+    section     : u16
+    value       : u64
+    size        : u64
+}
 
 detect 50 switch "Nintendo Switch homebrew executable (NRO)" command reach
     when $size >= 0x80 && at(0x10, "NRO0")
