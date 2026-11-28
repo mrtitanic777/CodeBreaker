@@ -140,7 +140,7 @@ vl::Effects ngp_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     options.on_instruction = [&calls](const et::Registers& r) {
         if (r.pc >= kBiosStubs && r.pc < kBiosStubs + kBiosVectors && calls.size() < kIoShown) calls.push_back(std::format("BIOS_VECTOR_{}", r.pc - kBiosStubs));
     };
-    const et::RunResult run = pcode_cpu::call(bus, entry, options);
+    const et::RunResult run = pcode_cpu::run(bus, entry, options);
     std::vector<std::string> io;
     for (const et::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {} {} {:x}", x.kind == et::DeviceAccess::Kind::Read ? "r" : "w", place(x.address), x.size, x.value));

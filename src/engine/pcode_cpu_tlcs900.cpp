@@ -1,4 +1,4 @@
-// engine/pcode_cpu_tlcs900.cpp -- the Neo Geo Pocket lane's TLCS-900/H on the one p-code emulator: emulate::tlcs900::run's call, on languages/tlcs900exact.sla (see the header).
+// engine/pcode_cpu_tlcs900.cpp -- the Neo Geo Pocket lane's TLCS-900/H on the one p-code emulator, on languages/tlcs900exact.sla (see the header).
 //
 // The emulator holds every register: the current bank (XWA XBC XDE XHL) and the four banks (XWA0 .. XHL3, the current one's own copy stale while it is current),
 // XIX XIY XIZ XSP, the flags S Z H V N C and F' apart, SR's other bits (RFP, IFF, and SRX for the bits nothing names), the DMA control registers and INTNEST, and the pc.
@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "decompile/engine/pcode_emulator.hh"
-#include "engine/pcode_cpu.hpp"
 #include "engine/pcode_cpu_internal.hpp"
 
 namespace cb::engine::pcode_cpu {
@@ -217,7 +216,5 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
     result.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(logged_before), bus.log().end());
     return result;
 }
-
-t::RunResult call(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : t::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

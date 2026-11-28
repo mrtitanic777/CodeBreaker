@@ -1,18 +1,15 @@
-// emulate/tlcs900.hpp -- the Toshiba TLCS-900/H as an interpreter, to run functions on (small, deterministic, and it logs what a function does to the devices and the BIOS).
+// emulate/tlcs900.hpp -- the Toshiba TLCS-900/H's machine as the Neo Geo Pocket lane runs functions on it: the Bus (memory and device ranges, every device access
+// logged), the registers (the four banks, SR, F', the DMA control registers), the options of a run and its result. The processor is CodeBreaker's one emulator on
+// tlcs900exact.sla (engine/pcode_cpu_tlcs900: pcode_cpu::run(bus, entry, options)); the interpreter that was here is retired.
 //
 //     tlcs900::Bus bus;                                           // 24 address lines
 //     bus.memory(0x004000, 0x006BFF, {}, true);                    // work RAM
 //     bus.device(0x008000, 0x008FFF);                              // a device range: every access logged
-//     tlcs900::RunResult r = tlcs900::run(bus, entry, {.xwa = 1});  // call the function as `call` would, run to its `ret`
+//     tlcs900::RunResult r = engine::pcode_cpu::run(bus, entry, {.xwa = 1});   // call the function as `call` would, run to its `ret`
 //
-// Every instruction of decompile/tlcs900: the flags S Z H V N C of the arithmetic (no half carry on a long, parity in V for the logic operations, the carry kept by inc and dec),
-// the four register banks (RFP in SR, `incf` / `decf` / `ldf`, a register code that names another bank or the previous one), byte, word and long operands of every addressing mode
-// (pre-decrement and post-increment by 1, 2 or 4, the index forms, PC-relative), mul / muls / div / divs (the quotient in the low half and the remainder in the high half of the
-// destination, V on overflow or a zero divisor), mula, daa, the shifts and rotates by a count or by A, the bit instructions, minc / mdec, the block moves and compares (ldi ... cpdr, a
-// repeat one runs to BC = 0), bs1f / bs1b, link / unlk, push / pop of every size, ldc and the DMA control registers, scc and every condition. `swi n` is the BIOS: it is stubbed -- it logs
-// the number and the register state (the function number is RW3) in `RunResult::swis` and goes on, with `RunOptions::on_swi` free to supply a result. Timing, interrupts and the
-// other on-chip devices are not modelled. `halt`, an undefined bit pattern and a run past `max_steps` stop a run. A run starts with the registers it is given and a return address
-// pushed that nothing is at; reaching it is the end.
+// `swi n` is the BIOS: it is stubbed -- it logs the number and the register state (the function number is RW3) in `RunResult::swis` and goes on, with `RunOptions::on_swi`
+// free to supply a result. Timing, interrupts and the other on-chip devices are not modelled. `halt`, an undefined bit pattern and a run past `max_steps` stop a run. A run
+// starts with the registers it is given and a return address pushed that nothing is at; reaching it is the end.
 #pragma once
 
 #include <array>
@@ -24,7 +21,6 @@
 #include <vector>
 
 #include "core/bytes.hpp"
-#include "decompile/tlcs900.hpp"
 
 namespace cb::emulate::tlcs900 {
 
@@ -116,22 +112,6 @@ struct Fault {
     std::string text() const { return reason; }
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus) : bus_(&bus) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;
-    std::vector<SoftwareInterrupt> swis;
-    std::function<void(Registers&, const SoftwareInterrupt&)> on_swi;   // may supply a result (what the BIOS would have left in the registers)
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: it did not (nothing changed).
-    std::optional<Fault> step();
-
-private:
-    Bus* bus_;
-};
-
 struct RunOptions {
     std::uint32_t xwa = 0, xbc = 0, xde = 0, xhl = 0;      // the current bank's registers
     std::uint32_t xix = 0, xiy = 0, xiz = 0;
@@ -155,8 +135,5 @@ struct RunResult {
     std::vector<SoftwareInterrupt> swis;   // the BIOS calls of this run, in order
     std::string exit() const;              // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as `call` would and run it until it returns (`ret` to kReturnAddress), faults or takes `max_steps` instructions.
-RunResult run(Bus& bus, std::uint32_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::tlcs900
