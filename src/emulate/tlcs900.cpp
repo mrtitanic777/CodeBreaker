@@ -519,7 +519,8 @@ struct Exec {
             }
             case Op::Mula: {
                 const std::uint8_t code = i.reg;
-                const std::int32_t p = signed_of(bus.read(g.xde(), 2), 2) * signed_of(bus.read(g.xhl(), 2), 2);
+                const std::int32_t x = signed_of(bus.read(g.xde(), 2), 2);   // ((XDE) is read first, then (XHL))
+                const std::int32_t p = x * signed_of(bus.read(g.xhl(), 2), 2);
                 const std::uint32_t r = g.read(code, 4) + static_cast<std::uint32_t>(p);
                 g.write(code, 4, r);
                 g.xhl() -= 2;
@@ -695,8 +696,8 @@ struct Exec {
             set_flag(flag::H, false);
             set_flag(flag::N, false);
             set_flag(flag::V, bc != 0);
-            ++cpu.steps;
             if (!repeat || bc == 0) break;
+            ++cpu.steps;   // (each repeat is a step: the instruction's own is counted by step())
         }
     }
 
@@ -715,8 +716,8 @@ struct Exec {
             set_flag(flag::H, false);
             set_flag(flag::N, true);
             set_flag(flag::V, bc != 0);
-            ++cpu.steps;
             if (!repeat || bc == 0 || r == 0) break;
+            ++cpu.steps;   // (each repeat is a step: the instruction's own is counted by step())
         }
     }
 

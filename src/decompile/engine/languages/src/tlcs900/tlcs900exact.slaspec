@@ -1,0 +1,7 @@
+# CodeBreaker: the TLCS-900/H as the one emulator runs it (engine/pcode_cpu_tlcs900): tlcs900.slaspec with EXACT -- the four register banks
+# switched by incf, decf, ldf and a write of SR, a register code of another bank or the previous one as that bank's register, SR's and F''s
+# every bit, the DMA control registers, the overflow of adc and sbc, no half carry or parity of a long, inc and dec of a word or long register
+# keeping the flags, the rotates by any count, div and divs as the processor leaves a zero divisor and an overflow, and daa, mirr, mula,
+# bs1f, bs1b, minc, mdec, rld and rrd written out. tlcs900.slaspec without EXACT is the decompiler's and the disassembler's description.
+@define EXACT "1"
+@include "tlcs900.slaspec"

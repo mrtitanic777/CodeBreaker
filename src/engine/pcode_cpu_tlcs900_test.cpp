@@ -7,6 +7,7 @@
 #include <random>
 #include <string>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "decompile/tlcs900.hpp"
@@ -68,6 +69,27 @@ std::string describe(const t::RunResult& a, const t::RunResult& b, std::span<con
     return out;
 }
 
+// A run as text: its exit, every register, the steps, the device accesses and the BIOS calls (what a digest of runs folds in, with the RAM).
+std::string fingerprint(const t::RunResult& r) {
+    std::string out = r.exit();
+    for (const auto& bank : r.regs.bank)
+        for (const std::uint32_t v : bank) out += std::format(" {:X}", v);
+    out += std::format(" {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X}", r.regs.xix, r.regs.xiy, r.regs.xiz, r.regs.xsp, r.regs.pc, r.regs.sr, r.regs.f_alt, r.regs.intnest);
+    for (unsigned k = 0; k < 4; ++k) out += std::format(" {:X} {:X} {:X} {:X}", r.regs.dmas[k], r.regs.dmad[k], r.regs.dmac[k], r.regs.dmam[k]);
+    out += std::format(" steps {}", r.steps);
+    for (const t::DeviceAccess& x : r.io) out += std::format("|{}{:X}/{}={:X}", static_cast<int>(x.kind), x.address, x.size, x.value);
+    for (const t::SoftwareInterrupt& x : r.swis) out += std::format("|swi {} {:X} {:X} {:X} {:X} {:X} {:X}", x.number, x.pc, x.function, x.regs[0], x.regs[1], x.regs[2], x.regs[3]);
+    return out;
+}
+
+std::uint32_t fold(std::uint32_t digest, const t::RunResult& r, const cb::Bytes& ram) {
+    const std::string text = fingerprint(r);
+    digest = cb::crypto::crc32(cb::ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), digest);
+    return cb::crypto::crc32(ram, digest);
+}
+
+constexpr unsigned kDigestRuns = 6000;   // (the runs a digest folds in)
+
 struct Case {
     cb::Bytes rom, ram, bios;
     t::RunOptions options;
@@ -101,6 +123,7 @@ void compare_random(bool single, const char* title) {
     std::map<std::string, unsigned> by_kind;
     std::map<std::string, std::string> example;
     unsigned runs = 0, different = 0;
+    std::uint32_t digest[2] = {0, 0};   // (of the first kDigestRuns runs, on each core)
     std::uint64_t executed = 0;   // (instructions the own core ran: a random byte is often no instruction)
     for (unsigned n = 0; n < total; ++n) {
         Case c;
@@ -136,6 +159,8 @@ void compare_random(bool single, const char* title) {
         const t::RunResult run[2] = {play(c, false, steps, ram[0]), play(c, true, steps, ram[1])};
         ++runs;
         executed += run[0].steps;
+        if (n < kDigestRuns)
+            for (int core = 0; core < 2; ++core) digest[core] = fold(digest[core], run[core], ram[core]);
         std::string fields = describe(run[0], run[1], ram[0], ram[1]);
         if (fields.empty()) continue;
         ++different;
@@ -167,7 +192,8 @@ void compare_random(bool single, const char* title) {
         ++by_kind[key];
         if (!example.count(key)) example[key] = culprit + ": " + fields;
     }
-    std::printf("pcode_cpu %s: %u runs, %llu instructions, %u differ\n", title, runs, static_cast<unsigned long long>(executed), different);
+    std::printf("pcode_cpu %s: %u runs, %llu instructions, %u differ, digest own %08X emulator %08X\n", title, runs, static_cast<unsigned long long>(executed), different, digest[0],
+                digest[1]);
     unsigned shown = 0;
     for (const auto& [k, count] : by_kind)
         if (++shown <= 60) std::printf("    %u x %s   e.g. %s\n", count, k.c_str(), example[k].substr(0, 420).c_str());
