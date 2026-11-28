@@ -7,6 +7,7 @@
 #include <set>
 
 #include "formats/exepack.hpp"
+#include "formats/gen/mz.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::dos {
@@ -16,6 +17,19 @@ namespace {
 constexpr std::string_view kReader = "dos";
 
 bool is_mz_or_zm(ByteView d) { return starts_with(d, 0, "MZ") || starts_with(d, 0, "ZM"); }
+
+// The MZ header (and, with `relocations`, its relocation table) through mz.fmt's generated reader; nullopt when `data` is
+// not one.
+std::optional<gen::mz::MzHeader> read_mz(ByteView data, bool relocations = false) {
+    if (!is_mz_or_zm(data)) return std::nullopt;   // (most files a probe sees: no read at all)
+    gen::mz::Options options;
+    options.parts.dos_relocs = relocations;
+    try {
+        return gen::mz::read(data, options).header;
+    } catch (const FormatError&) {
+        return std::nullopt;
+    }
+}
 
 bool printable(ByteView b) {
     return std::all_of(b.begin(), b.end(), [](std::uint8_t c) { return c >= 0x20 && c < 0x7F; });
@@ -81,29 +95,28 @@ bool Program::inside(std::uint64_t linear) const {
 
 // ---- the MZ header, device headers, classification ------------------------------------------------------
 
+// The header's layout is mz.fmt's (its generated reader, formats/gen/mz); what makes it a DOS program (no Windows module
+// behind it) is decided here.
 std::optional<MzHeader> mz_header(ByteView data, bool stub) {
-    if (data.size() < 0x1C || !is_mz_or_zm(data)) return std::nullopt;
-    const auto w = words(data, 2, 12);
-    const std::uint64_t last = w[0], pages = w[1], header_paragraphs = w[3];
+    const std::optional<gen::mz::MzHeader> m = read_mz(data);
+    if (!m) return std::nullopt;
     MzHeader h;
-    h.relocation_count = w[2];
-    h.header_size = static_cast<std::uint32_t>(header_paragraphs * 16);
-    h.min_alloc = w[4];
-    h.max_alloc = w[5];
-    h.ss = w[6];
-    h.sp = w[7];
-    h.ip = w[9];
-    h.cs = w[10];
-    h.relocation_offset = w[11];
-    const std::int64_t size = static_cast<std::int64_t>(pages * 512) - (last ? 512 - static_cast<std::int64_t>(last) : 0);
+    h.relocation_count = m->reloc_count;
+    h.header_size = static_cast<std::uint32_t>(m->header_size);
+    h.min_alloc = m->min_alloc;
+    h.max_alloc = m->max_alloc;
+    h.ss = m->ss;
+    h.sp = m->sp;
+    h.ip = m->ip;
+    h.cs = m->cs;
+    h.relocation_offset = m->reloc_offset;
+    const std::int64_t size = m->image_size;
     h.size = size > h.header_size ? std::min<std::uint64_t>(static_cast<std::uint64_t>(size), data.size()) : data.size();
-    if (data.size() >= 0x40) {
-        const std::uint64_t new_header = get<std::uint32_t>(data, 0x3C, kReader);
-        if (0x40 <= new_header && new_header + 1 < data.size() && !stub) {
-            if (starts_with(data, new_header, "NE") || starts_with(data, new_header, "PE") ||
-                starts_with(data, new_header, "LE") || starts_with(data, new_header, "LX"))
-                return std::nullopt;  // a Windows module
-        }
+    const std::uint64_t new_header = static_cast<std::uint64_t>(m->new_header);
+    if (0x40 <= new_header && new_header + 1 < data.size() && !stub) {
+        if (starts_with(data, new_header, "NE") || starts_with(data, new_header, "PE") ||
+            starts_with(data, new_header, "LE") || starts_with(data, new_header, "LX"))
+            return std::nullopt;  // a Windows module
     }
     return h;
 }
@@ -280,12 +293,12 @@ Loaded load_module(ByteView data, const MzHeader& h, Program& p, std::uint32_t s
     Loaded L;
     const ByteView body = clamped(data, h.header_size, h.size > h.header_size ? h.size - h.header_size : 0);
     L.image.assign(body.begin(), body.end());
-    for (std::uint32_t i = 0; i < h.relocation_count; ++i) {
-        const std::uint64_t at = std::uint64_t{h.relocation_offset} + 4 * std::uint64_t{i};
-        if (at + 4 > data.size()) break;
-        const std::uint32_t off = get<std::uint16_t>(data, at, kReader), seg = get<std::uint16_t>(data, at + 2, kReader);
-        if (seg * 16 + off + 2 <= L.image.size()) L.relocs.push_back(seg * 16 + off);
-    }
+    if (h.relocation_count != 0)
+        if (const std::optional<gen::mz::MzHeader> m = read_mz(data, true); m && m->relocs)   // (the entries the file holds)
+            for (const gen::mz::Reloc& r : *m->relocs) {
+                const std::uint32_t at = std::uint32_t{r.segment} * 16 + r.offset;
+                if (at + 2 <= L.image.size()) L.relocs.push_back(at);
+            }
     L.cs = h.cs, L.ip = h.ip, L.ss = h.ss, L.sp = h.sp;
     p.packer = packer_of(data, h);
     auto adopt = [&](Unpack& u, Unpacked how) {
