@@ -467,6 +467,11 @@ tried. The fixed inputs gain scratch memory of zeros (null pointers, zero counts
 | user32.dll, + the system DLLs' C classes (2026-11-27) | 3,033 | 7 | 896 | 1,490 | 560 | 4 | 76 | |
 | ntdll.dll (Windows 11 26300), revision 7 (2026-11-27) | 4,355 | 23 | 0 | 0 | 0 | 4,326 | 6 | |
 | ntdll.dll, + the system DLLs' C classes (2026-11-27) | 4,355 | 23 | 637 | 3,134 | 487 | 68 | 6 | |
+| notepad.exe, revision 8 (2026-11-27) | 386 | 24 | 166 | 77 | 122 | 0 | 13 | |
+| cmd.exe, revision 8 (2026-11-27) | 665 | 23 | 249 | 174 | 200 | 0 | 20 | |
+| kernel32.dll, revision 8 (2026-11-27) | 2,414 | 4 | 750 | 383 | 1,255 | 0 | 22 | |
+| user32.dll, revision 8 (2026-11-27) | 3,033 | 7 | 1,166 | 1,186 | 598 | 0 | 76 | |
+| ntdll.dll, revision 8 (2026-11-27) | 4,355 | 23 | 1,216 | 2,344 | 751 | 15 | 6 | |
 | calc.exe, revision 6 | 22 | 4 | 5 | 5 | 5 | 2 | 1 | |
 
 The "C that compiles" rows (2026-11-27): every decompiled function's C now builds with x64 cl. The C writer (decompile/c_text_x64)
@@ -486,6 +491,31 @@ intrinsic (`#pragma function`). ntdll's whole module failed before on its header
 cmd stay at 0 not compiling with 164 and 249 verified. Still not compiling: ntdll 68 (mwaitx 9, other instructions without a C
 form, an array given whole to a non-pointer place, a 64-bit local dereferenced with no pointer type stated), user32 4 (an array's
 part written as one, two stack pieces that are not end to end, a `stack0x` name).
+
+The revision 8 rows (2026-11-27): the lane gives the code the environment a thread of a process has -- GS is the thread's
+environment block (itself at 0x30, the process's block at 0x60, the stack's extent, the ids), the process's block names the
+image, the kernel's shared data page is mapped (its byte at 0x308 says a system call is made with `syscall`) -- and the blocks'
+bytes are compared with the rest of what a run writes. A system call is answered (what the input says imports give) and recorded:
+its number, and for the function judged itself (a stub, the stack as its caller left it) every argument it passes on; made by a
+callee, its arguments where the stub's declaration says how many, else the number alone. An import the Windows SDK declares to
+return a pointer or a handle gives a pointer into the scratch memory (null stays null). The C writer gives the decompiler's GS base
+(`unaff_GS_OFFSET`) the block's address (`__readgsqword(0x30)`), and writes each of ntdll's 509 system call stubs as what it does:
+the four register arguments taken, the number put in EAX by the stub's code (`mov r10, rcx; mov eax, N; syscall; ret`, in the
+function's own .text) and the call's result given back (`return system_call(0xf, param_1, ...)`, where the decompiler wrote
+`syscall(); return 0xf;` -- the number taken for the result); all 509 verify. Newly compiling: stack variables not end to end share a
+storage as wide as the value written (`_iStack_c8 = CONCAT13(..)` with nothing named after the first two bytes), `stack0x` bytes
+read from the variables they are in, one-byte `char`/`bool` locals as stack pieces, a structure given a number (`(S)(x)`), a
+structure held by value used as the pointer it is, a function pointer moved by bytes, a number local followed as a pointer to what
+it meets, pieces of members, unnamed fields of a structure cast from an expression, bytes of 16 bytes reached through a pointer, an
+indexed array global, MXCSR written, and mwaitx, monitor, rdrand, rdseed, rdpmc, the segment limit, xsave and its kin, cpuid,
+clflush and clflushopt, the C99 float constants, the math functions and strncmp/strncpy as the module's own, and psraw, pshufb,
+pmaddubsw, pmaddwd, psadbw as what they do. Still not compiling: ntdll's SSE4.2/AVX string routines (pcmpistri, pshuflw,
+vpcmpeq*_avx2, an AVX-512 move: 10), KiUserApcDispatcher (it moves the stack pointer), two unnamed fields of an indexed cast,
+two structures compared or cast as numbers, a 16-byte value shifted as one. The memory a check needed while judging no longer grows: the program's small-block allocator
+(app/allocator_main) lost what a thread held when it ended, and while judging threads start and end several times a second; an
+ending thread now gives its lists back. Peak working set: ntdll 5,625 MB (7,228 MB with revision 8 before the fix) -> 907 MB,
+user32 3,374 -> 485 MB, kernel32 2,461 -> 353 MB, with the same verdicts (kernel32: identical counts with the allocator off,
+CB_MALLOC=1) and the judging faster (kernel32 778 s -> 317 s).
 
 The revision 7 rows were made with a newer decompiler (the tree of 2026-11-26, 11:41 PM), which writes 16 more functions of
 notepad and one more of cmd than revision 6's did (the classes add up to 402 and 666: the decompiler's functions beyond

@@ -3,7 +3,10 @@
 // executable's own source line, CMakeLists.txt).
 //
 // operator new / delete of up to 512 bytes come from free lists by size class (16-byte steps), each thread keeping its own, carved from 1 MB
-// slabs of one reserved address range; larger blocks, and any block not from that range, are malloc's and free's. The command layers allocate
+// slabs of one reserved address range; larger blocks, and any block not from that range, are malloc's and free's. A thread that ends gives
+// its lists back to the shared ones (a fiber-local slot's callback): while a check judges, threads start and end several times a second,
+// and the blocks such a thread held were lost with it -- judging kernel32 grew to 2.5 GB that way (270 MB with CB_MALLOC=1), ntdll to
+// 6.8 GB. The command layers allocate
 // small strings, vectors and tree nodes at every turn, and measured on `decompile kernel32.dll` the process heap (RtlAllocateHeap / RtlFreeHeap)
 // was over a quarter of the program's time; with this the program's allocation cost is a small part of its time. CB_MALLOC=1 in the environment turns it off (every block malloc's), to tell a memory
 // bug from the allocator's.
@@ -12,7 +15,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <mutex>
 #include <new>
 
 namespace {
@@ -31,7 +33,15 @@ char* g_base = nullptr;                          // the reserved range (null: no
 char* g_top = nullptr;                           // next slab not yet committed
 uint8_t* g_class = nullptr;                      // the class of each slab (index by (p - base) / kSlab)
 int g_state = 0;                                 // 0 not set up, 1 on, -1 off
-std::mutex* g_mu = nullptr;
+SRWLOCK g_lock = SRWLOCK_INIT;                   // (a plain lock: no destructor, so a thread may end after the statics are gone)
+DWORD g_fls = FLS_OUT_OF_INDEXES;                // the slot whose callback gives an ending thread's lists back
+
+struct Locked {
+    Locked() { AcquireSRWLockExclusive(&g_lock); }
+    ~Locked() { ReleaseSRWLockExclusive(&g_lock); }
+    Locked(const Locked&) = delete;
+    Locked& operator=(const Locked&) = delete;
+};
 
 struct Shared {
     Block* list[kClasses];
@@ -41,12 +51,34 @@ struct Shared {
 Shared g_shared;
 
 // (plain data: no constructor or destructor runs for it, so new and delete work before main and after a
-// thread's own destructors; what a thread holds when it ends stays with it -- at most kKeep per class)
+// thread's own destructors; what a thread holds when it ends is given back by give_all, the slot's callback)
 struct Cache {
     Block* list[kClasses];
     int count[kClasses];
+    bool registered;                             // its address is in the thread's slot
 };
 thread_local Cache t_cache;
+
+// An ending thread's lists, onto the shared ones.
+void WINAPI give_all(void* data) {
+    Cache* t = static_cast<Cache*>(data);
+    if (t == nullptr) return;
+    Locked l;
+    for (int c = 0; c < kClasses; ++c) {
+        while (Block* b = t->list[c]) {
+            t->list[c] = b->next;
+            b->next = g_shared.list[c];
+            g_shared.list[c] = b;
+        }
+        t->count[c] = 0;
+    }
+}
+
+// The thread's cache put in its slot, once: its lists go back when it ends.
+inline void register_thread(Cache& t) {
+    if (t.registered || g_fls == FLS_OUT_OF_INDEXES) return;
+    t.registered = FlsSetValue(g_fls, &t) != 0;
+}
 
 void set_up() {
     // (the first new: before main, one thread)
@@ -62,8 +94,7 @@ void set_up() {
         g_state = -1;
         return;
     }
-    static std::mutex mu;   // (constant-initialised)
-    g_mu = &mu;
+    g_fls = FlsAlloc(&give_all);
     g_class = cls;
     g_base = g_top = base;
     g_state = 1;
@@ -73,7 +104,8 @@ inline int class_of(size_t n) { return n ? (int)((n - 1) / kStep) : 0; }
 
 // blocks for this thread's list of class c (the shared list first, then new memory); false: none to be had
 bool refill(Cache& t, int c) {
-    std::lock_guard<std::mutex> l(*g_mu);
+    register_thread(t);
+    Locked l;
     Shared& s = g_shared;
     int got = 0;
     while (s.list[c] && got < kBatch) {
@@ -107,7 +139,7 @@ bool refill(Cache& t, int c) {
 }
 
 void give_back(Cache& t, int c) {
-    std::lock_guard<std::mutex> l(*g_mu);
+    Locked l;
     for (int i = 0; i < kBatch && t.list[c]; i++) {
         Block* b = t.list[c];
         t.list[c] = b->next;
@@ -142,6 +174,7 @@ inline void release(void* p) {
     if (g_base && q >= g_base && q < g_base + kRange) {   // (the whole range: a slab another thread just made is in it)
         int c = g_class[(size_t)(q - g_base) / kSlab];
         Cache& t = t_cache;
+        if (t.count[c] == 0) register_thread(t);   // (a thread that only frees: its blocks go back too)
         Block* b = (Block*)p;
         b->next = t.list[c];
         t.list[c] = b;
