@@ -131,7 +131,8 @@ xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::sh
         const std::set<std::string, std::less<>> only = listed("CB_PCODE_ONLY"), except = listed("CB_PCODE_EXCEPT");
         xenon_translate::set([&](std::uint32_t address, std::uint32_t word, std::uint32_t next_word, const xenon_translate::Names& names)
                                  -> std::optional<xenon_translate::Translated> {
-            const pcode_emit::Names ours{names.r, names.f, names.v, names.cr, names.ctr, names.xer, names.lr};
+            const pcode_emit::Names ours{names.r, names.f, names.v, names.cr, names.ctr, names.xer, names.lr, names.msr, names.reserved,
+                                         names.jump, names.call, names.call_indirect, names.jump_indirect};
             std::string why;
             const std::string mnemonic = translator.mnemonic(address, word);
             std::optional<pcode_emit::Statements> s;
@@ -141,11 +142,12 @@ xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::sh
             if (!s) {
                 ++counted->declined;
                 ++counted->why[why];
+                ++counted->declined_by[mnemonic + ": " + why];
                 return std::nullopt;
             }
             ++counted->translated;
             ++counted->written[mnemonic];
-            return xenon_translate::Translated{std::move(s->text), s->fpu};
+            return xenon_translate::Translated{std::move(s->text), s->fpu, s->vmx};
         });
         struct Unset {
             ~Unset() { xenon_translate::set({}); }

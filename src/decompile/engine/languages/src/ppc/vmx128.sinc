@@ -282,9 +282,13 @@ define pcodeop vectorUnpackD3D;
 
 :vsldoi128 vD128,vA128,vB128,x128SHB is x128OP=4 & x128_4_4=1 & vD128 & vA128 & vB128 & x128SHB
 {
+@ifdef XENON_EXACT
+	vD128 = vectorShiftLeftDoubleByOctetImmediate(vA128, vB128, x128SHB:1);
+@else
 	tmp:32 = (zext(vA128) << 128) | zext(vB128);
 	tmp = tmp << (x128SHB * 8);
 	vD128 = tmp[128,128];
+@endif
 }
 
 :vaddfp128 vD128,vA128,vB128 is x128OP=5 & x128_4_4=1 & x128_6_9=0 & vD128 & vA128 & vB128

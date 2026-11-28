@@ -1607,6 +1607,27 @@ macro cr0flags(result ) {
 }
 
 @ifdef XENON_EXACT
+# The Xenon as a title runs on it (the recompiler serves these): a fused multiply-add rounds once; the reservation of lwarx/ldarx is
+# the value they loaded, and stwcx./stdcx. store only if memory still holds it (an atomic compare and exchange: 1 when stored).
+define pcodeop fusedMultiplyAdd;
+define pcodeop fusedMultiplySubtract;
+define pcodeop fusedNegativeMultiplyAdd;
+define pcodeop fusedNegativeMultiplySubtract;
+define pcodeop fusedMultiplyAddSingle;
+define pcodeop fusedMultiplySubtractSingle;
+define pcodeop fusedNegativeMultiplyAddSingle;
+define pcodeop fusedNegativeMultiplySubtractSingle;
+define pcodeop loadWordAndReserve;
+define pcodeop loadDoublewordAndReserve;
+define pcodeop storeWordConditional;
+define pcodeop storeDoublewordConditional;
+define pcodeop vectorRecordCR6;
+define pcodeop vectorAddUnsignedByteModulo;
+define pcodeop vectorSubtractUnsignedHalfWordModuloX;
+define pcodeop moveFromFPSCR;
+define pcodeop moveToFPSCR;
+@endif
+@ifdef XENON_EXACT
 # CR0 from the whole doubleword: divd., divdu. and rldicl., as XenonRecomp has always written them
 macro cr0flags64(result) {
 	setCrBit(cr0, 0, (result s< 0)); # 0b100
@@ -1916,8 +1937,14 @@ TOm: "lge"		is TO=5 { }
 TOm: "lgt"		is TO=1 { }
 TOm: ""			is TO { }
 
+@ifdef XENON_EXACT
+# (the Xenon's 32-bit mode: the count is the low word of CTR)
+CTR_DEC: "z"	is BO_3=1  	{CTR = CTR-1; tmp:1 = (CTR:4 == 0); export tmp; }
+CTR_DEC: "nz"	is BO_3=0  	{CTR = CTR-1; tmp:1 = (CTR:4 != 0); export tmp; }
+@else
 CTR_DEC: "z"	is BO_3=1  	{CTR = CTR-1; tmp:1 = (CTR == 0); export tmp; }
 CTR_DEC: "nz"	is BO_3=0  	{CTR = CTR-1; tmp:1 = (CTR != 0); export tmp; }
+@endif
 
 CC_TF: "t"		is BO_1=1	{ tmp:1 = 1; export tmp; }
 CC_TF: "f"		is BO_1=0	{ tmp:1 = 0; export tmp; }

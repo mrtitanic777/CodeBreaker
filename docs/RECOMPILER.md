@@ -192,3 +192,86 @@ buttons.
   that is an operand) and `instr_rldimi.s`, and `recompile.pcode_emit.*` (5 tests). The instruction tests stay at 0 mismatches,
   2,771 instructions by p-code. Not measured: frame times (the check caps at 60 frames a second). Also open: a person playing
   each title on the p-code translation.
+- 2026-11-28: step 4, first part: the translator writes nearly everything. What it still left to XenonRecomp is now its own:
+  - **Function structure.** XenonRecomp keeps the function, its labels and switch tables. It hands the translator its ways out:
+    a branch to an address, a call (including setjmp/longjmp and the save/restore helpers), an indirect call, and an indirect
+    branch (the switch of a `bctr` with a table). The condition, the CTR count-down and LR come from the p-code. A branch
+    through LR is a return; a branch to the next instruction ends the instruction.
+  - **System instructions.** MSR is `ctx.msr`, or the value the context starts with when the title keeps no MSR. The time base
+    is `PPC_QUERY_TIMEBASE()`. `db16cyc` is `PPC_SPIN_HINT()`. A store before `eieio` goes through `PPC_MM_STORE_*`. The cache
+    hints, barriers and traps are nothing, as XenonRecomp writes them, and `dcbz` clears 32 bytes.
+  - **New `XENON_EXACT` user operations** (docs/GHIDRA_FORK.md L12):
+    - the fused multiply-adds, served by XenonRecomp's `ppc_fmadd` family (one rounding, PowerPC's NaN rules);
+    - `lwarx`/`ldarx`/`stwcx.`/`stdcx.` as the reservation and a host compare-and-exchange;
+    - AltiVec's record compares now set CR6, which the description had left as a TODO;
+    - CTR's count-down tests the low word, as in 32-bit mode.
+  - **VMX128 and AltiVec** (`recompile/pcode_emit_vmx`). 70 of the description's vector user operations are written as
+    XenonRecomp writes the instructions (SIMDe on the context's vectors, under the VMX flush mode), so a title's vector code
+    computes what it did before. This deviates from the plan above, which wanted the emulator's `pcode_ops_ppc` shared. Those
+    are exact models, and XenonRecomp's forms are what the titles play on and are faster. Sharing one implementation with the
+    emulator is left for later.
+
+  Proof:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 2,054,079 | 938 | 6,600, no stop |
+  | Up | 2,083,468 | 1,393 | 6,600, no stop |
+
+  Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames. The
+  instruction tests show 0 mismatches through p-code (5,012 instructions by p-code, 75 by XenonRecomp) and through XenonRecomp.
+  On the way: a branch through LR (`bdzlr`) had been a tail call to the return address, which Minecraft hit as an indirect call
+  to 0.
+
+  Left, all of it AltiVec or FPSCR:
+  - `stvewx`, `stvehx` and `lvsl`'s AltiVec forms (the description passes rA as a register, not as 0);
+  - `vsldoi`, `vsldoi128` and `lvsr` (32-byte values);
+  - the AltiVec words the description has no instruction for (`vaddubm`, `vadduhm`, `vsubuhm`: 77 in Up);
+  - `mffs` and `mtfsf` (the FPSCR's controls);
+  - `ldarx`'s EH form;
+  - `vmrglh` and `vmrglb`.
+- 2026-11-28: step 4, second part: the translator writes every instruction of both titles. `XENON_EXACT` now covers the rest:
+  - AltiVec's element stores and `lvsl`/`lvsr` by one address (the description passed rA as a register where the instruction
+    means 0);
+  - `vsldoi`/`vsldoi128` as one operation (the description used a 32-byte value);
+  - `vaddubm`, `vadduhm` and `vsubuhm`, which the compiled description had no instruction for;
+  - `mffs`/`mtfsf` as the context's FPSCR, and `ldarx`'s EH form.
+
+  The translator also writes XER as a whole (its SO, OV and CA bits), and its vector table gains the merges of halfwords and
+  bytes, the modulo adds, `vmaxsw`, `vavgsb`, `vavgsh` and `vadduws` (75 operations in all). Proof:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 2,055,017 | 0 | 6,600, no stop |
+  | Up | 2,084,860 | 1 (the word 0x00008200, which has opcode 0 and is no instruction) | 6,600, no stop |
+
+  Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames. The
+  instruction tests show 0 mismatches through p-code and through XenonRecomp.
+- 2026-11-28: step 4, third part: the translator declines nothing. Up's one word with primary opcode 0 is written as nothing, as
+  XenonRecomp writes it. The vector table gains the AltiVec operations only the instruction tests use (the signed halfword
+  max/min, packs and saturating subtracts, vsl, vsro, vrlh, vspltish, vandc, vavguh, vaddsws), 92 in all. Proof:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 2,055,017 | 0 | 6,600, no stop |
+  | Up | 2,084,861 | 0 | 6,600, no stop |
+  | Instruction tests | 5,087 | 0 | 0 mismatches |
+
+  Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames.
+
+  Costs measured:
+  - The generated C++ is 3.4 times the size: Minecraft 465 MB against 137 MB, Up 496 MB against 141 MB. The p-code's
+    temporaries are left for the compiler to fold.
+  - The programs are 5% larger: 57.6 MB against 55.0 MB, and 60.7 MB against 58.1 MB.
+  - Both run at the check's 60-frames-a-second cap. Minecraft's GPU time is 4.4 ms a frame against 4.8 ms on the default path,
+    and Up's is 6.4 ms.
+
+  Not measured: the CPU time a frame takes (the cap hides it) and the time a clean build takes. Both are needed before the
+  p-code translator becomes the default, under the never-slower rule.
+
+  Left for step 4:
+  - Make `--translator pcode` the default.
+  - Move what XenonRecomp still keeps into the one translator: the function loop, labels, switch tables, the configuration
+    and the files it writes.
+  - Retire XenonAnalyse and binutils' decoder.
+  - Retire XenonRecomp, which waits for Logan to build and run the Dashboard on the new recompiler.

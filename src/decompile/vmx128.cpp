@@ -270,7 +270,9 @@ Constructor constructor_of(Form form, std::string_view sem) {
         case Form::Sldoi:
             return {"vD128,vA128,vB128,x128SHB",
                     {"vD128", "vA128", "vB128", "x128SHB"},
-                    {"\ttmp:32 = (zext(vA128) << 128) | zext(vB128);", "\ttmp = tmp << (x128SHB * 8);", "\tvD128 = tmp[128,128];"}};
+                    // (XENON_EXACT, the recompiler's description: one user operation, as ppc_common.sinc's other Xenon operations)
+                    {"@ifdef XENON_EXACT", "\tvD128 = vectorShiftLeftDoubleByOctetImmediate(vA128, vB128, x128SHB:1);", "@else",
+                     "\ttmp:32 = (zext(vA128) << 128) | zext(vB128);", "\ttmp = tmp << (x128SHB * 8);", "\tvD128 = tmp[128,128];", "@endif"}};
         case Form::Simm:
             return {"vD128,x128SIMM",
                     {"vD128", "x128SIMM"},

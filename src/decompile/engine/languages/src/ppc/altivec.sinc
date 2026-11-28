@@ -230,13 +230,25 @@ define pcodeop vectorUnpackLowSignedHalfWord;
 @endif
 }
 
+@ifdef XENON_EXACT
+:lvsl vrD,RA_OR_ZERO,B		is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=6 & Rc=0
+{
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorForShiftLeft(ea);
+}
+@else
 :lvsl vrD,A,B		is OP=31 & vrD & A & B & XOP_1_10=6 & Rc=0
 {   # TODO definition
 	vrD = loadVectorForShiftLeft(A,B);
 }
+@endif
 
 :lvsr vrD,RA_OR_ZERO,B		is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=38 & Rc=0
-{   
+{
+@ifdef XENON_EXACT
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorForShiftRight(ea);
+@else   
 	tmp:$(REGISTER_SIZE) = (RA_OR_ZERO + B);
 	eb:1 = tmp[0,4];
 	eb = eb * 8;
@@ -247,6 +259,7 @@ define pcodeop vectorUnpackLowSignedHalfWord;
 	src:32 = (srca << 192) | (srcb << 128) | (srcc << 64) | srcd;
 	src = src >> eb;
 	vrD = src:16;
+@endif
 }
 
 :lvx vrD,RA_OR_ZERO,B		is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=103 & Rc=0
@@ -273,21 +286,36 @@ define pcodeop vectorUnpackLowSignedHalfWord;
 }
 
 :stvebx vrS,RA_OR_ZERO,B		is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=135 & Rc=0
-{   # TODO definition
+{
+@ifdef XENON_EXACT
+	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorElementByteIndexed(EA, vrS);
+@else   # TODO definition
 	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
 	*[ram]:1 EA = storeVectorElementByteIndexed(vrS,RA_OR_ZERO,B);
+@endif
 }
 
 :stvehx vrS,RA_OR_ZERO,B		is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=167 & Rc=0
-{   # TODO definition
+{
+@ifdef XENON_EXACT
+	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorElementHalfWordIndexed(EA, vrS);
+@else   # TODO definition
 	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
 	*[ram]:2 EA = storeVectorElementHalfWordIndexed(vrS,RA_OR_ZERO,B);
+@endif
 }
 
 :stvewx vrS,RA_OR_ZERO,B		is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=199 & Rc=0
-{   # TODO definition
+{
+@ifdef XENON_EXACT
+	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorElementWordIndexed(EA, vrS);
+@else   # TODO definition
 	EA:$(REGISTER_SIZE) = (RA_OR_ZERO + B) & 0xfffffffffffffffc;
 	*[ram]:4 EA = storeVectorElementWordIndexed(vrS,RA_OR_ZERO,B);
+@endif
 }
 
 :stvx vrS,RA_OR_ZERO,B		is OP=31 & vrS & B & RA_OR_ZERO & XOP_1_10=231 & Rc=0
@@ -357,15 +385,28 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 }
 
 # A bug in sleigh compiler forces us to keep the number of imported symbols less than 35 (it slows to a halt pass there), that is why we have vaddubm_part1 & vaddubm_part2
+@ifdef XENON_EXACT
+:vaddubm vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=0
+{
+	vrD = vectorAddUnsignedByteModulo(vrA,vrB);
+}
+@else
 :vaddubm vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=0 & vaddubm_part1 & vaddubm_part2
 {   
 }
+@endif
 
 :vaddubs vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=512
 {   # TODO definition
 	vrD = vectorAddUnsignedByteSaturate(vrA,vrB);
 }
 
+@ifdef XENON_EXACT
+:vadduhm vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=64
+{
+	vrD = vectorAddUnsignedHalfWordModulo(vrA,vrB);
+}
+@else
 :vadduhm vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=64 
     & vrA_16_0 & vrA_16_1 & vrA_16_2 & vrA_16_3 & vrA_16_4 & vrA_16_5 & vrA_16_6 & vrA_16_7 
     & vrB_16_0 & vrB_16_1 & vrB_16_2 & vrB_16_3 & vrB_16_4 & vrB_16_5 & vrB_16_6 & vrB_16_7 
@@ -380,6 +421,7 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
     vrD_16_6 = vrA_16_6 + vrB_16_6;
     vrD_16_7 = vrA_16_7 + vrB_16_7;
 }
+@endif
 
 :vadduhs vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & XOP_0_10=576
 {   # TODO definition
@@ -461,6 +503,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {   # TODO definition
 	# TODO change CR6
 	vrD = vectorCompareBoundsFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpeqfp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=198
@@ -472,6 +517,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 :vcmpeqfp. vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=1 & XOP_0_9=198
 {   # TODO definition
 	vrD = vectorCompareEqualToFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequb vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=6
@@ -484,6 +532,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=70
@@ -496,6 +547,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=134
@@ -508,6 +562,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgefp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=454
@@ -520,6 +577,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanOrEqualToFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtfp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=710
@@ -532,6 +592,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsb vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=774
@@ -544,6 +607,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanSignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=838
@@ -556,6 +622,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanConditionRegisterSignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=902
@@ -568,6 +637,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanSignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtub vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=518
@@ -580,6 +652,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtuh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=582
@@ -592,6 +667,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtuw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=646
@@ -604,6 +682,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vctsxs vrD,vrB,A_BITS	is OP=4 & vrD & A_BITS & vrB & XOP_0_10=970
@@ -956,9 +1037,13 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 
 :vsldoi vrD,vrA,vrB,SHB		is OP=4 & vrD & vrA & vrB & BIT_10=0 & SHB & XOP_0_5=44
 {
+@ifdef XENON_EXACT
+	vrD = vectorShiftLeftDoubleByOctetImmediate(vrA, vrB, SHB:1);
+@else
 	tmp:32 = (zext(vrA) << 128) | zext(vrB);
 	tmp = tmp << (SHB:1 * 8);
 	vrD = tmp[128,128];
+@endif
 }
 
 :vslh vrD,vrA,vrB		is OP=4 & vrD & vrA & vrB & XOP_0_10=324
@@ -1091,6 +1176,12 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 	vrD = vectorSubtractUnsignedByteSaturate(vrA,vrB);
 }
 
+@ifdef XENON_EXACT
+:vsubuhm vrD,vrA,vrB		is OP=4 & vrD & vrA & vrB & XOP_0_10=1088
+{
+	vrD = vectorSubtractUnsignedHalfWordModuloX(vrA,vrB);
+}
+@else
 :vsubuhm vrD,vrA,vrB		is OP=4 & vrD & vrA & vrB & XOP_0_10=1088 
     & vrA_16_0 & vrA_16_1 & vrA_16_2 & vrA_16_3 & vrA_16_4 & vrA_16_5 & vrA_16_6 & vrA_16_7 
     & vrB_16_0 & vrB_16_1 & vrB_16_2 & vrB_16_3 & vrB_16_4 & vrB_16_5 & vrB_16_6 & vrB_16_7 
@@ -1105,6 +1196,7 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
     vrD_16_6 = vrA_16_6 - vrB_16_6;
     vrD_16_7 = vrA_16_7 - vrB_16_7;
 }
+@endif
 
 :vsubuhs vrD,vrA,vrB		is OP=4 & vrD & vrA & vrB & XOP_0_10=1600
 {	# TODO definition

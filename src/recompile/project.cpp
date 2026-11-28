@@ -544,6 +544,9 @@ int run_command(const CommandHooks& hooks, std::span<const std::string> args, co
             std::string written;
             for (const auto& [m, n] : counted->written) written += std::format("{} {}\n", m, n);
             fs::write_text(info.dir / "reports" / "pcode_written.txt", written);   // (every mnemonic it wrote, counted)
+            std::string declined;
+            for (const auto& [reason, n] : counted->declined_by) declined += std::format("{} {}\n", n, reason);
+            fs::write_text(info.dir / "reports" / "pcode_declined.txt", declined);   // (every reason it declined, counted)
         }
         if (info.modules != 0) say(std::format("  {} other modules translated and linked (reports/modules.txt)", info.modules));
         say("  -> " + native_text(info.dir));
