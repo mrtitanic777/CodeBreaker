@@ -5,7 +5,7 @@
 #include "core/testing.hpp"
 #include "engine/machine_lanes.hpp"
 #include "engine/machine_wonderswan.hpp"
-#include "source/wonderswan_writer.hpp"
+#include "source/console_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;

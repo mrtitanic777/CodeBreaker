@@ -1,5 +1,5 @@
 // Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
-#include "platforms/segacd.hpp"
+#include "platforms/package.hpp"
 
 #include "core/testing.hpp"
 
@@ -176,7 +176,7 @@ CB_TEST("platforms.neogeo.descriptor", [] {
 });
 
 CB_TEST("platforms.segacd.descriptor", [] {
-    const Platform p = segacd();
+    const Platform p = described("segacd");
     check_machine(p, Id::Machine, "segacd", "Sega CD / Mega-CD", "68000", "disc image boot sectors (.iso, .bin; 2048 or 2352 bytes a sector)");
     CB_CHECK_EQ(p.cpu.language, "68000:BE:32:default");
     CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::M68k);

@@ -2,7 +2,7 @@
 //
 //     engine::register_threedo_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A 3DO disc image (the program is its LaunchMe, an AIF) or a bare AIF (formats/threedo) is written back as GNU as source (source/threedo_writer) and
+// A 3DO disc image (the program is its LaunchMe, an AIF) or a bare AIF (formats/threedo) is written back as GNU as source (source/console_writer: config/platforms/threedo.json) and
 // rebuilt; one that comes back identical is the original, an edited one has each function run beside the original's in CodeBreaker's ARM interpreter
 // (emulate/arm) as a big-endian processor (`Bus::set_big_endian`: the memory holds each word reversed, a byte or halfword access goes to its lane).
 // The map is the 3DO's as far as a program reaches it: 2 MB of DRAM from address 0 here is 4 MB of the interpreter's main RAM at $02000000, the

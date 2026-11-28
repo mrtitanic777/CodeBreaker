@@ -237,6 +237,7 @@ Description read_description(std::string_view name) {
     if (const auto segmented = j.find("segmented"); segmented != j.end()) d.segmented = segmented_of(*segmented);
     if (const auto vectored = j.find("vectored"); vectored != j.end()) d.vectored = vectored_of(*vectored);
     if (const auto executable = j.find("executable"); executable != j.end()) d.executable = executable_of(*executable);
+    if (const auto flat = j.find("flat"); flat != j.end()) d.executable = executable_of(*flat);
     return d;
 }
 
@@ -374,6 +375,7 @@ image_writer::Written write_shape(const Description& description, const Loaded& 
     values.try_emplace("stem", std::filesystem::path(file_name).stem().string());
     const std::string stem = std::get<std::string>(values.at("stem"));   // (a loader may name the source otherwise: the Neo Geo's `<name>.m1`)
     if (description.shape == "executable") return write_executable(description, program, values, folder);
+    if (description.shape == "flat") return write_flat(description, program, values, folder);
     if (description.shape == "vectored" && description.vectored.cpu == "arm") return arm_code::write(description, program, values, folder);   // (their heads name what flow found)
     if (description.shape == "vectored" && description.vectored.cpu == "v810") return v810_code::write(description, program, values, folder);
     if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);

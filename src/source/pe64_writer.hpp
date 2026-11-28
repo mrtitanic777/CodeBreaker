@@ -13,7 +13,7 @@
 // What is not yet done: pointers the base-relocation table names are written as numbers (the source rebuilds the original, but code moved by an edit leaves
 // them pointing at the old places), and a switch's table of 32-bit RVAs is data.
 //
-// The Xbox One / Series writer (source/xboxone_writer) is this writer with the package's identity in the head.
+// The Xbox One / Series writer (source/console_xboxone) is this writer with the package's identity in the head.
 #pragma once
 
 #include <filesystem>

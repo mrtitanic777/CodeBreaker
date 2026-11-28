@@ -12,9 +12,10 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_m6809.hpp"
 #include "formats/read.hpp"
-#include "platforms/vectrex.hpp"
+#include "knowledge/package.hpp"
+#include "platforms/package.hpp"
 #include "formats/vectrex.hpp"
-#include "source/vectrex_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -97,8 +98,9 @@ vl::Effects vectrex_effects(const stdfs::path& path, std::uint32_t entry, const 
     std::vector<std::string> calls;
     options.on_instruction = [&calls](const emulate::m6809::Registers& r) {
         if (r.pc < 0xE000 || calls.size() >= kIoShown) return;
-        const auto named = source::vectrex_writer::bios().find(r.pc);
-        calls.push_back(named != source::vectrex_writer::bios().end() ? named->second : std::format("BIOS_{:04X}", r.pc));
+        static const std::map<std::uint32_t, std::string> bios = knowledge::standard().table_names("vectrex", "bios");   // (config/knowledge/vectrex/registers.json)
+        const auto named = bios.find(r.pc);
+        calls.push_back(named != bios.end() ? named->second : std::format("BIOS_{:04X}", r.pc));
     };
     const emulate::m6809::RunResult run = emulate::pcode_cpu::run(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
@@ -112,7 +114,7 @@ vl::Effects vectrex_effects(const stdfs::path& path, std::uint32_t entry, const 
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::vectrex_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("vectrex", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -141,7 +143,7 @@ vl::ImageLaneSpec vectrex_lane_spec() {
 void register_vectrex_lane() {
     register_lane({
         .name = "vectrex",
-        .platform = platforms::vectrex,
+        .platform = [] { return platforms::described("vectrex"); },
         .probe = [](const stdfs::path& p) { return formats::vectrex::probe(p); },
         .make_spec = vectrex_lane_spec,
         .detectors = {{.priority = 290, .detect = formats::detect::info_vectrex}},

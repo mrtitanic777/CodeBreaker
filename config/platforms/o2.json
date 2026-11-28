@@ -1,0 +1,56 @@
+{
+  "platform": "o2",
+  "title": "Magnavox Odyssey 2",
+  "description": "A cartridge of up to 3 KB at $0400 written whole as 8048 source (console_flat8.cpp): flow from its first byte, each instruction as the 8048 description's text when it builds back into its bytes.",
+  "machine": {
+    "family": "8048",
+    "container": "cartridge (.o2, up to 3 KB at $0400)",
+    "cpu": {
+      "language": "8048:LE:8:default",
+      "bits": 8,
+      "endian": "little",
+      "decoder": "i8048",
+      "registers": [
+        "A",
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "PSW",
+        "P1",
+        "P2"
+      ],
+      "stack": "SP"
+    },
+    "results": [
+      "A",
+      "R0",
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "PSW",
+      "P1",
+      "P2"
+    ],
+    "toolchain": "CodeBreaker's own assembler (8048 syntax)"
+  },
+  "shape": "flat",
+  "dialect": "asm8048",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Odyssey 2 cartridge, {size} bytes at $0400 (the 8048's program memory)",
+    ""
+  ],
+  "flat": {
+    "cpu": "i8048",
+    "built": "{stem}.built{ext}"
+  }
+}

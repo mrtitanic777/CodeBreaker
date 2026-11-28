@@ -12,9 +12,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_tlcs900.hpp"
 #include "formats/read.hpp"
-#include "platforms/ngp.hpp"
+#include "platforms/package.hpp"
 #include "formats/ngp.hpp"
-#include "source/ngp_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -168,7 +168,7 @@ vl::Effects ngp_effects(const stdfs::path& path, std::uint32_t entry, const vl::
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::ngp_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("ngp", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -202,7 +202,7 @@ vl::ImageLaneSpec ngp_lane_spec() {
 void register_ngp_lane() {
     register_lane({
         .name = "ngp",
-        .platform = platforms::ngp,
+        .platform = [] { return platforms::described("ngp"); },
         .probe = [](const stdfs::path& p) { return formats::ngp::probe(p); },
         .make_spec = ngp_lane_spec,
         .detectors = {{.priority = 310, .detect = formats::detect::info_ngp}},

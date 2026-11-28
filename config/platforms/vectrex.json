@@ -1,0 +1,47 @@
+{
+  "platform": "vectrex",
+  "title": "Vectrex",
+  "description": "A cartridge at $0000 written whole as 6809 source (console_m6809.cpp): the header (copyright, music, title lines), flow from the entry after it, the BIOS's routines and the VIA's registers by name.",
+  "machine": {
+    "family": "6809",
+    "container": "cartridge (.vec, .bin)",
+    "cpu": {
+      "language": "6809:BE:16:default",
+      "bits": 8,
+      "endian": "big",
+      "decoder": "m6809",
+      "registers": [
+        "A",
+        "B",
+        "X",
+        "Y",
+        "U",
+        "S",
+        "DP",
+        "CC"
+      ],
+      "stack": "S"
+    },
+    "results": [
+      "A",
+      "B",
+      "X",
+      "Y",
+      "U",
+      "DP",
+      "CC"
+    ],
+    "toolchain": "CodeBreaker's own assembler (6809 syntax), or lwasm"
+  },
+  "shape": "flat",
+  "dialect": "asm6809",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Vectrex cartridge, {size} bytes, \"{copyright}\", program at ${entry:04X}",
+    ""
+  ],
+  "flat": {
+    "cpu": "m6809",
+    "built": "{stem}.built{ext}"
+  }
+}

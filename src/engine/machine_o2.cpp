@@ -12,9 +12,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_i8048.hpp"
 #include "formats/read.hpp"
-#include "platforms/o2.hpp"
+#include "platforms/package.hpp"
 #include "formats/o2.hpp"
-#include "source/o2_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -115,7 +115,7 @@ vl::Effects o2_effects(const stdfs::path& path, std::uint32_t entry, const vl::S
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::o2_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("o2", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -144,7 +144,7 @@ vl::ImageLaneSpec o2_lane_spec() {
 void register_o2_lane() {
     register_lane({
         .name = "o2",
-        .platform = platforms::o2,
+        .platform = [] { return platforms::described("o2"); },
         .probe = [](const stdfs::path& p) { return formats::o2::probe(p); },
         .make_spec = o2_lane_spec,
         .detectors = {{.priority = 320, .detect = formats::detect::info_o2}},

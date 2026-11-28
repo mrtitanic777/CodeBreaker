@@ -5,7 +5,6 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/console_writer.hpp"
-#include "source/sega32x_writer.hpp"
 
 namespace cb::source {
 namespace {
@@ -123,8 +122,8 @@ CB_TEST("source.writers.homebrew.game_boy_advance", [] {
 
 // (the SuperH consoles': the 32X's two SH-2s and the Saturn's disc, each from its source)
 CB_TEST("source.writers.homebrew.superh_consoles", [] {
-    rebuild("sega32x/roq32X.32x", 60, sega32x_writer::reconstruct);
-    rebuild("sega32x/240pSuite_32X_1.0.32x", 80, sega32x_writer::reconstruct);
+    rebuild("sega32x/roq32X.32x", 60, console("sega32x"));
+    rebuild("sega32x/240pSuite_32X_1.0.32x", 80, console("sega32x"));
     rebuild("saturn/save-game-copier-3.6.18/game.iso", 1000, console("saturn"));
 });
 

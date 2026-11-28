@@ -1,0 +1,63 @@
+{
+  "platform": "cdi",
+  "title": "Philips CD-i",
+  "description": "A disc's CD-RTOS modules or a module file as 68000 source (console_cdi.cpp): each module's header and code, its system calls and the machine's registers by name; rebuilt into the disc or the file.",
+  "machine": {
+    "family": "68000",
+    "container": "disc image (.iso, .bin, .cdi) or CD-RTOS module (.mod)",
+    "cpu": {
+      "language": "68000:BE:32:default",
+      "bits": 32,
+      "endian": "big",
+      "decoder": "m68k",
+      "registers": [
+        "D0",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7",
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "SR"
+      ],
+      "stack": "A7"
+    },
+    "results": [
+      "D0",
+      "D1",
+      "D2",
+      "D3",
+      "D4",
+      "D5",
+      "D6",
+      "D7",
+      "A0",
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6"
+    ],
+    "toolchain": "CodeBreaker's own assembler (Motorola syntax)"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Philips CD-i {disc?disc|module file}: {modules} module(s), {placed} run by the model",
+    ""
+  ],
+  "executable": {
+    "container": "cdi",
+    "built": "{stem}.built{ext}"
+  }
+}

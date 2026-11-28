@@ -14,13 +14,11 @@
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
-#include "platforms/sega32x.hpp"
 #include "platforms/package.hpp"
 #include "formats/genesis.hpp"
 #include "formats/saturn.hpp"
 #include "formats/sega32x.hpp"
 #include "source/console_writer.hpp"
-#include "source/sega32x_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -266,7 +264,7 @@ vl::Effects sega32x_effects(const stdfs::path& path, std::uint32_t entry, const 
     return outcome(run, watched);
 }
 
-vl::Written sega32x_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::sega32x_writer::reconstruct(module, out)); }
+vl::Written sega32x_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("sega32x", module, out)); }
 
 // ---- the Saturn --------------------------------------------------------------------------------------------------------
 
@@ -361,7 +359,7 @@ vl::ImageLaneSpec saturn_lane_spec() {
 void register_sh2_lanes() {
     register_lane({
         .name = "sega32x",
-        .platform = platforms::sega32x,
+        .platform = [] { return platforms::described("sega32x"); },
         .probe = [](const stdfs::path& p) { return formats::sega32x::probe(p); },
         .make_spec = sega32x_lane_spec,
         .detectors = {{.priority = 400, .detect = formats::detect::info_sega32x}},

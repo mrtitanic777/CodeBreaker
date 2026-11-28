@@ -14,6 +14,7 @@
 // the header's values by name. The file formats themselves are formats/<x>'s.
 #pragma once
 
+#include <any>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -241,7 +242,7 @@ struct Description {
     CartShape cart;          // (the cart6502 shape's)
     Segmented segmented;     // (the segmented shape's)
     Vectored vectored;       // (the vectored shape's)
-    Executable executable;   // (the executable shape's)
+    Executable executable;   // (the executable shape's, and the flat shape's: its `flat` section, `cpu` the processor)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -321,6 +322,8 @@ struct Contained {
     std::shared_ptr<const formats::n3ds::Program> n3ds;        // ("n3ds") the program (`image` is the file)
     std::shared_ptr<const formats::nro::Program> nswitch;      // ("switch") the program (`image` is the loaded image: a NRO's file)
     std::shared_ptr<const formats::nds::Rom> nds;              // ("nds") the cartridge (`image` is the ROM)
+    std::any program;                                           // (the flat shape's processors, the later containers) the format's program as a
+                                                                // std::shared_ptr<const T> (console_shapes.hpp: contained_as<T>)
     // What is still to do once the program is written (`values` has `file` and `stem`): the disc the lane runs.
     std::function<void(image_writer::Written&, const Values& values, const std::filesystem::path& folder)> after;
 };
@@ -353,7 +356,10 @@ Loaded load_neogeo_sound(ByteView sound, std::string_view file_name);
 // the same two parts in it. A `volume_base` numbers the volume's sectors from there, as a GD-ROM's high-density track or a second session does.
 Bytes dreamcast_disc(ByteView image, const std::string& name, bool scrambled, std::uint32_t volume_base = 0);
 
-// The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/sega32x_writer).
+// The Xbox One's loader with the PE file of a package `member` picks ("" the app's executable).
+Loaded load_xboxone(const std::filesystem::path& file, const std::string& member);
+
+// The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/console_sega32x).
 Loaded load_genesis(const formats::genesis::Rom& rom);
 
 // `text` with each {name} (a value), {name:spec} (a number in std::format's spec: 04X) and {name?yes|no} (the branch for whether the value is

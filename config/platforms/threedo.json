@@ -1,0 +1,58 @@
+{
+  "platform": "threedo",
+  "title": "3DO",
+  "description": "An Opera disc's LaunchMe or a bare AIF as GNU as ARM source (console_threedo.cpp): the image's words as their values (the processor is big-endian), flow from the AIF's entry, the machine's registers by name; rebuilt into the disc or the AIF.",
+  "machine": {
+    "family": "arm",
+    "container": "Opera disc image (.iso) or AIF executable (LaunchMe)",
+    "cpu": {
+      "language": "ARM:BE:32:v3",
+      "bits": 32,
+      "endian": "big",
+      "decoder": "arm",
+      "registers": [
+        "R0",
+        "R1",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "SP"
+      ],
+      "stack": "SP"
+    },
+    "results": [
+      "R0",
+      "R1",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9",
+      "R10",
+      "R11",
+      "SP"
+    ],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "3DO {disc?disc, program|AIF} {name}, {image_size} bytes, entry 0x{entry:06X}; every word is its value (the processor is big-endian)",
+    ""
+  ],
+  "executable": {
+    "container": "threedo",
+    "prologue": [
+      "        .syntax unified",
+      "        .arm",
+      ""
+    ],
+    "built": "{stem}.built.{disc?iso|aif}"
+  }
+}

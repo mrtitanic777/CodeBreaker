@@ -1,0 +1,50 @@
+{
+  "platform": "ngp",
+  "title": "SNK Neo Geo Pocket / Pocket Color",
+  "description": "A cartridge at $200000 written whole as TLCS-900/H source (console_tlcs900.cpp): the header field by field, flow from the start and the interrupt handlers the program installs, the hardware's names.",
+  "machine": {
+    "family": "TLCS-900/H",
+    "container": "cartridge (.ngp, .ngc, .npc)",
+    "cpu": {
+      "language": "TLCS900H:LE:32:default",
+      "bits": 32,
+      "endian": "little",
+      "decoder": "tlcs900",
+      "registers": [
+        "XWA",
+        "XBC",
+        "XDE",
+        "XHL",
+        "XIX",
+        "XIY",
+        "XIZ",
+        "XSP",
+        "SR"
+      ],
+      "stack": "XSP"
+    },
+    "results": [
+      "XWA",
+      "XBC",
+      "XDE",
+      "XHL",
+      "XIX",
+      "XIY",
+      "XIZ",
+      "XSP",
+      "SR"
+    ],
+    "toolchain": "CodeBreaker's own assembler (Toshiba TLCS-900/H syntax)"
+  },
+  "shape": "flat",
+  "dialect": "asmtlcs900",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Neo Geo Pocket {colour?Color|} cartridge, {size} bytes, \"{title}\", start at 0x{start:06X}",
+    ""
+  ],
+  "flat": {
+    "cpu": "tlcs900",
+    "built": "{stem}.built{ext}"
+  }
+}

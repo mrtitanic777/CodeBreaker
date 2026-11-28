@@ -80,9 +80,25 @@ image_writer::Written write_sh2(const Description& d, const Loaded& program, con
 
 }  // namespace
 
+image_writer::Written write_flat(const Description& d, const Loaded& program, const Values& values, const std::filesystem::path& folder) {
+    const std::string& cpu = d.executable.cpu;
+    if (cpu == "i8048" || cpu == "f8") return flat8_code::write(d, program, values, folder);
+    if (cpu == "tlcs900") return tlcs900_code::write(d, program, values, folder);
+    if (cpu == "m6809") return m6809_code::write(d, program, values, folder);
+    if (cpu == "cp1610") return cp1610_code::write(d, program, values, folder);
+    if (cpu == "v30mz") return v30_code::write(d, program, values, folder);
+    throw UsageError(std::format("console platform {}: the flat shape has no processor {}", d.name, cpu));
+}
+
 image_writer::Written write_executable(const Description& d, const Loaded& program, const Values& values, const std::filesystem::path& folder) {
     const Executable& shape = d.executable;
     if (shape.container == "sh2" && program.contained.sh2) return write_sh2(d, program, values, folder);
+    if (shape.container == "orbis") return orbis_code::write(d, program, values, folder);
+    if (shape.container == "xboxone") return xboxone_code::write(d, program, values, folder);
+    if (shape.container == "threedo") return threedo_code::write(d, program, values, folder);
+    if (shape.container == "cdi") return cdi_code::write(d, program, values, folder);
+    if (shape.container == "segacd") return segacd_code::write(d, program, values, folder);
+    if (shape.container == "sega32x") return sega32x_code::write(d, program, values, folder);
     if (shape.container == "ps3" && program.contained.ps3) return ps3_code::write(d, program, values, folder);
     if (shape.container == "gekko" && program.contained.gekko) return gekko_code::write(d, program, values, folder);
     if (shape.container == "vita" && program.contained.vita) return vita_code::write(d, program, values, folder);

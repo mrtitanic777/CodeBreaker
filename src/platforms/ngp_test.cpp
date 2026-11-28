@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/ngp.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.ngp.descriptor", [] {
-    const Platform p = ngp();
+    const Platform p = described("ngp");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "ngp");
     CB_CHECK_EQ(p.title, "SNK Neo Geo Pocket / Pocket Color");

@@ -1,0 +1,13 @@
+{
+  "platform": "wonderswan",
+  "title": "WonderSwan / WonderSwan Color",
+  "description": "A cartridge written whole as NASM source for the V30MZ (console_v30.cpp, through flat_rounds): flow from the footer's far jump, the I/O ports by name. The machine's facts stay platforms/wonderswan (a Capstone decoder and a C calling convention, which a description does not say).",
+  "shape": "flat",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "WonderSwan{color? Color|} cartridge, {size} bytes, start {reset_segment:04X}:{reset_offset:04X}, developer {developer:02X}, game {game:02X}, version {version}, save type {save:02X}, checksum {checksum:04X} ({checksum_ok?right|does not match the file})"
+  ],
+  "flat": {
+    "cpu": "v30mz"
+  }
+}

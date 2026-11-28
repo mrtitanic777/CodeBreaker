@@ -1,5 +1,5 @@
 // source/x64_writer.hpp -- a 64-bit x86 program file written whole as one NASM source that builds back into it: what the PlayStation 4 and 5 writers
-// (source/orbis_writer) and the Xbox One writer (source/xboxone_writer) share. They know the file format; this knows the instructions.
+// (source/console_orbis) and the Xbox One writer (source/console_xboxone) share. They know the file format; this knows the instructions.
 //
 //     x64_writer::Image image;                  // the file's bytes, which runs of it are mapped where, the entry points, the names
 //     image_writer::Written r = x64_writer::write(image, "out");

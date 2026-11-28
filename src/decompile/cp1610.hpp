@@ -2,7 +2,7 @@
 //
 // The CP1610 has eight 16-bit registers (R6 is the stack pointer, R7 the program counter) and a word-addressed memory; an instruction is one to three decles of 10 bits
 // (held in 16-bit words here; only the low ten bits of a word are read, as a ROM does). One table serves the disassembler, the assembler that rebuilds the source the Intellivision lane writes
-// (source/intv_writer) and the interpreter (emulate/cp1610).
+// (source/console_cp1610) and the interpreter (emulate/cp1610).
 //
 //     decode(code, at, pc, sdbd)   the instruction at code[at:] running at word address pc, or nullopt;   `sdbd`: the previous instruction was SDBD
 //     text(insn, labels)           "MVII #$1234,R0"  "MVI@ R4,R1"  "ADDR R1,R2"  "BNEQ L_0040"  "JSR R5,sub_5100"
