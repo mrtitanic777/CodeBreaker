@@ -7,9 +7,12 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "formats/format_builtin.hpp"
 #include "core/text.hpp"
 
 namespace cb::formats::xbox::xzp {
+
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -18,47 +21,48 @@ constexpr std::size_t kBaseRelative = 0x16;   // the payload base is counted fro
 constexpr std::size_t kV1Table = 0x17;
 constexpr std::uint32_t kMaxV1Name = 512;   // UTF-16 units
 
-std::uint32_t be32_at(ByteView d, std::size_t at) {
-    io::ByteReader r(io::checked_range(d, at, 4), kReader);
-    return r.u32_be();
-}
-
 }  // namespace
 
+// The layout is xzp.fmt's; where a v1 table ends and what a name holds are this reader's.
 Pack parse(ByteView d) {
     if (d.size() < 4 || as_text(d.subspan(0, 4)) != "XUIZ") throw FormatError(kReader, 0, "not a XUIZ container");
+    eng::ReadOptions options;
+    options.keep_source = false;   // only read from
+    const eng::Tree tree = [&] {
+        try {
+            return eng::builtin().read("xzp", d, options);
+        } catch (const TruncatedError&) {   // (the table is read tolerantly: only the header's words can be cut short)
+            throw FormatError(kReader, 0, "the XUIZ header is cut short");
+        }
+    }();
+    const eng::Node& h = tree.root;
     Pack pack;
-    const std::uint32_t version = be32_at(d, 4);
-    pack.file_size = be32_at(d, 8);
-    pack.base = kBaseRelative + std::uint64_t{be32_at(d, 0x10)};
+    const std::uint64_t version = h.u("version");
+    pack.file_size = static_cast<std::uint32_t>(h.u("file_size"));
+    pack.base = h.u("base");
+    const std::vector<eng::Node>& entries = h.get("entries").children;
     if (version >= 3) {
         pack.version = 3;
-        io::ByteReader count_reader(io::checked_range(d, 0x14, 2), kReader);
-        const std::uint32_t count = count_reader.u16_be();
         std::size_t p = kBaseRelative;
-        for (std::uint32_t k = 0; k < count; ++k) {
-            if (p + 9 > d.size()) break;
+        for (const eng::Node& n : entries) {
             Entry e;
-            e.size = be32_at(d, p);
-            e.offset = be32_at(d, p + 4);
-            const std::size_t length = d[p + 8];
-            const std::size_t end = std::min(d.size(), p + 9 + length);   // (a name the file cuts short is what is there)
-            e.name = text::from_latin1(d.subspan(p + 9, end - (p + 9)));
+            e.size = static_cast<std::uint32_t>(n.u("size"));
+            e.offset = static_cast<std::uint32_t>(n.u("offset"));
+            e.name = text::from_latin1(as_bytes(n.get("name").text));   // (a name the file cuts short is what is there)
             pack.entries.push_back(std::move(e));
-            p += 9 + length;
+            p = n.offset + 9 + n.u("length");
         }
         pack.table_end = p;
         return pack;
     }
     pack.version = 1;
     std::size_t p = kV1Table;
-    while (p + 9 <= d.size()) {
-        const std::uint32_t size = (std::uint32_t{d[p]} << 16) | (std::uint32_t{d[p + 1]} << 8) | d[p + 2];
-        const std::uint32_t offset = be32_at(d, p + 3);
-        const std::uint32_t units = d[p + 7] | (std::uint32_t{d[p + 8]} << 8);
-        if (units == 0 || units > kMaxV1Name || p + 9 + std::size_t{units} * 2 > d.size()) break;
-        const std::size_t name_end = static_cast<std::size_t>(std::min<std::uint64_t>(p + 9 + std::uint64_t{units} * 2, pack.base));
-        const ByteView raw = d.subspan(std::min(p + 9, name_end), name_end > p + 9 ? name_end - (p + 9) : 0);
+    for (const eng::Node& n : entries) {
+        p = n.offset;
+        const std::uint64_t size = n.u("size"), offset = n.u("offset"), units = n.u("units");
+        if (units == 0 || units > kMaxV1Name || p + 9 + units * 2 > d.size()) break;
+        const eng::Node& name_node = n.get("name");
+        const ByteView raw = d.subspan(name_node.offset, name_node.size);
         std::string decoded;
         if (raw.size() % 2 != 0) {   // a name the payload base cuts in half: the whole units, then the lone byte as a character
             decoded = text::from_utf16le(raw.subspan(0, raw.size() - 1));
@@ -71,8 +75,8 @@ Pack parse(ByteView d) {
             if (c >= 32 && c < 127) name.push_back(c);
         }
         if (name.empty() || pack.base + offset + size > d.size()) break;
-        pack.entries.push_back({size, offset, std::move(name)});
-        p = static_cast<std::size_t>(name_end);
+        pack.entries.push_back({static_cast<std::uint32_t>(size), static_cast<std::uint32_t>(offset), std::move(name)});
+        p = n.u("name_end");
     }
     pack.table_end = p;
     return pack;

@@ -1,0 +1,40 @@
+# xzp.fmt -- a XUIZ (.xzp) container (formats/xbox/xzp): the Xbox 360 UI and texture packs. Two layouts share the magic,
+# told apart by the version word: v1 (Minecraft Legacy Console Edition's) has its table at 0x17 and no count, each entry
+# a 24-bit size, an offset from the payload base and a UTF-16LE name whose length (a little-endian word) is in units;
+# v3 (the dashboard's) has a count at 0x14 and its table at 0x16, each entry a size, an offset and a Latin-1 name with a
+# byte length. The payload base is 0x16 plus the word at 0x10.
+#
+# Where a v1 table ends (an entry that does not hold together) is the reader's: the description reads every entry the
+# file holds the first nine bytes of, a v1 name up to the payload base and a v3 name up to the end of the file.
+
+format xzp
+endian be
+
+struct File {
+    magic     : bytes(4) == "XUIZ"
+    version   : u32
+    file_size : u32
+    base_word @ 0x10 : u32
+    let base = 0x16 + base_word
+    if version >= 3 {
+        count   @ 0x14 : u16
+        entries @ 0x16 : V3Entry[count] try
+    } else {
+        entries @ 0x17 : V1Entry[while $pos + 9 <= $size] try
+    }
+}
+
+struct V3Entry {
+    size   : u32
+    offset : u32
+    length : u8
+    name   : str(min(length, $remaining))
+}
+
+struct V1Entry {
+    size   : u24
+    offset : u32
+    units  : u16le
+    let name_end = min($start + 9 + units * 2, base)
+    name   : bytes(name_end > $pos ? name_end - $pos : 0)
+}
