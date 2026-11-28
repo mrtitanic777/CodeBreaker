@@ -1,0 +1,6 @@
+# CodeBreaker: the V810 as the one emulator runs it (engine/pcode_cpu_v810): v810.slaspec with EXACT -- the floating-point flags (a reserved
+# operand, the zero divide, an overflow, an underflow flushed to zero), the conversions to an integer and their invalid operation, the ten bit
+# strings written out, the read-only system registers, jmp's target with its low bit clear, the division that overflows, and rev; a division by
+# zero, trap, reti and halt are handed to the machine (they end a run). v810.slaspec without EXACT is the decompiler's and the disassembler's.
+@define EXACT "1"
+@include "v810.slaspec"

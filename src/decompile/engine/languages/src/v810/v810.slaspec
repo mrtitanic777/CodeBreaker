@@ -33,6 +33,9 @@ define register offset=0x100 size=4 [ eipc eipsw fepc fepsw ecr pir tkcw chcw ad
 define register offset=0x200 size=1 [ Z S OV CY FPR FUD FOV FZD FIV FRO ID AE EP NP PSWI ];
 
 define register offset=0x300 size=4 [ PC ];
+@if defined(EXACT)
+define register offset=0x304 size=4 [ sysSink ];   # (where ldsr of a read-only system register goes)
+@endif
 
 define token insn (16)
    op6    = (10,15)
@@ -85,6 +88,34 @@ define pcodeop ornbsu;
 define pcodeop andnbsu;
 define pcodeop xornbsu;
 define pcodeop notbsu;
+@if defined(EXACT)
+# CodeBreaker: what the one emulator (v810exact.sla) hands to the machine, which ends the run there: a division by zero (the processor's
+# zero-divide exception), reti, and a bit string longer than a megabit (the run's own limit). trap and halt are the operations above.
+define pcodeop divideByZero;
+define pcodeop reti;
+define pcodeop bitStringTooLong;
+
+# a reserved operand of the floating-point unit: a NaN or a denormal (an infinity is an operand)
+macro reserved(v, out) {
+  local re:4 = (v >> 23) & 0xff;
+  local rm:4 = v & 0x7fffff;
+  out = (rm != 0) && ((re == 0xff) || (re == 0));
+}
+
+# a result of the floating-point unit: an infinity sets FOV, a denormal is flushed to zero and sets FUD; Z S from the bits, CY the sign
+macro fresult(r) {
+  local fe:4 = (r >> 23) & 0xff;
+  local fm:4 = r & 0x7fffff;
+  FOV = FOV || ((fe == 0xff) && (fm == 0));
+  local tiny:1 = (fe == 0) && (fm != 0);
+  FUD = FUD || tiny;
+  r = r * zext(tiny == 0);
+  Z = (r == 0);
+  S = (r s< 0);
+  OV = 0;
+  CY = S;
+}
+@endif
 
 ################################################################
 # Macros
@@ -247,6 +278,72 @@ SysReg: imm5u   is imm5u & r1n=29 { export sr29; }
 SysReg: imm5u   is imm5u & r1n=30 { export sr30; }
 SysReg: imm5u   is imm5u & r1n=31 { export sr31; }
 
+@if defined(EXACT)
+SysL: "eipc" is r1n=0 { export eipc; }
+SysL: "eipsw" is r1n=1 { export eipsw; }
+SysL: "fepc" is r1n=2 { export fepc; }
+SysL: "fepsw" is r1n=3 { export fepsw; }
+SysL: "ecr" is r1n=4 { export sysSink; }
+SysL: "pir" is r1n=6 { export sysSink; }
+SysL: "tkcw" is r1n=7 { export sysSink; }
+SysL: imm5u is imm5u & r1n=8 { export sysSink; }
+SysL: imm5u is imm5u & r1n=9 { export sysSink; }
+SysL: imm5u is imm5u & r1n=10 { export sysSink; }
+SysL: imm5u is imm5u & r1n=11 { export sysSink; }
+SysL: imm5u is imm5u & r1n=12 { export sysSink; }
+SysL: imm5u is imm5u & r1n=13 { export sysSink; }
+SysL: imm5u is imm5u & r1n=14 { export sysSink; }
+SysL: imm5u is imm5u & r1n=15 { export sysSink; }
+SysL: imm5u is imm5u & r1n=16 { export sysSink; }
+SysL: imm5u is imm5u & r1n=17 { export sysSink; }
+SysL: imm5u is imm5u & r1n=18 { export sysSink; }
+SysL: imm5u is imm5u & r1n=19 { export sysSink; }
+SysL: imm5u is imm5u & r1n=20 { export sysSink; }
+SysL: imm5u is imm5u & r1n=21 { export sysSink; }
+SysL: imm5u is imm5u & r1n=22 { export sysSink; }
+SysL: imm5u is imm5u & r1n=23 { export sysSink; }
+SysL: "chcw" is r1n=24 { export chcw; }
+SysL: "adtre" is r1n=25 { export adtre; }
+SysL: imm5u is imm5u & r1n=26 { export sysSink; }
+SysL: imm5u is imm5u & r1n=27 { export sysSink; }
+SysL: imm5u is imm5u & r1n=28 { export sysSink; }
+SysL: imm5u is imm5u & r1n=29 { export sysSink; }
+SysL: imm5u is imm5u & r1n=30 { export sysSink; }
+SysL: imm5u is imm5u & r1n=31 { export sysSink; }
+
+SysS: "eipc" is r1n=0 { export eipc; }
+SysS: "eipsw" is r1n=1 { export eipsw; }
+SysS: "fepc" is r1n=2 { export fepc; }
+SysS: "fepsw" is r1n=3 { export fepsw; }
+SysS: "ecr" is r1n=4 { export ecr; }
+SysS: "pir" is r1n=6 { local v:4 = 0x5346; export v; }
+SysS: "tkcw" is r1n=7 { local v:4 = 0xe0; export v; }
+SysS: imm5u is imm5u & r1n=8 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=9 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=10 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=11 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=12 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=13 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=14 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=15 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=16 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=17 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=18 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=19 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=20 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=21 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=22 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=23 { local v:4 = 0; export v; }
+SysS: "chcw" is r1n=24 { export chcw; }
+SysS: "adtre" is r1n=25 { export adtre; }
+SysS: imm5u is imm5u & r1n=26 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=27 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=28 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=29 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=30 { local v:4 = 0; export v; }
+SysS: imm5u is imm5u & r1n=31 { local v:4 = 0; export v; }
+@endif
+
 # conditions (branches: field cnd; setf: field scnd)
 CcB: "v" is cnd=0 { local c:1 = OV; export c; }
 CcB: "l" is cnd=1 { local c:1 = CY; export c; }
@@ -297,11 +394,28 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 :cmp reg1,reg2   is op6=0x03 & reg1 & reg2 { cmpop(reg2, reg1); }
 :shl reg1,reg2   is op6=0x04 & reg1 & reg2 { shlop(reg2, reg2, reg1); }
 :shr reg1,reg2   is op6=0x05 & reg1 & reg2 { shrop(reg2, reg2, reg1); }
+@if defined(EXACT)
+:jmp "["^reg1^"]"  is op6=0x06 & r1n=31 & reg1 & r2n=0 { local t:4 = reg1 & 0xfffffffe; return [t]; }
+:jmp "["^reg1^"]"  is op6=0x06 & reg1 & r2n=0 { local t:4 = reg1 & 0xfffffffe; goto [t]; }
+@else
 :jmp "["^reg1^"]"  is op6=0x06 & r1n=31 & reg1 & r2n=0 { return [reg1]; }
 :jmp "["^reg1^"]"  is op6=0x06 & reg1 & r2n=0 { goto [reg1]; }
+@endif
 :sar reg1,reg2   is op6=0x07 & reg1 & reg2 { sarop(reg2, reg2, reg1); }
 :mul reg1,reg2   is op6=0x08 & reg1 & reg2 { mulop(reg2, reg1); }
 :div reg1,reg2   is op6=0x09 & reg1 & reg2 {
+@if defined(EXACT)
+  if (reg1 != 0) goto <divide>;
+  divideByZero();
+  goto inst_start;
+<divide>
+  if ((reg1 != 0xffffffff) || (reg2 != 0x80000000)) goto <fits>;
+  r30 = 0;
+  OV = 1;
+  zs(reg2);
+  goto inst_next;
+<fits>
+@endif
   local q:4 = reg2 s/ reg1;
   r30 = reg2 s% reg1;
   reg2 = q;
@@ -310,6 +424,12 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 }
 :mulu reg1,reg2  is op6=0x0A & reg1 & reg2 { muluop(reg2, reg1); }
 :divu reg1,reg2  is op6=0x0B & reg1 & reg2 {
+@if defined(EXACT)
+  if (reg1 != 0) goto <divide>;
+  divideByZero();
+  goto inst_start;
+<divide>
+@endif
   local q:4 = reg2 / reg1;
   r30 = reg2 % reg1;
   reg2 = q;
@@ -334,6 +454,10 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 :sar imm5u,reg2  is op6=0x17 & imm5u & reg2 { local v:4 = imm5u; sarop(reg2, reg2, v); }
 :trap imm5u      is op6=0x18 & imm5u & r2n=0 { local t:4 = imm5u; trap(t); }
 :reti            is op6=0x19 & r1n=0 & r2n=0 {
+@if defined(EXACT)
+  reti();
+  goto inst_start;
+@endif
   if (NP != 0) goto <fatal>;
   local w:4 = eipsw;
   setPSW(w);
@@ -345,9 +469,17 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 }
 :halt            is op6=0x1A & r1n=0 & r2n=0 { halt(); }
 :ldsr reg2,"psw" is op6=0x1C & r1n=5 & reg2 { local w:4 = reg2; setPSW(w); }
+@if defined(EXACT)
+:ldsr reg2,SysL is op6=0x1C & reg2 & SysL { SysL = reg2; }
+@else
 :ldsr reg2,SysReg is op6=0x1C & reg2 & SysReg { SysReg = reg2; }
+@endif
 :stsr "psw",reg2 is op6=0x1D & r1n=5 & reg2 { local w:4 = 0; getPSW(w); reg2 = w; }
+@if defined(EXACT)
+:stsr SysS,reg2 is op6=0x1D & reg2 & SysS { reg2 = SysS; }
+@else
 :stsr SysReg,reg2 is op6=0x1D & reg2 & SysReg { reg2 = SysReg; }
+@endif
 :sei             is op6=0x1E & r1n=0 & r2n=0 { ID = 1; }
 
 ################################################################
@@ -355,18 +487,518 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 # They work on r26 (destination word address), r27 (destination bit offset),
 # r28 (length), r29 (source bit offset), r30 (source word address).
 
-:sch0bsu is op6=0x1F & r1n=0 & r2n=0 { sch0bsu(r26, r27, r28, r29, r30); }
-:sch0bsd is op6=0x1F & r1n=1 & r2n=0 { sch0bsd(r26, r27, r28, r29, r30); }
-:sch1bsu is op6=0x1F & r1n=2 & r2n=0 { sch1bsu(r26, r27, r28, r29, r30); }
-:sch1bsd is op6=0x1F & r1n=3 & r2n=0 { sch1bsd(r26, r27, r28, r29, r30); }
-:orbsu   is op6=0x1F & r1n=8 & r2n=0 { orbsu(r26, r27, r28, r29, r30); }
-:andbsu  is op6=0x1F & r1n=9 & r2n=0 { andbsu(r26, r27, r28, r29, r30); }
-:xorbsu  is op6=0x1F & r1n=10 & r2n=0 { xorbsu(r26, r27, r28, r29, r30); }
-:movbsu  is op6=0x1F & r1n=11 & r2n=0 { movbsu(r26, r27, r28, r29, r30); }
-:ornbsu  is op6=0x1F & r1n=12 & r2n=0 { ornbsu(r26, r27, r28, r29, r30); }
-:andnbsu is op6=0x1F & r1n=13 & r2n=0 { andnbsu(r26, r27, r28, r29, r30); }
-:xornbsu is op6=0x1F & r1n=14 & r2n=0 { xornbsu(r26, r27, r28, r29, r30); }
-:notbsu  is op6=0x1F & r1n=15 & r2n=0 { notbsu(r26, r27, r28, r29, r30); }
+:sch0bsu is op6=0x1F & r1n=0 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local n:4 = r28;
+  local found:1 = 0;
+<loop>
+  if (n == 0) goto <end>;
+  local wa:4 = sa & 0xfffffffc;
+  local w:4 = *[ram]:4 wa;
+  if (((w >> sb) & 1) != 0) goto <step>;
+  found = 1;
+  goto <end>;
+<step>
+  sb = sb + 1;
+  if (sb != 32) goto <next>;
+  sb = 0;
+  sa = sa + 4;
+<next>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r29 = r28 - n;
+  r30 = sa;
+  r27 = sb;
+  r28 = n;
+  Z = found == 0;
+  S = 0;
+  OV = 0;
+  CY = 0;
+@else
+  sch0bsu(r26, r27, r28, r29, r30);
+@endif
+}
+:sch0bsd is op6=0x1F & r1n=1 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local n:4 = r28;
+  local found:1 = 0;
+<loop>
+  if (n == 0) goto <end>;
+  local wa:4 = sa & 0xfffffffc;
+  local w:4 = *[ram]:4 wa;
+  if (((w >> sb) & 1) != 0) goto <step>;
+  found = 1;
+  goto <end>;
+<step>
+  sb = sb - 1;
+  if (sb s>= 0) goto <next>;
+  sb = 31;
+  sa = sa - 4;
+<next>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r29 = r28 - n;
+  r30 = sa;
+  r27 = sb;
+  r28 = n;
+  Z = found == 0;
+  S = 0;
+  OV = 0;
+  CY = 0;
+@else
+  sch0bsd(r26, r27, r28, r29, r30);
+@endif
+}
+:sch1bsu is op6=0x1F & r1n=2 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local n:4 = r28;
+  local found:1 = 0;
+<loop>
+  if (n == 0) goto <end>;
+  local wa:4 = sa & 0xfffffffc;
+  local w:4 = *[ram]:4 wa;
+  if (((w >> sb) & 1) != 1) goto <step>;
+  found = 1;
+  goto <end>;
+<step>
+  sb = sb + 1;
+  if (sb != 32) goto <next>;
+  sb = 0;
+  sa = sa + 4;
+<next>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r29 = r28 - n;
+  r30 = sa;
+  r27 = sb;
+  r28 = n;
+  Z = found == 0;
+  S = 0;
+  OV = 0;
+  CY = 0;
+@else
+  sch1bsu(r26, r27, r28, r29, r30);
+@endif
+}
+:sch1bsd is op6=0x1F & r1n=3 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local n:4 = r28;
+  local found:1 = 0;
+<loop>
+  if (n == 0) goto <end>;
+  local wa:4 = sa & 0xfffffffc;
+  local w:4 = *[ram]:4 wa;
+  if (((w >> sb) & 1) != 1) goto <step>;
+  found = 1;
+  goto <end>;
+<step>
+  sb = sb - 1;
+  if (sb s>= 0) goto <next>;
+  sb = 31;
+  sa = sa - 4;
+<next>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r29 = r28 - n;
+  r30 = sa;
+  r27 = sb;
+  r28 = n;
+  Z = found == 0;
+  S = 0;
+  OV = 0;
+  CY = 0;
+@else
+  sch1bsd(r26, r27, r28, r29, r30);
+@endif
+}
+:orbsu   is op6=0x1F & r1n=8 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = d | s;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  orbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:andbsu  is op6=0x1F & r1n=9 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = d & s;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  andbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:xorbsu  is op6=0x1F & r1n=10 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = d ^ s;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  xorbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:movbsu  is op6=0x1F & r1n=11 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = s;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  movbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:ornbsu  is op6=0x1F & r1n=12 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = d | (s ^ 1);
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  ornbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:andnbsu is op6=0x1F & r1n=13 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = d & (s ^ 1);
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  andnbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:xornbsu is op6=0x1F & r1n=14 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = (d ^ s) ^ 1;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  xornbsu(r26, r27, r28, r29, r30);
+@endif
+}
+:notbsu  is op6=0x1F & r1n=15 & r2n=0 {
+@if defined(EXACT)
+  if (r28 <= 0x100000) goto <go>;
+  bitStringTooLong();
+  goto inst_start;
+<go>
+  local sa:4 = r30;
+  local sb:4 = r27 & 31;
+  local da:4 = r29;
+  local db:4 = r26 & 31;
+  local n:4 = r28;
+<loop>
+  if (n == 0) goto <end>;
+  local swa:4 = sa & 0xfffffffc;
+  local sw:4 = *[ram]:4 swa;
+  local s:4 = (sw >> sb) & 1;
+  local dwa:4 = da & 0xfffffffc;
+  local dw:4 = *[ram]:4 dwa;
+  local d:4 = (dw >> db) & 1;
+  local nb:4 = s ^ 1;
+  local pw:4 = *[ram]:4 dwa;
+  pw = (pw & ~(1 << db)) | (nb << db);
+  *[ram]:4 dwa = pw;
+  sb = sb + 1;
+  if (sb != 32) goto <s2>;
+  sb = 0;
+  sa = sa + 4;
+<s2>
+  db = db + 1;
+  if (db != 32) goto <d2>;
+  db = 0;
+  da = da + 4;
+<d2>
+  n = n - 1;
+  goto <loop>;
+<end>
+  r30 = sa;
+  r27 = sb;
+  r29 = da;
+  r26 = db;
+  r28 = 0;
+@else
+  notbsu(r26, r27, r28, r29, r30);
+@endif
+}
 
 ################################################################
 # Format III: conditional branches (100 cccc ddddddddd, bit 0 of the displacement is 0)
@@ -416,9 +1048,9 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 :caxi simm16^"["^reg1^"],"^reg2  is op6=0x3A & reg1 & reg2; simm16 {
   local ea:4 = reg1 + simm16;
   local m:4 = *[ram]:4 ea;
-  cmpop(r30, m);
-  if (r30 != m) goto <keep>;
-  *[ram]:4 ea = reg2;
+  cmpop(reg2, m);
+  if (reg2 != m) goto <keep>;
+  *[ram]:4 ea = r30;
 <keep>
   reg2 = m;
 }
@@ -431,18 +1063,151 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
 # sub-opcode is the top six bits of the second halfword, the rest of it zero)
 
 :cmpf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x00 & extlow=0 {
+@if defined(EXACT)
+  local ra:1 = 0;
+  local rb:1 = 0;
+  reserved(reg2, ra);
+  reserved(reg1, rb);
+  if ((ra || rb) == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+@endif
   local d:4 = reg2 f- reg1;
   Z = (reg2 f== reg1);
   CY = (reg2 f< reg1);
   S = CY;
   OV = 0;
 }
-:cvt.ws reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x02 & extlow=0 { reg2 = int2float(reg1); fcheck(reg2); }
-:cvt.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x03 & extlow=0 { local t:4 = round(reg1); reg2 = trunc(t); zs(reg2); OV = 0; }
-:addf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x04 & extlow=0 { reg2 = reg2 f+ reg1; fcheck(reg2); }
-:subf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x05 & extlow=0 { reg2 = reg2 f- reg1; fcheck(reg2); }
-:mulf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x06 & extlow=0 { reg2 = reg2 f* reg1; fcheck(reg2); }
-:divf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x07 & extlow=0 { reg2 = reg2 f/ reg1; fcheck(reg2); }
+:cvt.ws reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x02 & extlow=0 {
+@if defined(EXACT)
+  local r:4 = int2float(reg1);
+  fresult(r);
+  reg2 = r;
+@else
+  reg2 = int2float(reg1); fcheck(reg2);
+@endif
+}
+:cvt.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x03 & extlow=0 {
+@if defined(EXACT)
+  local f:4 = reg1;
+  local rf:1 = 0;
+  reserved(f, rf);
+  if (rf == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  local mag:4 = f & 0x7fffffff;
+  if ((mag < 0x4f000000) || (f == 0xcf000000)) goto <fits>;
+  FIV = 1;
+  goto inst_next;
+<fits>
+  local t:4 = trunc(f);
+  local back:4 = int2float(t);
+  local d:4 = f f- back;
+  local d2:4 = d f+ d;
+  local one:4 = 1;
+  local fone:4 = int2float(one);
+  local fmone:4 = fone ^ 0x80000000;
+  if (d2 f> fone) goto <up>;
+  if (d2 f< fmone) goto <down>;
+  if ((t & 1) == 0) goto <done>;
+  if (d2 f== fone) goto <up>;
+  if (d2 f== fmone) goto <down>;
+  goto <done>;
+<up>
+  t = t + 1;
+  goto <done>;
+<down>
+  t = t - 1;
+<done>
+  reg2 = t;
+  zs(t);
+  OV = 0;
+@else
+  local t:4 = round(reg1); reg2 = trunc(t); zs(reg2); OV = 0;
+@endif
+}
+:addf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x04 & extlow=0 {
+@if defined(EXACT)
+  local a:4 = reg2;
+  local b:4 = reg1;
+  local ra:1 = 0;
+  local rb:1 = 0;
+  reserved(a, ra);
+  reserved(b, rb);
+  if ((ra || rb) == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  local r:4 = a f+ b;
+  fresult(r);
+  reg2 = r;
+@else
+  reg2 = reg2 f+ reg1; fcheck(reg2);
+@endif
+}
+:subf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x05 & extlow=0 {
+@if defined(EXACT)
+  local a:4 = reg2;
+  local b:4 = reg1;
+  local ra:1 = 0;
+  local rb:1 = 0;
+  reserved(a, ra);
+  reserved(b, rb);
+  if ((ra || rb) == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  local r:4 = a f- b;
+  fresult(r);
+  reg2 = r;
+@else
+  reg2 = reg2 f- reg1; fcheck(reg2);
+@endif
+}
+:mulf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x06 & extlow=0 {
+@if defined(EXACT)
+  local a:4 = reg2;
+  local b:4 = reg1;
+  local ra:1 = 0;
+  local rb:1 = 0;
+  reserved(a, ra);
+  reserved(b, rb);
+  if ((ra || rb) == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  local r:4 = a f* b;
+  fresult(r);
+  reg2 = r;
+@else
+  reg2 = reg2 f* reg1; fcheck(reg2);
+@endif
+}
+:divf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x07 & extlow=0 {
+@if defined(EXACT)
+  local a:4 = reg2;
+  local b:4 = reg1;
+  local ra:1 = 0;
+  local rb:1 = 0;
+  reserved(a, ra);
+  reserved(b, rb);
+  if ((ra || rb) == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  if ((b & 0x7fffffff) != 0) goto <go>;
+  FZD = 1;
+  goto inst_next;
+<go>
+  local r:4 = a f/ b;
+  fresult(r);
+  reg2 = r;
+@else
+  reg2 = reg2 f/ reg1; fcheck(reg2);
+@endif
+}
 :xb reg2          is op6=0x3E & r1n=0 & reg2; ext6=0x08 & extlow=0 {
   local t:4 = reg2;
   reg2[8,8] = t[0,8];
@@ -453,7 +1218,40 @@ Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jl
   reg2[16,16] = t[0,16];
   reg2[0,16] = t[16,16];
 }
-:rev reg1,reg2    is op6=0x3E & reg1 & reg2; ext6=0x0A & extlow=0 { reg2 = bitrev(reg1); }
-:trnc.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x0B & extlow=0 { reg2 = trunc(reg1); zs(reg2); OV = 0; }
+:rev reg1,reg2    is op6=0x3E & reg1 & reg2; ext6=0x0A & extlow=0 {
+@if defined(EXACT)
+  local v:4 = reg1;
+  v = ((v >> 1) & 0x55555555) | ((v & 0x55555555) << 1);
+  v = ((v >> 2) & 0x33333333) | ((v & 0x33333333) << 2);
+  v = ((v >> 4) & 0x0f0f0f0f) | ((v & 0x0f0f0f0f) << 4);
+  v = ((v >> 8) & 0x00ff00ff) | ((v & 0x00ff00ff) << 8);
+  v = (v >> 16) | (v << 16);
+  reg2 = v;
+@else
+  reg2 = bitrev(reg1);
+@endif
+}
+:trnc.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x0B & extlow=0 {
+@if defined(EXACT)
+  local f:4 = reg1;
+  local rf:1 = 0;
+  reserved(f, rf);
+  if (rf == 0) goto <ok>;
+  FRO = 1;
+  goto inst_next;
+<ok>
+  local mag:4 = f & 0x7fffffff;
+  if ((mag < 0x4f000000) || (f == 0xcf000000)) goto <fits>;
+  FIV = 1;
+  goto inst_next;
+<fits>
+  local t:4 = trunc(f);
+  reg2 = t;
+  zs(t);
+  OV = 0;
+@else
+  reg2 = trunc(reg1); zs(reg2); OV = 0;
+@endif
+}
 :mpyhw reg1,reg2  is op6=0x3E & reg1 & reg2; ext6=0x0C & extlow=0 { local t:4 = sext(reg1[0,16]); reg2 = reg2 * t; }
 

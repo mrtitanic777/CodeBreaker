@@ -1,12 +1,10 @@
-// engine/pcode_cpu_v810.hpp -- the Virtual Boy lane's NEC V810 on CodeBreaker's one emulator (decompile/engine/pcode_emulator), on v810.sla, in place of the lane's own core
-// (emulate/v810).
+// engine/pcode_cpu_v810.hpp -- the Virtual Boy lane's NEC V810 on CodeBreaker's one emulator (decompile/engine/pcode_emulator), on v810exact.sla.
 //
 //     RunResult r = engine::pcode_cpu::call(bus, entry, options);   // as emulate::v810::run, on the core chosen by CB_PCODE_EMU
 //
 // The Bus (emulate/v810: memory ranges, devices and their log) is the emulator's read and write hook, so every data access goes through Bus::read and Bus::write as the own core
-// makes it; instructions are fetched through the bus a word at a time. The integer instructions, the branches, jr / jal / jmp and the loads and stores run on the
-// description. What it does not carry is the adapter's own semantics (pcode_ops_v810.cpp): the floating-point instructions (the reserved-operand, zero-divide, overflow and underflow flags), the bit strings,
-// ldsr / stsr, caxi, a divide by zero, trap / reti / halt, and an undefined pattern.
+// makes it; instructions are fetched through the bus a halfword at a time. The description runs every instruction; trap, reti, halt, a divide by zero, a bit string over a
+// megabit and an undefined pattern end the run with the fault the own core gives.
 #pragma once
 
 #include "emulate/v810.hpp"

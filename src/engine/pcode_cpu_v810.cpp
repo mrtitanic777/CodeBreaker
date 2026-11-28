@@ -1,26 +1,23 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// engine/pcode_cpu_v810.cpp -- the Virtual Boy lane's NEC V810 on the one p-code emulator: emulate::v810::run's call, on languages/v810.sla.
+// engine/pcode_cpu_v810.cpp -- the Virtual Boy lane's NEC V810 on the one p-code emulator: emulate::v810::run's call, on languages/v810exact.sla.
 //
-// The description runs the integer instructions, the branches, jr / jal / jmp, and the loads and stores (every data access is the Bus's). The adapter carries what it leaves
-// to the machine: the instruction is fetched through the bus (a range the bus does not log is peeked, a fetch from a device or a logged range is made through the bus, which logs
-// it as the processor's own would), jmp clears the low bit of its target, r0 stays zero, and the adapter's own semantics (pcode_ops_v810) run, on the registers as they stand, what
-// the description does not carry the way the processor does: the floating-point instructions (their flags), the bit strings, ldsr, stsr, caxi, a division the description cannot
-// do (by zero, or the one that overflows), trap, reti and halt, and an undefined pattern (the faults come from it). Nothing goes to the lane's old core.
+// The description runs every instruction (v810exact.sla: v810.slaspec with EXACT, the floating point's flags, the bit strings, the system registers as the processor
+// keeps them). The adapter carries what it leaves to the machine: the instruction is fetched through the bus (a range the bus does not log is peeked, a fetch from a
+// device or a logged range is made through the bus, which logs it as the processor's own would), r0 stays zero, and what ends a run: trap, reti, halt, a division by
+// zero and a bit string longer than a megabit (the description hands them over as user operations, with nothing changed), and a pattern that is no instruction.
 #include <array>
 #include <cstring>
+#include <format>
 #include <optional>
 #include <string>
 
 #include "decompile/engine/pcode_emulator.hh"
-#include "decompile/v810.hpp"
 #include "engine/pcode_cpu_internal.hpp"
 #include "engine/pcode_cpu_v810.hpp"
-#include "engine/pcode_ops_v810.hpp"
 
 namespace cb::engine::pcode_cpu {
 
 namespace v8 = cb::emulate::v810;
-namespace dv = cb::decompile::v810;
 namespace sl = cb::decompile::sleigh;
 
 namespace {
@@ -32,22 +29,10 @@ constexpr const char* kFlagNames[14] = {"Z", "S", "OV", "CY", "FPR", "FUD", "FOV
 constexpr unsigned kFlagBits[14] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15};
 constexpr const char* kSystem[8] = {"eipc", "eipsw", "fepc", "fepsw", "ecr", "chcw", "adtre", "PSWI"};
 
-// An instruction the adapter's own semantics run, because the description does not carry what it needs.
-bool own_core_runs(const dv::Insn& insn, const std::array<std::uint32_t, 32>& r) {
-    using namespace dv::id;
-    switch (insn.id) {
-        case kTrap: case kReti: case kHalt: case kLdsr: case kStsr: case kCaxi: return true;
-        case kDiv: return r[insn.r1] == 0 || (r[insn.r1] == 0xFFFFFFFFu && r[insn.r2] == 0x80000000u);
-        case kDivu: return r[insn.r1] == 0;
-        default: break;
-    }
-    return insn.id >= kBitStringBase && insn.id != kXb && insn.id != kXh && insn.id != kMpyhw;   // (the bit strings and the floating point; rev)
-}
-
 }  // namespace
 
 v8::RunResult run(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& options) {
-    sl::Emulator& emu = emulator_named("v810.sla");
+    sl::Emulator& emu = emulator_named("v810exact.sla");
     const std::size_t log_start = bus.log().size();
     emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
         if (!is_ram(space)) return false;
@@ -59,7 +44,17 @@ v8::RunResult run(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& optio
         bus.write(static_cast<std::uint32_t>(addr), size, static_cast<std::uint32_t>(value));
         return true;
     });
-    emu.onUserOp([](sl::Emulator&, const std::string&, const std::vector<std::uint64_t>&, std::uint64_t&) { return true; });
+    // what ends a run, as the description hands it over (the instruction changed nothing)
+    std::optional<std::string> stop;
+    emu.onUserOp([&](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t&) {
+        if (name == "trap") stop = std::format("trap {}", args.empty() ? 0 : args[0]);
+        else if (name == "halt") stop = "halt";
+        else if (name == "reti") stop = "return from interrupt";
+        else if (name == "divideByZero") stop = "divide by zero";
+        else if (name == "bitStringTooLong") stop = "bit string over 1 Mbit";
+        else return false;
+        return true;
+    });
     struct Unhook {
         sl::Emulator& e;
         ~Unhook() {
@@ -104,30 +99,9 @@ v8::RunResult run(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& optio
         g.adtre = static_cast<std::uint32_t>(emu.reg(system[6]));
         return g;
     };
-    // What the adapter does itself (pcode_ops_v810): the registers go to it as they stand and come back.
-    std::uint64_t steps_made = 0;   // what the last own_step counted
-    const auto own_step = [&](const std::optional<dv::Insn>* fetched) -> std::optional<v8::Fault> {
-        v8::Registers g = registers();
-        std::uint64_t made = 0;
-        const std::optional<v8::Fault> fault = fetched ? pcode_ops_v810::step(g, bus, made, *fetched) : pcode_ops_v810::step(g, bus, made);
-        for (unsigned i = 0; i < 32; ++i) emu.setReg(r[i], g.r[i]);
-        emu.setPc(g.pc);
-        set_status_word(g.psw);
-        emu.setReg(system[0], g.eipc);
-        emu.setReg(system[1], g.eipsw);
-        emu.setReg(system[2], g.fepc);
-        emu.setReg(system[3], g.fepsw);
-        emu.setReg(system[4], g.ecr);
-        emu.setReg(system[5], g.chcw);
-        emu.setReg(system[6], g.adtre);
-        steps_made = made;
-        return fault;
-    };
-
     v8::RunResult out;
     out.end = v8::End::Limit;
     std::uint64_t steps = 0;
-    std::array<std::uint32_t, 32> values{};
     while (steps < options.max_steps) {
         const std::uint32_t pc = static_cast<std::uint32_t>(emu.pc());
         if (pc == v8::kReturnAddress) {
@@ -139,53 +113,30 @@ v8::RunResult run(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& optio
         // bus, which logs it as it logs the processor's own (the first halfword, then the second)
         std::array<std::uint8_t, 4> code{};
         std::size_t length = 2;   // (the instruction's bytes)
-        const bool quiet = (pc & 1) == 0;   // (an odd pc is the own semantics': it fetches from the even address below)
-        std::optional<dv::Insn> insn;
-        if (quiet) {
-            const auto fetch = [&](std::uint32_t address) -> std::uint32_t {
-                const std::optional<std::uint32_t> seen = bus.peek(address, 2);
-                return seen ? *seen : bus.read(address, 2);
-            };
-            const std::uint32_t first = fetch(pc);
-            code[0] = static_cast<std::uint8_t>(first);
-            code[1] = static_cast<std::uint8_t>(first >> 8);
-            if ((first >> 13) != 4 && (first >> 10) >= 0x28) {
-                const std::uint32_t second = fetch(pc + 2);
-                code[2] = static_cast<std::uint8_t>(second);
-                code[3] = static_cast<std::uint8_t>(second >> 8);
-                length = 4;
-            }
-            insn = dv::decode(ByteView(code.data(), length), 0, pc);
-        }
-        bool own = !quiet || !insn;   // (an odd pc, or bits that are no instruction)
-        if (!own) {
-            for (unsigned i = 0; i < 32; ++i) values[i] = static_cast<std::uint32_t>(emu.reg(r[i]));
-            own = own_core_runs(*insn, values);
-        }
-        if (own) {
-            const std::optional<v8::Fault> fault = own_step(quiet ? &insn : nullptr);
-            steps += steps_made;
-            if (fault) {
-                out.end = v8::End::Stopped;
-                out.fault = fault;
-                break;
-            }
-            continue;
+        const auto fetch = [&](std::uint32_t address) -> std::uint32_t {
+            const std::optional<std::uint32_t> seen = bus.peek(address, 2);
+            return seen ? *seen : bus.read(address, 2);
+        };
+        const std::uint32_t first = fetch(pc);
+        code[0] = static_cast<std::uint8_t>(first);
+        code[1] = static_cast<std::uint8_t>(first >> 8);
+        if ((first >> 13) != 4 && (first >> 10) >= 0x28) {
+            const std::uint32_t second = fetch(pc + 2);
+            code[2] = static_cast<std::uint8_t>(second);
+            code[3] = static_cast<std::uint8_t>(second >> 8);
+            length = 4;
         }
         emu.write(pc, code.data(), length);
+        emu.setPc(pc);
+        stop.reset();
         const sl::Emulator::Status status = emu.step();
-        if (status != sl::Emulator::Status::Ok) {   // (the description has no such instruction: the own semantics say what it is)
-            const std::optional<v8::Fault> fault = own_step(&insn);
-            steps += steps_made;
-            if (fault) {
-                out.end = v8::End::Stopped;
-                out.fault = fault;
-                break;
-            }
-            continue;
+        if (status != sl::Emulator::Status::Ok || stop) {
+            emu.setPc(pc);
+            out.end = v8::End::Stopped;
+            out.fault = v8::Fault{pc, std::format("{} at {:08X}", stop ? *stop : status == sl::Emulator::Status::BadInstruction ? std::string("undefined instruction") : emu.lastError(), pc)};
+            break;
         }
         emu.setReg(r[0], 0);
-        if (insn->id == dv::id::kJmp) emu.setPc(emu.pc() & ~std::uint64_t{1});
         ++steps;
     }
     if (out.end == v8::End::Limit && static_cast<std::uint32_t>(emu.pc()) == v8::kReturnAddress) out.end = v8::End::Return;
