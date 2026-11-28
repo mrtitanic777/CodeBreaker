@@ -275,6 +275,7 @@ private:
             // (a context without MSR reads the value it starts with, as ctx.msr does: the title's code only puts it back)
             case Kind::Msr: return names_.msr && !names_.msr().empty() ? "uint64_t(" + names_.msr() + ")" : std::string("UINT64_C(0x200A000)");
             case Kind::TimeBase: return c.index == 0 ? std::string("uint64_t(PPC_QUERY_TIMEBASE())") : std::string("uint64_t(PPC_QUERY_TIMEBASE() >> 32)");
+            case Kind::XerWord: return std::format("uint64_t(({0}.so << 31) | ({0}.ov << 30) | ({0}.ca << 29))", names_.xer());
             case Kind::Dropped: break;
         }
         throw Decline{"a read of " + c.member + ", which the context keeps no value of"};
@@ -364,6 +365,9 @@ private:
                 if (!names_.msr || names_.msr().empty()) return {};   // (the context keeps no MSR)
                 return std::format("{} = uint32_t({});", names_.msr(), value);
             case Kind::TimeBase: throw Decline{"a write of the time base"};
+            case Kind::XerWord:
+                if (!whole) throw Decline{"a write of part of XER"};
+                return std::format("{{ const uint64_t x = {1}; {0}.so = (x >> 31) & 1; {0}.ov = (x >> 30) & 1; {0}.ca = (x >> 29) & 1; }}", names_.xer(), value);
             case Kind::Dropped: break;
         }
         return {};
@@ -457,6 +461,9 @@ private:
                                                      word ? 32 : 64, arg(0), names_.reserved(), word ? "s32" : "s64", word ? "uint32_t(" + arg(1) + ")" : arg(1)));
             }
             if (name == "dataCacheBlockClearToZero") return std::format("memset(PPC_HOST(uint32_t({}) & ~31u), 0, 32);", arg(0));
+            // the FPSCR as the context keeps it (the host's rounding and flush modes)
+            if (name == "moveFromFPSCR") return write(*op.output, "uint64_t(ctx.fpscr.loadFromHost())");
+            if (name == "moveToFPSCR") return std::format("ctx.fpscr.storeFromGuest(uint32_t({}));", arg(0));
             return {};   // (an operation that changes nothing a title sees: a cache hint, a barrier, a trap XenonRecomp's titles never take)
         }
         if (!op.output) throw Decline{std::string("an operation with no output: ") + sl::op_name(op.op)};
@@ -614,7 +621,7 @@ private:
         static const std::set<std::string, std::less<>> names = {
             "fusedMultiplyAdd", "fusedMultiplySubtract", "fusedNegativeMultiplyAdd", "fusedNegativeMultiplySubtract", "fusedMultiplyAddSingle",
             "fusedMultiplySubtractSingle", "fusedNegativeMultiplyAddSingle", "fusedNegativeMultiplySubtractSingle", "loadWordAndReserve",
-            "loadDoublewordAndReserve", "storeWordConditional", "storeDoublewordConditional", "dataCacheBlockClearToZero",
+            "loadDoublewordAndReserve", "storeWordConditional", "storeDoublewordConditional", "dataCacheBlockClearToZero", "moveFromFPSCR", "moveToFPSCR",
             // no effect a title sees (XenonRecomp writes them as nothing too)
             "sync", "enforceInOrderExecutionIO", "dataCacheBlockTouch", "dataCacheBlockTouchForStore", "dataCacheBlockFlush", "dataCacheBlockStore",
             "instructionCacheBlockInvalidate", "trapWord", "trapDoubleWord", "trapDoubleWordImmediate", "dataStreamStop", "dataStreamStopAll",
@@ -624,7 +631,7 @@ private:
     // Whether a user operation with an output also changes memory (a conditional store).
     bool effects(const sl::PcodeOp& op) const {
         const std::string name = reader_.user_op_name(op.inputs[0].offset);
-        return name.starts_with("store") || name.find("Reserve") != std::string::npos;
+        return name.starts_with("store") || name.find("Reserve") != std::string::npos || name == "moveFromFPSCR";
     }
 
     // A branch's or call's target address.
@@ -745,6 +752,7 @@ Translator::Translator(const std::filesystem::path& sla) : reader_(sla, {}) {
     add("xer_ov", Kind::XerBit, 0, "ov");
     add("xer_ca", Kind::XerBit, 0, "ca");
     add("MSR", Kind::Msr, 0);
+    add("XER", Kind::XerWord, 0);
     add("TBLr", Kind::TimeBase, 0);
     add("TBUr", Kind::TimeBase, 1);
     // written by the description, kept by no context: their writes are dropped, a read declines the instruction. (The FPSCR's
@@ -777,7 +785,7 @@ std::optional<Statements> Translator::instruction(std::uint32_t address, std::ui
                                    static_cast<std::uint8_t>(word)};
     const sl::Lifted lifted = reader_.pcode(bytes, sizeof bytes, address, address);
     if (lifted.length == 0) {
-        if (why) *why = "no instruction of the description";
+        if (why) *why = std::format("no instruction of the description ({:08X})", word);
         return std::nullopt;
     }
     const std::function<const Cell*(std::uint64_t)> cells = [this](std::uint64_t offset) { return cell_at(offset); };

@@ -1622,6 +1622,10 @@ define pcodeop loadDoublewordAndReserve;
 define pcodeop storeWordConditional;
 define pcodeop storeDoublewordConditional;
 define pcodeop vectorRecordCR6;
+define pcodeop vectorAddUnsignedByteModulo;
+define pcodeop vectorSubtractUnsignedHalfWordModuloX;
+define pcodeop moveFromFPSCR;
+define pcodeop moveToFPSCR;
 @endif
 @ifdef XENON_EXACT
 # CR0 from the whole doubleword: divd., divdu. and rldicl., as XenonRecomp has always written them

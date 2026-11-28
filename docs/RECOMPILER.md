@@ -230,3 +230,20 @@ buttons.
   - `mffs` and `mtfsf` (the FPSCR's controls);
   - `ldarx`'s EH form;
   - `vmrglh` and `vmrglb`.
+- 2026-11-28: step 4, second part: the translator writes every instruction of both titles. `XENON_EXACT` now covers the rest:
+  - AltiVec's element stores and `lvsl`/`lvsr` by one address (the description passed rA as a register where the instruction
+    means 0);
+  - `vsldoi`/`vsldoi128` as one operation (the description used a 32-byte value);
+  - `vaddubm`, `vadduhm` and `vsubuhm`, which the compiled description had no instruction for;
+  - `mffs`/`mtfsf` as the context's FPSCR, and `ldarx`'s EH form.
+
+  The translator also writes XER as a whole (its SO, OV and CA bits), and its vector table gains the merges of halfwords and
+  bytes, the modulo adds, `vmaxsw`, `vavgsb`, `vavgsh` and `vadduws` (75 operations in all). Proof:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 2,055,017 | 0 | 6,600, no stop |
+  | Up | 2,084,860 | 1 (the word 0x00008200, which has opcode 0 and is no instruction) | 6,600, no stop |
+
+  Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames. The
+  instruction tests show 0 mismatches through p-code and through XenonRecomp.

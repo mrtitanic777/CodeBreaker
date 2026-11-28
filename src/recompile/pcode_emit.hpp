@@ -61,7 +61,7 @@ public:
 
     // A place of the register space the context has (or knows to drop).
     struct Cell {
-        enum class Kind : std::uint8_t { Gpr, Fpr, Vector, Cr, Ctr, Lr, XerBit, Msr, TimeBase, Dropped };
+        enum class Kind : std::uint8_t { Gpr, Fpr, Vector, Cr, Ctr, Lr, XerBit, XerWord, Msr, TimeBase, Dropped };
         Kind kind = Kind::Dropped;
         std::uint64_t offset = 0;
         unsigned size = 0;

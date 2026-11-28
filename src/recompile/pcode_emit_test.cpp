@@ -69,9 +69,10 @@ CB_TEST("recompile.pcode_emit.what_the_recompiler_writes_itself_is_declined", []
     CB_CHECK_EQ(pe_declined(0x4E800020), std::string("a return"));                                                   // blr
     CB_CHECK_EQ(pe_declined(0x4E800420), std::string("an indirect branch"));                                         // bctr
     CB_CHECK_EQ(pe_declined(0x419A0010), std::string("a branch"));                                                   // beq cr6
-    CB_CHECK_EQ(pe_declined(0x10000502), std::string("the user operation vectorAverageSignedByte"));          // vmaddfp128
+    CB_CHECK_EQ(pe_declined(0x10000402), std::string("the user operation vectorAverageUnsignedByte"));          // vmaddfp128
     CB_CHECK(pe_declined(0x7C651828) != std::string("(written)"));                                                   // lwarx r3,r5,r3: the reservation
-    CB_CHECK(pe_declined(0xFDFE0D8E) != std::string("(written)"));   // mtfsf 0xFF,f1: the FPSCR's controls are ctx.fpscr's (the rounding mode)
+    // mtfsf 0xFF,f1: the FPSCR's controls are ctx.fpscr's (the rounding mode), set as the context sets them
+    CB_CHECK(pe_text(0xFDFE0D8E).value_or("").find("ctx.fpscr.storeFromGuest(") != std::string::npos);
     CB_CHECK(pe_declined(0xFC00010C) != std::string("(written)"));   // mtfsfi cr0,0
 });
 

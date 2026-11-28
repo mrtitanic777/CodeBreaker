@@ -2556,9 +2556,13 @@ define pcodeop lswxOp;
 #mffs fD	0xfc 00 04 8e
 :mffs fD		is $(NOTVLE) & OP=63 & fD & BITS_11_20=0 & XOP_1_10=583 & Rc=0
 {
+@ifdef XENON_EXACT
+	fD = moveFromFPSCR();
+@else
 	tmp:8 = 0;
 	packFPSCR(tmp);
 	fD = tmp;
+@endif
 }
 
 #mffs. fD	0xfc 00 04 8f
@@ -2644,6 +2648,9 @@ define pcodeop lswxOp;
 #mtfsf 10,fr0		0xfc 00 05 8e
 :mtfsf FM,fB	is $(NOTVLE) & OP=63 & BIT_25=0 & FM & FM0 & FM1 & FM2 & FM3 & FM4 & FM5 & FM6 & FM7 & BIT_16=0 & fB &  XOP_1_10=711 & Rc=0
 {
+@ifdef XENON_EXACT
+	moveToFPSCR(fB);
+@else
 	tmp:8 = 0;
 	packFPSCR(tmp);
 	
@@ -2661,6 +2668,7 @@ define pcodeop lswxOp;
 	tmp1:8 = fB;
 	tmp2:8 = (tmp & ~mask) | (tmp1 & mask);
 	unpackFPSCR(tmp2);
+@endif
 }
 
 :mtfsf FM,fB,1	is $(NOTVLE) & OP=63 & BIT_25=0 & FM & FM0 & FM1 & FM2 & FM3 & FM4 & FM5 & FM6 & FM7 & BIT_16=1 & fB &  XOP_1_10=711 & Rc=0

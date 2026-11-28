@@ -142,7 +142,23 @@ const std::map<std::string, Form, std::less<>>& forms() {
         t["vectorAddUnsignedHalfWordSaturate"] = ibin("simde_mm_adds_epu16");
         t["vectorAddSignedHalfWordSaturate"] = ibin("simde_mm_adds_epi16");
         t["vectorAddUnsignedByteSaturate"] = ibin("simde_mm_adds_epu8");
+        t["vectorAddUnsignedWordSaturate"] = ibin("simde_mm_adds_epu32");
+        t["vectorMaximumSignedWord"] = ibin("simde_mm_max_epi32");
+        t["vectorAverageSignedByte"] = ibin("simde_mm_avg_epi8");
+        t["vectorAverageSignedHalfWord"] = ibin("simde_mm_avg_epi16");
         t["vectorMergeHighWord"] = ibin("simde_mm_unpackhi_epi32", true);
+        t["vectorMergeHighHalfWord"] = ibin("simde_mm_unpackhi_epi16", true);
+        t["vectorMergeHighByte"] = ibin("simde_mm_unpackhi_epi8", true);
+        t["vectorMergeLowHalfWord"] = ibin("simde_mm_unpacklo_epi16", true);
+        t["vectorMergeLowByte"] = ibin("simde_mm_unpacklo_epi8", true);
+        t["vectorAddUnsignedByteModulo"] = ibin("simde_mm_add_epi8");
+        t["vectorAddUnsignedHalfWordModulo"] = ibin("simde_mm_add_epi16");
+        t["vectorSubtractUnsignedHalfWordModuloX"] = ibin("simde_mm_sub_epi16");
+        t["vectorShiftLeftDoubleByOctetImmediate"] = Form{3, false, [](const Args& a, const std::string&) -> std::optional<std::string> {
+            const std::optional<std::uint64_t> sh = k(a, 2);
+            if (!sh || *sh > 15) return std::nullopt;
+            return R("simde_mm_alignr_epi8(" + I(a[0].value) + ", " + I(a[1].value) + ", " + std::to_string(16 - *sh) + ")");
+        }};
         t["vectorMergeLowWord"] = ibin("simde_mm_unpacklo_epi32", true);
         t["vectorPackSignedWordSignedSaturate"] = ibin("simde_mm_packs_epi32", true);   // (vB the low half, vA the high: the reversed order)
         t["vectorPackUnsignedHalfWordUnsignedSaturate"] = Form{2, false, [](const Args& a, const std::string&) {
@@ -253,6 +269,17 @@ const std::map<std::string, Form, std::less<>>& forms() {
             return std::optional<std::string>(R("simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_HOST(" + ea32(a[0].value) +
                                                 " & ~0xFu)), simde_mm_load_si128((simde__m128i*)VectorMaskL))"));
         }};
+        t["loadVectorForShiftRight"] = Form{1, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>(R("simde_mm_load_si128((simde__m128i*)&VectorShiftTableR[(" + ea32(a[0].value) + " & 0xF) * 16])"));
+        }};
+        t["storeVectorElementHalfWordIndexed"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("{ const uint32_t e = " + ea32(a[0].value) + " & ~0x1u; const PPCVRegister s = " + P(a[1].value) +
+                                              "; PPC_STORE_U16(e, s.u16[7 - ((e & 0xF) >> 1)]); }");
+        }, true};
+        t["storeVectorElementByteIndexed"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("{ const uint32_t e = " + ea32(a[0].value) + "; const PPCVRegister s = " + P(a[1].value) +
+                                              "; PPC_STORE_U8(e, s.u8[15 - (e & 0xF)]); }");
+        }, true};
         t["loadVectorForShiftLeft"] = Form{1, false, [](const Args& a, const std::string&) {
             return std::optional<std::string>(R("simde_mm_load_si128((simde__m128i*)&VectorShiftTableL[(" + ea32(a[0].value) + " & 0xF) * 16])"));
         }};
