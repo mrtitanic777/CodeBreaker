@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/intv.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.intv.descriptor", [] {
-    const Platform p = intv();
+    const Platform p = described("intv");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "intv");
     CB_CHECK_EQ(p.title, "Mattel Intellivision");

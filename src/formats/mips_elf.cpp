@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "core/error.hpp"
+#include "formats/gen/elf.hpp"
 
 namespace cb::formats::mips_elf {
 
@@ -17,10 +18,10 @@ std::uint32_t le32(ByteView b, std::size_t at) {
     return static_cast<std::uint32_t>(b[at]) | static_cast<std::uint32_t>(b[at + 1]) << 8 | static_cast<std::uint32_t>(b[at + 2]) << 16 | static_cast<std::uint32_t>(b[at + 3]) << 24;
 }
 
-std::string c_string(ByteView data, std::size_t at, std::size_t limit) {
-    std::string s;
-    for (std::size_t i = at; i < limit && i < data.size() && data[i] != 0; ++i) s += static_cast<char>(data[i]);
-    return s;
+// A name of elf.fmt's (a cstr, its terminator included), up to its terminator (empty when there is none).
+std::string text_of(const std::optional<std::string_view>& t) {
+    if (!t) return {};
+    return std::string(t->substr(0, t->find('\0')));
 }
 
 constexpr std::uint32_t kPtLoad = 1;
@@ -40,80 +41,66 @@ std::uint32_t machine_of(std::uint32_t flags) {
 
 Elf parse(ByteView data) { return parse(data, kMachineMips); }
 
+// The layout is elf.fmt's (its generated reader, formats/gen/elf); that the tables lie in the file with entries of this
+// format's size is this reader's rule.
 Elf parse(ByteView data, std::uint16_t machine) {
     if (!probe_header(data, machine)) throw FormatError(kReader, 0, machine == kMachineMips ? "not a 32-bit little-endian MIPS ELF file" : "not a 32-bit little-endian ELF file of the machine asked for");
+    const gen::elf::Elf e = gen::elf::read(data).elf;
+    const gen::elf::Header& h = e.header;
     Elf elf;
     elf.data.assign(data.begin(), data.end());
-    elf.type = le16(data, 16);
-    elf.machine = le16(data, 18);
-    elf.version = le32(data, 20);
-    elf.entry = le32(data, 24);
-    elf.phoff = le32(data, 28);
-    elf.shoff = le32(data, 32);
-    elf.flags = le32(data, 36);
-    elf.ehsize = le16(data, 40);
-    elf.phentsize = le16(data, 42);
-    elf.phnum = le16(data, 44);
-    elf.shentsize = le16(data, 46);
-    elf.shnum = le16(data, 48);
-    elf.shstrndx = le16(data, 50);
+    elf.type = h.type;
+    elf.machine = h.machine;
+    elf.version = h.version;
+    elf.entry = static_cast<std::uint32_t>(h.entry);
+    elf.phoff = static_cast<std::uint32_t>(h.phoff);
+    elf.shoff = static_cast<std::uint32_t>(h.shoff);
+    elf.flags = h.flags;
+    elf.ehsize = h.ehsize;
+    elf.phentsize = h.phentsize;
+    elf.phnum = h.phnum;
+    elf.shentsize = h.shentsize;
+    elf.shnum = h.shnum;
+    elf.shstrndx = h.shstrndx;
     if (elf.phnum != 0 && (elf.phentsize != kProgramHeaderSize || static_cast<std::uint64_t>(elf.phoff) + static_cast<std::uint64_t>(elf.phnum) * kProgramHeaderSize > data.size()))
         throw FormatError(kReader, elf.phoff, "the program header table is not inside the file");
-    for (std::size_t i = 0; i < elf.phnum; ++i) {
-        const std::size_t at = elf.phoff + i * kProgramHeaderSize;
-        ProgramHeader p;
-        p.type = le32(data, at);
-        p.offset = le32(data, at + 4);
-        p.vaddr = le32(data, at + 8);
-        p.paddr = le32(data, at + 12);
-        p.filesz = le32(data, at + 16);
-        p.memsz = le32(data, at + 20);
-        p.flags = le32(data, at + 24);
-        p.align = le32(data, at + 28);
-        elf.program_headers.push_back(p);
+    if (e.segments) {
+        elf.program_headers.reserve(e.segments->size());
+        for (const gen::elf::Segment& p : *e.segments)
+            elf.program_headers.push_back({p.type, static_cast<std::uint32_t>(p.offset), static_cast<std::uint32_t>(p.vaddr), static_cast<std::uint32_t>(p.paddr),
+                                           static_cast<std::uint32_t>(p.filesz), static_cast<std::uint32_t>(p.memsz), p.flags, static_cast<std::uint32_t>(p.align)});
     }
     if (elf.shnum != 0 && (elf.shentsize != kSectionHeaderSize || static_cast<std::uint64_t>(elf.shoff) + static_cast<std::uint64_t>(elf.shnum) * kSectionHeaderSize > data.size()))
         throw FormatError(kReader, elf.shoff, "the section header table is not inside the file");
-    for (std::size_t i = 0; i < elf.shnum; ++i) {
-        const std::size_t at = elf.shoff + i * kSectionHeaderSize;
-        SectionHeader s;
-        s.name_offset = le32(data, at);
-        s.type = le32(data, at + 4);
-        s.flags = le32(data, at + 8);
-        s.address = le32(data, at + 12);
-        s.offset = le32(data, at + 16);
-        s.size = le32(data, at + 20);
-        s.link = le32(data, at + 24);
-        s.info = le32(data, at + 28);
-        s.align = le32(data, at + 32);
-        s.entsize = le32(data, at + 36);
-        elf.sections.push_back(s);
-    }
-    if (elf.shstrndx < elf.sections.size()) {
-        const SectionHeader& names = elf.sections[elf.shstrndx];
-        if (names.type != kTypeNobits && static_cast<std::uint64_t>(names.offset) + names.size <= data.size())
-            for (SectionHeader& s : elf.sections)
-                if (s.name_offset < names.size) s.name = c_string(data, names.offset + s.name_offset, static_cast<std::size_t>(names.offset) + names.size);
+    if (e.sections) {
+        elf.sections.reserve(e.sections->size());
+        for (std::size_t i = 0; i < e.sections->size(); ++i) {
+            const gen::elf::Section& n = (*e.sections)[i];
+            SectionHeader s{n.name_offset, n.type, static_cast<std::uint32_t>(n.flags), static_cast<std::uint32_t>(n.address), static_cast<std::uint32_t>(n.offset),
+                            static_cast<std::uint32_t>(n.size), n.link, n.info, static_cast<std::uint32_t>(n.align), static_cast<std::uint32_t>(n.entsize), {}};
+            if (e.names) s.name = text_of((*e.names)[i].text);
+            elf.sections.push_back(std::move(s));
+        }
     }
     return elf;
 }
 
 std::vector<Symbol> Elf::symbols() const {
     std::vector<Symbol> out;
-    for (const SectionHeader& s : sections) {
-        if (s.type != kTypeSymtab || s.entsize != 16 || s.link >= sections.size()) continue;
-        const SectionHeader& strings = sections[s.link];
-        if (strings.type == kTypeNobits || static_cast<std::uint64_t>(strings.offset) + strings.size > data.size()) continue;
-        if (static_cast<std::uint64_t>(s.offset) + s.size > data.size()) continue;
-        for (std::size_t at = s.offset; at + 16 <= static_cast<std::size_t>(s.offset) + s.size; at += 16) {
+    gen::elf::Options options;
+    options.parts.symbols = true;
+    const gen::elf::Elf e = gen::elf::read(data, options).elf;
+    if (!e.symbols) return out;
+    for (const gen::elf::SymbolTable& table : *e.symbols) {
+        if (!table.entries) continue;
+        for (const gen::elf::Symbol& n : *table.entries) {
             Symbol sym;
-            const std::uint32_t name_at = le32(data, at);
-            sym.value = le32(data, at + 4);
-            sym.size = le32(data, at + 8);
-            sym.type = data[at + 12] & 15;
-            sym.bind = data[at + 12] >> 4;
-            sym.section = le16(data, at + 14);
-            if (name_at != 0 && name_at < strings.size) sym.name = c_string(data, strings.offset + name_at, static_cast<std::size_t>(strings.offset) + strings.size);
+            sym.name = text_of(n.name);
+            sym.value = static_cast<std::uint32_t>(n.value);
+            sym.size = static_cast<std::uint32_t>(n.size);
+            sym.type = static_cast<std::uint8_t>(n.type);
+            sym.bind = static_cast<std::uint8_t>(n.bind);
+            sym.section = n.section;
             out.push_back(std::move(sym));
         }
     }

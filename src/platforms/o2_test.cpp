@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/o2.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.o2.descriptor", [] {
-    const Platform p = o2();
+    const Platform p = described("o2");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "o2");
     CB_CHECK_EQ(p.title, "Magnavox Odyssey 2");

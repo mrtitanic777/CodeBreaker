@@ -11,9 +11,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/threedo.hpp"
+#include "platforms/package.hpp"
 #include "formats/threedo.hpp"
-#include "source/threedo_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -110,7 +110,7 @@ vl::Effects threedo_effects(const stdfs::path& path, std::uint32_t entry, const 
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::threedo_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("threedo", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -141,7 +141,7 @@ vl::ImageLaneSpec threedo_lane_spec() {
 void register_threedo_lane() {
     register_lane({
         .name = "threedo",
-        .platform = platforms::threedo,
+        .platform = [] { return platforms::described("threedo"); },
         .probe = [](const stdfs::path& p) { return formats::threedo::probe(p); },
         .make_spec = threedo_lane_spec,
         .detectors = {{.priority = 260, .detect = formats::detect::info_threedo}},

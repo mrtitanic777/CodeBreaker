@@ -17,25 +17,48 @@
 #include "core/text.hpp"
 #include "source/isa.hpp"
 #include "source/isa_r4300.hpp"
+#include "source/isa_sh2.hpp"
+#include "source/iso_disc.hpp"
+#include "source/sh2_writer.hpp"
 #include "formats/atari2600.hpp"
 #include "formats/atari5200.hpp"
 #include "formats/atari7800.hpp"
+#include "formats/cdi.hpp"
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
+#include "formats/dreamcast.hpp"
 #include "formats/gb.hpp"
 #include "formats/gba.hpp"
 #include "formats/genesis.hpp"
 #include "formats/jaguar.hpp"
 #include "formats/lynx.hpp"
 #include "formats/msx.hpp"
+#include "formats/n3ds.hpp"
 #include "formats/n64.hpp"
+#include "formats/nds.hpp"
 #include "formats/neogeo.hpp"
 #include "formats/nes.hpp"
+#include "formats/nro.hpp"
+#include "formats/orbis.hpp"
+#include "formats/ppc_program.hpp"
 #include "formats/ps2.hpp"
+#include "formats/ps3.hpp"
 #include "formats/psp.hpp"
 #include "formats/psx.hpp"
+#include "formats/saturn.hpp"
+#include "formats/sega32x.hpp"
+#include "formats/segacd.hpp"
 #include "formats/sms.hpp"
+#include "formats/threedo.hpp"
 #include "formats/vb.hpp"
+#include "formats/vita.hpp"
+#include "formats/chf.hpp"
+#include "formats/intv.hpp"
+#include "formats/ngp.hpp"
+#include "formats/o2.hpp"
+#include "formats/vectrex.hpp"
+#include "formats/wonderswan.hpp"
+#include "formats/xboxone.hpp"
 #include "formats/zx.hpp"
 
 namespace cb::source::console_writer {
@@ -507,6 +530,292 @@ Loaded load_psp(const std::filesystem::path& path) {
     return l;
 }
 
+// The GameCube, the Wii and the Wii U: a DOL, an ELF or an RPX (decompressed), whichever of the three consoles it is for.
+Loaded load_gekko(const std::filesystem::path& path) {
+    namespace pp = formats::ppc_program;
+    std::optional<pp::Program> read = pp::read(path);
+    if (!read) throw FormatError("gekko", 0, "not a GameCube, Wii or Wii U program (a DOL, an ELF or an RPX)");
+    auto program = std::make_shared<pp::Program>(std::move(*read));
+    std::vector<std::string> loaded;
+    for (const formats::ppc_segment::Segment& s : program->segments) loaded.push_back(std::format("{} at 0x{:08X} ({} bytes)", s.name, s.address, s.size));
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"console", std::string(pp::console_text(program->console))},
+                {"cpu", std::string(pp::cpu_text(program->console))},
+                {"kind", std::string(pp::kind_text(program->kind))},
+                {"dol", Num{program->kind == pp::Kind::Dol}},
+                {"rpx", Num{program->kind == pp::Kind::Rpx}},
+                {"decompressed", Num{program->kind == pp::Kind::Rpx && program->elf && program->elf->inflated_sections != 0}},
+                {"entry", Num{program->entry}},
+                {"loaded", text::join(loaded, ", ")}};
+    l.contained.gekko = std::move(program);
+    return l;
+}
+
+// The flat shape's cartridges: the ROM at the address it is seen at, the values the head names; `ext` the file's extension (the rebuilt file's).
+std::string extension_of(const std::filesystem::path& path) { return path.extension().string(); }
+
+// The Odyssey 2: up to 3 KB at $0400.
+Loaded load_o2(const std::filesystem::path& path) {
+    Loaded l;
+    l.image = formats::o2::read(path).data;
+    l.origin = formats::o2::kBase;
+    l.values = {{"ext", extension_of(path)}};
+    return l;
+}
+
+// The Channel F: the cartridge at $0800.
+Loaded load_chf(const std::filesystem::path& path) {
+    Loaded l;
+    l.image = formats::chf::read(path).data;
+    l.origin = formats::chf::kBase;
+    l.values = {{"ext", extension_of(path)}};
+    return l;
+}
+
+// The Neo Geo Pocket: the cartridge at $200000, its header's colour, title and start.
+Loaded load_ngp(const std::filesystem::path& path) {
+    auto rom = std::make_shared<const formats::ngp::Rom>(formats::ngp::read(path));
+    Loaded l;
+    l.image = rom->data;
+    l.origin = formats::ngp::kRomBase;
+    l.values = {{"ext", extension_of(path)}, {"colour", Num{rom->header.colour}}, {"title", rom->header.title}, {"start", Num{rom->header.start}}};
+    l.contained.program = std::shared_ptr<const formats::ngp::Rom>(std::move(rom));
+    return l;
+}
+
+// The Vectrex: the cartridge at $0000, its copyright text and where the program starts after the header.
+Loaded load_vectrex(const std::filesystem::path& path) {
+    auto rom = std::make_shared<const formats::vectrex::Rom>(formats::vectrex::read(path));
+    Loaded l;
+    l.image = rom->data;
+    l.values = {{"ext", extension_of(path)}, {"copyright", rom->copyright}, {"entry", Num{rom->entry}}};
+    l.contained.program = std::shared_ptr<const formats::vectrex::Rom>(std::move(rom));
+    return l;
+}
+
+// The Intellivision: an Intellicart .rom or a raw .int, its segments of 16-bit words (`image` is the file).
+Loaded load_intv(const std::filesystem::path& path) {
+    auto rom = std::make_shared<const formats::intv::Rom>(formats::intv::read(path));
+    Loaded l;
+    l.image = fs::read_file(path);
+    l.values = {{"ext", extension_of(path)}, {"segments", static_cast<Num>(rom->segments.size())}, {"words", static_cast<Num>(rom->word_count())}, {"title", rom->title()}};
+    l.contained.program = std::shared_ptr<const formats::intv::Rom>(std::move(rom));
+    return l;
+}
+
+// The WonderSwan: the cartridge, its footer's values.
+Loaded load_wonderswan(const std::filesystem::path& path) {
+    auto rom = std::make_shared<const formats::wonderswan::Rom>(formats::wonderswan::read(path));
+    Loaded l;
+    l.image = rom->data;
+    l.values = {{"color", Num{rom->is_color()}}, {"reset_segment", Num{rom->reset_segment}}, {"reset_offset", Num{rom->reset_offset}}, {"developer", Num{rom->developer}},
+                {"game", Num{rom->game_id}}, {"version", Num{rom->version}}, {"save", Num{rom->save}}, {"checksum", Num{rom->checksum}},
+                {"checksum_ok", Num{rom->checksum_ok}}};
+    l.contained.program = std::shared_ptr<const formats::wonderswan::Rom>(std::move(rom));
+    return l;
+}
+
+// The Sega CD: a disc image's system area (the boot header, the security code, the IP and the SP; 2048- or 2352-byte sectors).
+Loaded load_segacd(const std::filesystem::path& path) {
+    auto disc = std::make_shared<const formats::segacd::Disc>(formats::segacd::read(path));
+    const formats::segacd::Header& h = disc->header;
+    Loaded l;
+    l.image = disc->boot;
+    l.values = {{"domestic", h.domestic_name}, {"overseas", h.overseas_name}, {"serial", h.serial}, {"sector", static_cast<Num>(disc->sector_size)}};
+    l.contained.program = std::shared_ptr<const formats::segacd::Disc>(std::move(disc));
+    return l;
+}
+
+// The 32X: the cartridge (its 68000 side the Genesis's), the SH-2 program its header names.
+Loaded load_sega32x(const std::filesystem::path& path) {
+    namespace f32 = formats::sega32x;
+    auto rom = std::make_shared<const f32::Rom>(f32::read(path));
+    const f32::Header& h = rom->header;
+    Loaded l;
+    l.image = rom->data;
+    l.values = {{"module", h.module_name}, {"program_size", static_cast<Num>(rom->has_sh2_program() ? rom->sh2_program().size() : 0)}, {"sh2_offset", Num{h.sh2_offset}},
+                {"sdram", Num{f32::kSdram}}, {"master", Num{h.master_start}}, {"slave", Num{h.slave_start}}};
+    l.contained.program = std::shared_ptr<const f32::Rom>(std::move(rom));
+    return l;
+}
+
+// The 3DO: an Opera disc's LaunchMe, or a bare AIF.
+Loaded load_threedo(const std::filesystem::path& path) {
+    auto program = std::make_shared<const formats::threedo::Program>(formats::threedo::read(path));
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"disc", Num{program->kind == formats::threedo::Kind::Disc}}, {"name", program->name}, {"image_size", static_cast<Num>(program->image_size)}, {"entry", static_cast<Num>(program->aif.entry)}};
+    l.contained.program = std::shared_ptr<const formats::threedo::Program>(std::move(program));
+    return l;
+}
+
+// The CD-i: a disc's CD-RTOS modules, or a module file.
+Loaded load_cdi(const std::filesystem::path& path) {
+    auto program = std::make_shared<const formats::cdi::Program>(formats::cdi::read(path));
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"ext", path.extension().string()}, {"disc", Num{program->disc}}, {"modules", static_cast<Num>(program->modules.size())},
+                {"placed", static_cast<Num>(program->placed().size())}};
+    l.contained.program = std::shared_ptr<const formats::cdi::Program>(std::move(program));
+    return l;
+}
+
+// The PlayStation 4 and 5: an ELF, or an unencrypted SELF holding one.
+Loaded load_orbis(const std::filesystem::path& path) {
+    auto program = std::make_shared<const formats::orbis::Program>(formats::orbis::read(path));
+    std::string needed;
+    for (const std::string& n : program->needed) needed += (needed.empty() ? "" : ", ") + n;
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"container", program->container}, {"ps4", Num{program->orbis || program->self}}, {"entry", static_cast<Num>(program->entry)},
+                {"imports", static_cast<Num>(program->imports.size())}, {"needed", needed}};
+    l.contained.program = std::shared_ptr<const formats::orbis::Program>(std::move(program));
+    return l;
+}
+
+Loaded load_xboxone_file(const std::filesystem::path& path) { return load_xboxone(path, ""); }
+
+// The PlayStation 3: a PSL1GHT ELF or an unencrypted SELF holding one; the image is its loadable segments end to end.
+Loaded load_ps3(const std::filesystem::path& path) {
+    auto program = std::make_shared<formats::ps3::Program>(formats::ps3::read(path));
+    Loaded l;
+    l.image = program->image;
+    l.values = {{"self", Num{program->self}}, {"segments", static_cast<Num>(program->segments.size())}, {"entry", static_cast<Num>(program->entry_code)},
+                {"toc", static_cast<Num>(program->toc)}};
+    l.contained.ps3 = std::move(program);
+    return l;
+}
+
+// The Nintendo 3DS: a `.3dsx`, or the ARM ELF devkitARM links it from; the image is the file.
+Loaded load_n3ds(const std::filesystem::path& path) {
+    auto program = std::make_shared<formats::n3ds::Program>(formats::n3ds::read(path));
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"x3dsx", Num{program->kind == formats::n3ds::Kind::X3dsx}}, {"entry", Num{program->entry}}};
+    l.contained.n3ds = std::move(program);
+    return l;
+}
+
+// The Nintendo DS: a cartridge ROM, its two programs (the ARM9's and the ARM7's) and its file system in one source.
+Loaded load_nds(const std::filesystem::path& path) {
+    auto rom = std::make_shared<formats::nds::Rom>(formats::nds::read(path));
+    Loaded l;
+    l.image = rom->data;
+    l.values = {{"title", rom->header.title}, {"game_code", rom->header.game_code}};
+    l.contained.nds = std::move(rom);
+    return l;
+}
+
+// The Nintendo Switch: a homebrew `.nro`, a `.nso` or the AArch64 ELF devkitA64 links; the image is what is loaded (a NRO's file).
+Loaded load_switch(const std::filesystem::path& path) {
+    namespace nro = formats::nro;
+    auto program = std::make_shared<nro::Program>(nro::read(path));
+    Loaded l;
+    l.image = program->flat;
+    l.values = {{"nro", Num{program->kind == nro::Kind::Nro}}, {"nso", Num{program->kind == nro::Kind::Nso}}, {"entry", static_cast<Num>(program->entry)}, {"note", program->note}};
+    l.contained.nswitch = std::move(program);
+    return l;
+}
+
+// The PlayStation Vita: an unencrypted SELF (a `.vpk`'s eboot.bin) or the ELF inside it; the image is its loadable segments inflated, end to end.
+Loaded load_vita(const std::filesystem::path& path) {
+    auto program = std::make_shared<formats::vita::Program>(formats::vita::read(path));
+    Loaded l;
+    l.image = program->image;
+    l.values = {{"self", Num{program->self}}, {"module", program->module_name}, {"segments", static_cast<Num>(program->segments.size())}};
+    l.contained.vita = std::move(program);
+    return l;
+}
+
+// The Saturn: a disc's IP.BIN (the header, the initial program, the rest of the system area, which is never loaded) and its first program, one
+// source; the four area-code entries, the initial program and the first program's start named. The lane runs a disc of its own holding them.
+Loaded load_saturn(const std::filesystem::path& path) {
+    namespace st = formats::saturn;
+    const st::Disc disc = st::read(path);
+    const std::uint32_t ip = disc.ip_length();
+    const auto system_size = static_cast<std::uint32_t>(disc.system.size());
+    const auto first_size = static_cast<std::uint32_t>(disc.first_read.size());
+    const std::uint32_t load = disc.load_address();
+    constexpr std::uint32_t kHeader = 0x100;
+    auto image = std::make_shared<sh2_writer::Image>();
+    image->parts.push_back({"header", 0, kHeader, st::kIpBase, false, true});
+    image->parts.push_back({"ip", kHeader, ip - kHeader, st::kIpBase + kHeader, true, true});
+    if (ip < system_size) image->parts.push_back({"system_tail", ip, system_size - ip, st::kIpBase + ip, false, false});
+    if (first_size != 0) image->parts.push_back({"first_read", system_size, first_size, load, true, true});
+    static constexpr const char* kAreas[] = {"ip_area_jp", "ip_area_tw", "ip_area_us", "ip_area_eu"};
+    for (std::uint32_t i = 0; i < 4; ++i) {
+        const std::uint32_t at = st::kIpBase + st::kAreaEntries + 0x20 * i;
+        if (st::kAreaEntries + 0x20 * i + 2 <= ip) {
+            image->entries.push_back(at);
+            image->names[at] = kAreas[i];
+        }
+    }
+    if (st::kInitAt + 2 <= ip) {
+        image->entries.push_back(st::kIpBase + st::kInitAt);
+        image->names[st::kIpBase + st::kInitAt] = "ip_init";
+    }
+    if (first_size != 0) {
+        image->entries.push_back(load);
+        image->names[load] = "first_read";
+    }
+    for (const std::uint32_t a : disc.functions(isa::sh2_decoder())) image->entries.push_back(a);
+    Loaded l;
+    l.image = disc.system;
+    l.image.insert(l.image.end(), disc.first_read.begin(), disc.first_read.end());
+    l.contained.sh2 = std::move(image);
+    l.contained.own = {{load, load + first_size}};
+    l.values = {{"title", disc.header.title}, {"product", disc.header.product}, {"areas", disc.header.areas}, {"ip", Num{ip}},
+                {"first", disc.first_read_name}, {"first_size", Num{first_size}}, {"load", Num{load}}};
+    l.contained.after = [name = disc.first_read_name, first_size](image_writer::Written& r, const Values& values, const std::filesystem::path& folder) {
+        if (!r.linked || !r.built || first_size == 0 || name.empty()) return;
+        const Bytes built = fs::read_file(*r.built);
+        const std::filesystem::path iso = folder / (std::get<std::string>(values.at("stem")) + ".built.iso");
+        fs::write_file(iso, iso_disc::minimal(ByteView(built).first(st::kSystemBytes), ByteView(built).subspan(st::kSystemBytes), name, "SEGA SATURN"));
+        r.built = iso;
+    };
+    return l;
+}
+
+// The Dreamcast: a disc's IP.BIN (the header, then the bootstrap at $300) and its first program, descrambled, one source at physical
+// addresses. The lane runs a disc of its own holding them (the program scrambled again when it was).
+Loaded load_dreamcast(const std::filesystem::path& path) {
+    namespace dc = formats::dreamcast;
+    const dc::Disc disc = dc::read(path);
+    const auto system_size = static_cast<std::uint32_t>(disc.system.size());
+    const auto program_size = static_cast<std::uint32_t>(disc.program.size());
+    constexpr std::uint32_t kHeader = 0x100;
+    auto image = std::make_shared<sh2_writer::Image>();
+    image->parts.push_back({"header", 0, kHeader, dc::kIpBase, false, true, false});
+    image->parts.push_back({"ip", kHeader, system_size - kHeader, dc::kIpBase + kHeader, true, true});
+    if (program_size != 0) image->parts.push_back({"first_read", system_size, program_size, dc::kFirstReadBase, true, true});
+    if (dc::kIpEntry + 2 <= system_size) {
+        image->entries.push_back(dc::kIpBase + dc::kIpEntry);
+        image->names[dc::kIpBase + dc::kIpEntry] = "ip_bootstrap";
+    }
+    if (program_size != 0) {
+        image->entries.push_back(dc::kFirstReadBase);
+        image->names[dc::kFirstReadBase] = "first_read";
+    }
+    for (const std::uint32_t a : disc.functions(isa::sh4_decoder())) image->entries.push_back(a);
+    Loaded l;
+    l.image = disc.system;
+    l.image.insert(l.image.end(), disc.program.begin(), disc.program.end());
+    l.contained.sh2 = std::move(image);
+    l.contained.own = {{dc::kIpBase, dc::kFirstReadBase + program_size}};
+    l.values = {{"title", disc.header.title}, {"product", disc.header.product}, {"areas", disc.header.areas}, {"ip", Num{system_size}},
+                {"first", disc.first_read_name}, {"first_size", Num{program_size}}, {"scrambled", Num{disc.scrambled}}};
+    l.contained.after = [name = disc.first_read_name, program_size, scrambled = disc.scrambled](image_writer::Written& r, const Values& values,
+                                                                                               const std::filesystem::path& folder) {
+        if (!r.linked || !r.built || program_size == 0 || name.empty()) return;
+        const Bytes built = fs::read_file(*r.built);
+        const std::filesystem::path iso = folder / (std::get<std::string>(values.at("stem")) + ".built.iso");
+        fs::write_file(iso, dreamcast_disc(built, name, scrambled));
+        r.built = iso;
+    };
+    return l;
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -515,25 +824,48 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"atari2600", load_atari2600},
     {"atari5200", load_atari5200},
     {"atari7800", load_atari7800},
+    {"chf", load_chf},
+    {"cdi", load_cdi},
     {"coleco", load_coleco},
     {"cpc", load_cpc},
+    {"dreamcast", load_dreamcast},
+    {"gamecube", load_gekko},
     {"gb", load_gb},
     {"gba", load_gba},
     {"genesis", load_genesis_file},
+    {"intv", load_intv},
     {"jaguar", load_jaguar},
     {"lynx", load_lynx_file},
     {"msx", load_msx},
+    {"n3ds", load_n3ds},
     {"n64", load_n64},
+    {"nds", load_nds},
     {"neogeo", load_neogeo},
     {"neogeo_sound", load_neogeo_sound_file},
     {"nes", load_nes},
+    {"ngp", load_ngp},
+    {"o2", load_o2},
     {"pce", pce_code::load_pce_file},
-    {"ps2", load_ps2},
-    {"psp", load_psp},
     {"ps1", load_ps1},
+    {"ps2", load_ps2},
+    {"ps3", load_ps3},
+    {"ps4", load_orbis},
+    {"ps5", load_orbis},
+    {"psp", load_psp},
+    {"saturn", load_saturn},
+    {"sega32x", load_sega32x},
+    {"segacd", load_segacd},
     {"sms", load_sms},
     {"snes", snes_code::load_snes_file},
+    {"switch", load_switch},
+    {"threedo", load_threedo},
     {"vb", load_vb},
+    {"vectrex", load_vectrex},
+    {"vita", load_vita},
+    {"wii", load_gekko},
+    {"wiiu", load_gekko},
+    {"wonderswan", load_wonderswan},
+    {"xboxone", load_xboxone_file},
     {"zx", load_zx},
 };
 
@@ -651,6 +983,22 @@ Loaded load_neogeo_sound(ByteView sound, std::string_view file_name) {
         r.notes.push_back(std::format("the M-ROM holds {} bytes: the banks after the first 32 KB are not written", size));
     };
     return l;
+}
+
+Loaded load_xboxone(const std::filesystem::path& file, const std::string& member) {
+    auto program = std::make_shared<const formats::xboxone::Program>(formats::xboxone::read(file, member));
+    Loaded l;
+    l.image = program->file;
+    l.values = {{"container", program->container}, {"identity", program->identity}, {"version", program->version}};
+    l.contained.program = std::shared_ptr<const formats::xboxone::Program>(std::move(program));
+    return l;
+}
+
+Bytes dreamcast_disc(ByteView image, const std::string& name, bool scrambled, std::uint32_t volume_base) {
+    namespace dc = formats::dreamcast;
+    const Bytes program_plain(image.begin() + static_cast<std::ptrdiff_t>(dc::kSystemBytes), image.end());
+    const Bytes program = scrambled ? dc::scramble(program_plain) : program_plain;
+    return iso_disc::minimal(image.first(dc::kSystemBytes), program, name, "SEGA DREAMCAST", volume_base);
 }
 
 Loaded load(std::string_view platform, const std::filesystem::path& file) {

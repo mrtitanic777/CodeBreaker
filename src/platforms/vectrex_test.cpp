@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/vectrex.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.vectrex.descriptor", [] {
-    const Platform p = vectrex();
+    const Platform p = described("vectrex");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "vectrex");
     CB_CHECK_EQ(p.title, "Vectrex");

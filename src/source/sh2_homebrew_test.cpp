@@ -12,8 +12,7 @@
 #include "engine/machine_sh2.hpp"
 #include "formats/saturn.hpp"
 #include "formats/sega32x.hpp"
-#include "source/saturn_writer.hpp"
-#include "source/sega32x_writer.hpp"
+#include "source/console_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 namespace cb::source {
@@ -94,16 +93,16 @@ std::size_t program_offset_on_disc(std::uint32_t address, const Bytes& original)
 
 // The 32X: the 240p Test Suite's cartridge (GPL-2.0; GCC-built SH-2 code, C with assembly) and the RoQ Player's (MIT).
 CB_TEST("source.sega32x.homebrew.the_240p_test_suite", [] {
-    rebuilds_and_is_judged("sega32x/240pSuite_32X_1.0.32x", 10, sega32x_writer::reconstruct, engine::sega32x_lane_spec(), sh2_offset_in_32x);
+    rebuilds_and_is_judged("sega32x/240pSuite_32X_1.0.32x", 10, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("sega32x", f, d); }, engine::sega32x_lane_spec(), sh2_offset_in_32x);
 });
 CB_TEST("source.sega32x.homebrew.the_roq_player", [] {
-    rebuilds_and_is_judged("sega32x/roq32X.32x", 10, sega32x_writer::reconstruct, engine::sega32x_lane_spec(), sh2_offset_in_32x);
+    rebuilds_and_is_judged("sega32x/roq32X.32x", 10, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("sega32x", f, d); }, engine::sega32x_lane_spec(), sh2_offset_in_32x);
 });
 
 // The Saturn: Save Game Copier (GPL-3.0), built with Jo Engine and the Saturn SDK's GCC; three releases.
 CB_TEST("source.saturn.homebrew.save_game_copier", [] {
     for (const char* version : {"3.7.1", "3.7.0", "3.6.18"})
-        rebuilds_and_is_judged(std::string("saturn/save-game-copier-") + version + "/game.iso", 20, saturn_writer::reconstruct, engine::saturn_lane_spec(), program_offset_on_disc);
+        rebuilds_and_is_judged(std::string("saturn/save-game-copier-") + version + "/game.iso", 20, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("saturn", f, d); }, engine::saturn_lane_spec(), program_offset_on_disc);
 });
 
 }  // namespace

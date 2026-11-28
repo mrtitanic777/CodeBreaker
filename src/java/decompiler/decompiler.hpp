@@ -26,6 +26,8 @@
 
 namespace cb::java::decompiler {
 
+struct ClassNode;   // classes.hpp
+
 // The decompiler's log (the original's IFernflowerLogger): messages with a severity at or above the run's LOG_LEVEL, and the start and end of each
 // phase (a class read, processed, written; the save).
 class IFernflowerLogger {
@@ -146,6 +148,8 @@ struct DecompileRequest {
     std::vector<std::filesystem::path> libraries;   // read for the types they hold, not decompiled (the console tool's -e=<path>)
     std::map<std::string, std::string> options;     // over the defaults (pref::defaults): "1"/"0" for a switch, text otherwise
     std::function<void(const std::string& line)> on_log;   // each log line as it is written (besides DecompileResult::log)
+    // Not upstream: each root class once ClassWriter has written it, its tree still current (lower_l2.hpp lowers it into L2).
+    std::function<void(ClassNode* root)> on_class_written;
 };
 
 // Saves `result` into `folder` as RetroMCP's DirectoryResultSaver does: an archive's entries (its classes as Java, its other files as they are, its

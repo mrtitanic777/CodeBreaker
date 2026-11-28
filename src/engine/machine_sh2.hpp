@@ -3,7 +3,7 @@
 //
 //     engine::register_sh2_lanes();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does it)
 //
-// Each lane is one verify/lanes/image_lane: the program is written back as source (source/sega32x_writer, source/saturn_writer) and rebuilt;
+// Each lane is one verify/lanes/image_lane: the program is written back as source (source/console_writer: config/platforms/saturn.json) and rebuilt;
 // one that comes back identical is the original, an edited one has each function run beside the original's in CodeBreaker's own SH-2
 // interpreter (emulate/sh2) over the machine's memory. The comparison is of how the run ended, R0 and R1, R8-R15, PR GBR MACH MACL and SR,
 // the memory it changed in the machine's RAMs, and every access to the machine's registers in order.

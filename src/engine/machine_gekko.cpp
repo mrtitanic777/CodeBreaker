@@ -14,12 +14,10 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/gamecube.hpp"
-#include "platforms/wii.hpp"
-#include "platforms/wiiu.hpp"
+#include "platforms/package.hpp"
 #include "formats/gekko_map.hpp"
 #include "formats/ppc_program.hpp"
-#include "source/gekko_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -154,8 +152,8 @@ vl::Effects effects(pp::Console console, const stdfs::path& path, std::uint32_t 
             vl::Effect(std::move(saved)), vl::Effect(std::move(changed)), vl::Effect(std::move(io))};
 }
 
-vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::gekko_writer::reconstruct(module, out);
+vl::Written written_by(std::string_view console, const stdfs::path& module, const stdfs::path& out) {
+    const source::image_writer::Written w = source::console_writer::reconstruct(console, module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -181,7 +179,7 @@ vl::ImageLaneSpec gekko_lane_spec(std::string_view console_name) {
     spec.effects = [console](const stdfs::path& path, std::uint32_t entry, const vl::State& state) { return d::effects(console, path, entry, state); };
     spec.what = {"end", "r3", "r4", "f1", "f1 (second half)", "r1", "r14-r31", "memory changes", "hardware accesses"};
     spec.start = [](const vl::State& s) { return std::format("from r3={:08X} r4={:08X} r5={:X}", d::at(s, "r3"), d::at(s, "r4"), d::at(s, "r5")); };
-    spec.writer = d::written_by;
+    spec.writer = [name = std::string(console_name)](const stdfs::path& module, const stdfs::path& out) { return d::written_by(name, module, out); };
     spec.key_digits = 8;
     return spec;
 }
@@ -189,7 +187,7 @@ vl::ImageLaneSpec gekko_lane_spec(std::string_view console_name) {
 void register_gekko_lanes() {
     register_lane({
         .name = "gamecube",
-        .platform = platforms::gamecube,
+        .platform = [] { return platforms::described("gamecube"); },
         .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::GameCube); },
         .make_spec = [] { return gekko_lane_spec("gamecube"); },
         .detectors = {{.priority = 410, .detect = formats::detect::info_gamecube}},
@@ -197,13 +195,13 @@ void register_gekko_lanes() {
     });
     register_lane({
         .name = "wii",
-        .platform = platforms::wii,
+        .platform = [] { return platforms::described("wii"); },
         .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::Wii); },
         .make_spec = [] { return gekko_lane_spec("wii"); },
     });
     register_lane({
         .name = "wiiu",
-        .platform = platforms::wiiu,
+        .platform = [] { return platforms::described("wiiu"); },
         .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::WiiU); },
         .make_spec = [] { return gekko_lane_spec("wiiu"); },
     });

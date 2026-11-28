@@ -1,0 +1,10 @@
+{
+  "platform": "xboxone",
+  "title": "Xbox One / Series",
+  "description": "The x64 PE32+ of a UWP app (out of its .appx / .msix / .msixbundle, or loose) written whole as NASM source by source/pe64_writer (console_xboxone.cpp), the package's identity in the head. The machine's facts stay platforms/xboxone (a Capstone decoder and the Microsoft x64 convention).",
+  "shape": "executable",
+  "executable": {
+    "container": "xboxone",
+    "description": "{container} for the Xbox One / Series{identity?, {identity}|}{version? {version}|}"
+  }
+}

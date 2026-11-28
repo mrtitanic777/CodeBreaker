@@ -1,1 +1,0 @@
-InnerOuter	inner-class	an inner class that uses its outer instance (Counter)

@@ -1,7 +1,7 @@
 // decompile/m6809.hpp -- the Motorola 6809's instructions: the table, a disassembler, an assembler.
 //
 // Every documented opcode of the 6809 (the Vectrex's CPU): the 256 of the first page and the two prefixed pages ($10 and $11). One table serves the
-// disassembler, the assembler that rebuilds the source the Vectrex lane writes (source/vectrex_writer) and the interpreter (emulate/m6809).
+// disassembler, the assembler that rebuilds the source the Vectrex lane writes (source/console_m6809) and the interpreter (emulate/m6809).
 //
 //     decode(code, at, pc)         the instruction at code[at:] running at address pc, or nullopt
 //     text(insn, labels)           "LDA #$12" / "LDX <$10" / "STA ,X+" / "BNE L_0040" / "PSHS A,B,X"

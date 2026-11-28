@@ -2,7 +2,7 @@
 //
 //     engine::register_vectrex_lane();     // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A cartridge (formats/vectrex) is written back as 6809 source (source/vectrex_writer) and rebuilt; one that comes back identical is the original, an edited one has each
+// A cartridge (formats/vectrex) is written back as 6809 source (source/console_writer: config/platforms/vectrex.json) and rebuilt; one that comes back identical is the original, an edited one has each
 // function run beside the original's in the 6809 interpreter (emulate/m6809) over the Vectrex's memory: the cartridge ROM at $0000 (writes to it are dropped), 1 KB of RAM at
 // $C800-$CBFF (seen again at $CC00-$CFFF), the VIA 6522 at $D000-$D7FF as a logged device, and the system ROM at $E000-$FFFF as stubs: every byte an RTS, and each entry into it
 // is noted by the routine's name (Wait_Recal ...), so what a function asks of the BIOS is part of what is compared. The VIA answers as an idle machine: the timer 1 flag

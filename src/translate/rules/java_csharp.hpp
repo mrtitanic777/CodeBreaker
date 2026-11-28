@@ -6,7 +6,7 @@
 //     java_csharp::Result r = java_csharp::lower(arena, units, registry);   // copies: the units are not changed
 //     // r.units: lang "java", every type and member .NET's; r.runtime: the runtime files (JavaRt ...) the units use
 //
-// What it carries over from Java (the knowledge translate/backends/csharp_java holds as text, here as L2):
+// What it carries over from Java (the knowledge the old writer's Java library, translate/backends/csharp_java, held as text, here as L2):
 //   * types: java.lang.String is System.String, java.util.List<T> System.Collections.Generic.List<T>, a functional interface the
 //     delegate System.Func<...> / System.Action<...>, a box the number it holds (int? where a null can reach it), char a UTF-16 char,
 //     a stream the runtime's JStream;

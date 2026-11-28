@@ -1,7 +1,7 @@
 // decompile/a64.hpp -- AArch64 (ARMv8-A, the A64 instruction set): the table, a disassembler, an assembler.
 //
 // A64 is the 64-bit mode of the ARMv8-A processors (the Nintendo Switch's Cortex-A57 runs its software in it). Every instruction is one 32-bit little-endian word. One table of
-// rows serves the disassembler, the assembler that rebuilds the source the Switch lane writes (source/switch_writer), and the interpreter (emulate/a64): a row is the bits it
+// rows serves the disassembler, the assembler that rebuilds the source the Switch lane writes (source/console_switch), and the interpreter (emulate/a64): a row is the bits it
 // fixes (a mask and a value), a mnemonic, an operand list, and what the interpreter does with it (an `Op`). The decoder takes the first row a word matches (the aliases `mov`,
 // `cmp`, `ret`, `lsl #n`, `cset` ... stand before the rows they are special cases of, so a word is written as its preferred alias), the assembler tries the rows of a mnemonic in
 // the same order and takes the first whose operands fit, and a word that no row matches is not an instruction here (it has no text that assembles back to it).

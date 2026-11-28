@@ -13,7 +13,7 @@
 #include "formats/read.hpp"
 #include "platforms/wonderswan.hpp"
 #include "formats/wonderswan.hpp"
-#include "source/wonderswan_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -135,7 +135,7 @@ vl::Effects ws_effects(const stdfs::path& path, std::uint32_t entry, const vl::S
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::wonderswan_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("wonderswan", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;

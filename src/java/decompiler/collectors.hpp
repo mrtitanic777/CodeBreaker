@@ -90,6 +90,8 @@ public:
     std::string get_short_name(std::string fullname, bool imported);
     // "import a.b.C;" lines (the packages sorted, then the names); returns how many.
     int write_imports(TextBuffer& buffer);
+    // Not upstream: what write_imports writes, each "a.b.C" (lower_l2 gives them to its units).
+    std::vector<std::string> imports() const { return pack_imports(); }
 
 private:
     std::vector<std::string> pack_imports() const;

@@ -1,0 +1,35 @@
+{
+  "platform": "dreamcast",
+  "title": "Sega Dreamcast",
+  "description": "A disc's IP.BIN (at $0C008000) and its first program (1ST_READ.BIN at $0C010000, descrambled), one source for the SH-4 (source/sh2_writer) at physical addresses: IP.BIN's header field by field, flow from the bootstrap and the program's start, the Holly's, the buses', the Maple's, the GD-ROM's, the AICA's and the SH-4's registers by name, RAM, video and sound memory as var_ equates. The lane runs a disc of its own holding them, the program scrambled again when it was.",
+  "machine": {
+    "family": "superh",
+    "container": "disc image (.gdi with its track files, .cdi, .iso, .bin): IP.BIN and the first program",
+    "cpu": {"language": "SuperH:LE:32:SH-4", "bits": 32, "endian": "little", "decoder": "sh4",
+            "registers": ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15",
+                          "PR", "MACH", "MACL", "SR", "GBR", "VBR", "SSR", "SPC", "SGR", "DBR", "FPSCR", "FPUL",
+                          "FR0", "FR1", "FR2", "FR3", "FR4", "FR5", "FR6", "FR7", "FR8", "FR9", "FR10", "FR11", "FR12", "FR13", "FR14", "FR15"], "stack": "R15"},
+    "results": ["R0", "R1", "FR0", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "FR12", "FR13", "FR14", "FR15", "PR", "MACH", "MACL", "SR", "GBR", "FPSCR"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Dreamcast disc \"{title}\" ({product}, areas {areas}): IP.BIN of {ip} bytes at 0x0C008000 (cached view 0x8C008000), {first?{first}|(no first program)} of {first_size} bytes at 0x0C010000{scrambled?, scrambled on the disc and written here descrambled|}",
+    "(addresses are physical: a program's pointer 0x8Cxxxxxx is written `label + 0x80000000`)"
+  ],
+  "executable": {
+    "container": "sh2",
+    "sh4": true,
+    "registers": "hardware",
+    "built": "{stem}.built.bin",
+    "ram": [["0x0C000000", "0x0D000000"], ["0x04000000", "0x04800000"], ["0x05000000", "0x05800000"], ["0x00800000", "0x00A00000"]],
+    "fields": [
+      {"at": "0x00", "size": 16, "what": "hardware ID"}, {"at": "0x10", "size": 16, "what": "maker ID"},
+      {"at": "0x20", "size": 16, "what": "device information: CRC, medium, disc number"}, {"at": "0x30", "size": 8, "what": "area symbols"},
+      {"at": "0x38", "size": 8, "what": "peripherals"}, {"at": "0x40", "size": 10, "what": "product number"},
+      {"at": "0x4A", "size": 6, "what": "version"}, {"at": "0x50", "size": 16, "what": "release date"},
+      {"at": "0x60", "size": 16, "what": "boot file"}, {"at": "0x70", "size": 16, "what": "software maker"}, {"at": "0x80", "size": 128, "what": "title"}
+    ]
+  }
+}

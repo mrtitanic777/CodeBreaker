@@ -15,6 +15,7 @@
 #include "core/intmath.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/gen/cab.hpp"
 #include "formats/deflate.hpp"
 #include "formats/lzx.hpp"
 
@@ -32,9 +33,23 @@ constexpr std::uint16_t kAttrArchive = 0x20;
 
 [[noreturn]] void bad(std::string what, std::uint64_t offset = 0) { throw FormatError(kReader, offset, std::move(what)); }
 
-std::string text_at(io::ByteReader& r, bool utf8 = false) {
-    const ByteView s = r.cstr();
-    return utf8 ? text::sanitize_utf8(as_text(s)) : text::from_latin1(s);
+// A read through cab.fmt's generated reader (formats/gen/cab), its errors naming `reader` (the file, when there is one).
+template <class F>
+auto cab_read(const std::string& reader, F&& read) {
+    try {
+        return read();
+    } catch (const TruncatedError& e) {
+        throw TruncatedError(reader, e.offset(), e.wanted(), e.available());
+    } catch (const FormatError& e) {
+        throw FormatError(reader, e.offset(), e.what());
+    }
+}
+
+// A zero-terminated string of the description (its terminator included); one the file cuts off is damage.
+std::string cab_text(std::string_view n, std::uint64_t at, const std::string& reader, bool utf8 = false) {
+    if (n.empty() || n.back() != 0) throw TruncatedError(reader, at, n.size() + 1, n.size());
+    const std::string_view s = n.substr(0, n.size() - 1);
+    return utf8 ? text::sanitize_utf8(s) : text::from_latin1(as_bytes(s));
 }
 
 }  // namespace
@@ -66,58 +81,32 @@ Cabinet parse(ByteView data, const std::filesystem::path& path) {
     if (data.size() < kHeaderSize || std::string_view(reinterpret_cast<const char*>(data.data()), 4) != "MSCF") {
         throw FormatError(reader, 0, "not a cabinet (no MSCF signature)");
     }
-    io::ByteReader r(data, reader);
+    // The layout is cab.fmt's.
+    const gen::cab::File h = cab_read(reader, [&] { return gen::cab::read(data); });
     Cabinet c;
     c.path = path;
-    r.seek(8);
-    c.size = r.u32();
-    r.seek(16);
-    const std::uint32_t files_at = r.u32();
-    r.seek(24);
-    c.version_minor = r.u8();
-    c.version_major = r.u8();
-    const std::uint16_t folder_count = r.u16();
-    const std::uint16_t file_count = r.u16();
-    c.flags = r.u16();
-    c.set_id = r.u16();
-    c.index = r.u16();
-    std::uint8_t folder_reserve = 0;
-    if (c.flags & kFlagReserve) {
-        const std::uint16_t header_reserve = r.u16();
-        folder_reserve = r.u8();
-        c.block_reserve = r.u8();
-        r.skip(header_reserve);
-    }
-    if (c.flags & kFlagPrev) {
-        SetLink link;
-        link.cabinet = text_at(r);
-        link.disk = text_at(r);
-        c.prev = std::move(link);
-    }
-    if (c.flags & kFlagNext) {
-        SetLink link;
-        link.cabinet = text_at(r);
-        link.disk = text_at(r);
-        c.next = std::move(link);
-    }
-    for (std::uint16_t k = 0; k < folder_count; ++k) {
-        FolderEntry f;
-        f.data_offset = r.u32();
-        f.block_count = r.u16();
-        f.type = r.u16();
-        c.folders.push_back(f);
-        r.skip(folder_reserve);
-    }
-    r.seek(files_at);
-    for (std::uint16_t k = 0; k < file_count; ++k) {
+    c.size = h.size;
+    c.version_minor = h.version_minor;
+    c.version_major = h.version_major;
+    c.flags = h.flags;
+    c.set_id = h.set_id;
+    c.index = h.index_;
+    if (h.block_reserve) c.block_reserve = *h.block_reserve;
+    auto at_of = [&](std::string_view t) { return static_cast<std::uint64_t>(reinterpret_cast<const std::uint8_t*>(t.data()) - data.data()); };
+    if (h.prev_cabinet) c.prev = SetLink{cab_text(*h.prev_cabinet, at_of(*h.prev_cabinet), reader), cab_text(*h.prev_disk, at_of(*h.prev_disk), reader)};
+    if (h.next_cabinet) c.next = SetLink{cab_text(*h.next_cabinet, at_of(*h.next_cabinet), reader), cab_text(*h.next_disk, at_of(*h.next_disk), reader)};
+    c.folders.reserve(h.folders.size());
+    for (const gen::cab::Folder& f : h.folders) c.folders.push_back({f.data_offset, f.block_count, f.type});
+    c.files.reserve(h.files.size());
+    for (const gen::cab::FileEntry& f : h.files) {
         FileEntry e;
-        e.size = r.u32();
-        e.offset = r.u32();
-        e.folder = r.u16();
-        e.date = r.u16();
-        e.time = r.u16();
-        e.attributes = r.u16();
-        e.name = text_at(r, (e.attributes & kAttrUtf8Name) != 0);
+        e.size = f.size;
+        e.offset = f.offset;
+        e.folder = f.folder;
+        e.date = f.date;
+        e.time = f.time;
+        e.attributes = f.attributes;
+        e.name = cab_text(f.name, at_of(f.name), reader, (e.attributes & kAttrUtf8Name) != 0);
         c.files.push_back(std::move(e));
     }
     return c;

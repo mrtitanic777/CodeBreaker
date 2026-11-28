@@ -10,7 +10,6 @@
 #include "formats/neogeo.hpp"
 #include "formats/segacd.hpp"
 #include "source/console_writer.hpp"
-#include "source/segacd_writer.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 namespace cb::source {
@@ -52,8 +51,8 @@ CB_TEST("source.m68k_consoles.homebrew.neo_geo_sound", [] { rebuild("neogeo/mezz
 
 // Sega CD: ProjectCD's minimal disc (an IP that starts the sub CPU's program, and the SP) and the boot sectors it was built from.
 CB_TEST("source.m68k_consoles.homebrew.sega_cd", [] {
-    rebuild("segacd/minimalcd.iso", 5, segacd_writer::reconstruct);
-    rebuild("segacd/projectcd-bootsect.bin", 8, segacd_writer::reconstruct);
+    rebuild("segacd/minimalcd.iso", 5, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("segacd", f, d); });
+    rebuild("segacd/projectcd-bootsect.bin", 8, [](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct("segacd", f, d); });
 });
 
 // The lanes judge the real programs' functions: each is run in the 68000 over the machine's memory from every starting state and agrees with itself

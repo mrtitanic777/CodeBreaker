@@ -2,7 +2,7 @@
 //
 //     engine::register_m68k_lanes();     // once, before a LaneKit is made (LaneKit::register_worker_kinds does it)
 //
-// Each lane is one verify/lanes/image_lane: the program is written back as Motorola-syntax source (source/console_writer with config/platforms/neogeo.json, source/segacd_writer)
+// Each lane is one verify/lanes/image_lane: the program is written back as Motorola-syntax source (source/console_writer with config/platforms/neogeo.json, source/console_writer: config/platforms/segacd.json)
 // and rebuilt; one that comes back identical is the original, an edited one has each function run beside the original's in the 68000 interpreter
 // (emulate/m68k) over the machine's memory, and the comparison is of how it ended, D0-D7, A0-A6, the condition codes, the RAM it changed and
 // every access to the machine's devices in order.

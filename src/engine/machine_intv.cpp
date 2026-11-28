@@ -11,9 +11,10 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_cp1610.hpp"
 #include "formats/read.hpp"
-#include "platforms/intv.hpp"
+#include "knowledge/package.hpp"
+#include "platforms/package.hpp"
 #include "formats/intv.hpp"
-#include "source/intv_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -60,8 +61,9 @@ std::int64_t at(const vl::State& s, const char* key) {
 vl::State intv_state(int a, int b, int c, int d, int e, int fill) { return {{"a", a}, {"b", b}, {"c", c}, {"d", d}, {"e", e}, {"fill", fill}}; }
 
 std::string place(std::uint32_t address) {
-    const auto it = source::intv_writer::hardware().find(address);
-    return it != source::intv_writer::hardware().end() ? it->second : std::format("{:04X}", address);
+    static const std::map<std::uint32_t, std::string> hardware = knowledge::standard().hardware_names("intv", "hardware");   // (config/knowledge/intv/registers.json)
+    const auto it = hardware.find(address);
+    return it != hardware.end() ? it->second : std::format("{:04X}", address);
 }
 
 vl::Effects intv_effects(const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
@@ -113,7 +115,7 @@ vl::Effects intv_effects(const stdfs::path& path, std::uint32_t entry, const vl:
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::intv_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("intv", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -142,7 +144,7 @@ vl::ImageLaneSpec intv_lane_spec() {
 void register_intv_lane() {
     register_lane({
         .name = "intv",
-        .platform = platforms::intv,
+        .platform = [] { return platforms::described("intv"); },
         .probe = [](const stdfs::path& p) { return formats::intv::probe(p); },
         .make_spec = intv_lane_spec,
         .detectors = {{.priority = 300, .detect = formats::detect::info_intv}},

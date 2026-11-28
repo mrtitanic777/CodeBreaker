@@ -220,6 +220,13 @@ const std::unordered_map<std::string, std::string>& family_table() {
     return m;
 }
 
+// The methods every exception has from Throwable.
+bool throwable_method(std::string_view name) {
+    static const std::unordered_set<std::string_view> names = {"getMessage", "getLocalizedMessage", "getCause", "printStackTrace", "getSuppressed",
+                                                               "addSuppressed", "getStackTrace", "initCause", "fillInStackTrace"};
+    return names.contains(name);
+}
+
 std::optional<std::string_view> object_method(std::string_view name, std::size_t arity) {
     if (name == "toString" && arity == 0) return "ToString";
     if (name == "equals" && arity == 1) return "Equals";
@@ -591,6 +598,7 @@ private:
     Node* string_of(Node* a);
     Node* method_ref(Node* e);
     void check_lambda(Node* e);
+    void raw_lambda_params(ir::Lambda& l, const TypeP& face);
     Node* fill(const std::string& tmpl, Node* call_node, const ir::Call& call);
     struct Row {
         std::optional<apimap::Mapping> mapping;
@@ -2616,12 +2624,14 @@ void Pass::check_list_change(const ir::Call& call) const {
 
 Pass::Row Pass::lookup(const ir::Call& call) const {
     const ir::Sym& s = *call.sym;
-    const auto fam = family_table().find(s.owner.value_or(""));
-    if (fam == family_table().end()) return {};
+    const std::string owner = s.owner.value_or("");
+    const auto fam = family_table().find(owner);
+    const std::string family = fam != family_table().end() ? fam->second : std::string();
+    if (family.empty()) return {};
     std::vector<std::string> keys;
-    if (!s.params.empty()) keys.push_back(fam->second + "." + s.name + "(" + param_key(s.params[0]) + ")");
-    keys.push_back(fam->second + "." + s.name + "/" + std::to_string(call.args.size()));
-    keys.push_back(fam->second + "." + s.name);
+    if (!s.params.empty()) keys.push_back(family + "." + s.name + "(" + param_key(s.params[0]) + ")");
+    keys.push_back(family + "." + s.name + "/" + std::to_string(call.args.size()));
+    keys.push_back(family + "." + s.name);
     for (const std::string& k : keys) {
         std::optional<apimap::Mapping> m = registry_.resolve(k, "java", "csharp");
         if (!m || m->name != k) continue;
@@ -2899,6 +2909,12 @@ Node* Pass::library_call(Node* e) {
     const auto family = family_table().find(owner);
     const std::string fam = family != family_table().end() ? family->second : std::string();
 
+    if (owner == "java.lang.Number" && !is_static && c.args.empty() && c.target != nullptr) {   // a Number is an object here: its box's value
+        static const std::unordered_map<std::string_view, std::string_view> values = {{"intValue", "numberInt"},     {"longValue", "numberLong"},
+                                                                                      {"doubleValue", "numberDouble"}, {"floatValue", "numberFloat"},
+                                                                                      {"shortValue", "numberShort"}, {"byteValue", "numberByte"}};
+        if (const auto v = values.find(s.name); v != values.end()) return lib(std::string(v->second), {expr(c.target)});
+    }
     if (owner == "java.util.stream.Stream") return is_static ? on_type(ir::class_type("JStream", {result_arg(0)}), s.name, arguments()) : on_target();
     if (owner == "java.util.stream.IntStream") return is_static ? on_type(ir::class_type("JIntStream"), s.name, arguments()) : on_target();
     if (owner == "java.util.Optional" || owner == "java.util.OptionalInt" || owner == "java.util.OptionalDouble") {
@@ -3021,7 +3037,13 @@ Node* Pass::call(Node* e, bool statement) {
         return e;
     };
     if (s == nullptr) return plain();
-    const std::string owner = s->owner.value_or("");
+    if (const std::string& o = s->owner.value_or(""); throwable_method(s->name) && o.starts_with("java.") && (o.ends_with("Exception") || o.ends_with("Error"))) {
+        // a JDK exception's own class names what it has from Throwable (the bytecode's owner): Throwable's, as javac names it
+        ir::SymP of = std::make_shared<ir::Sym>(*s);
+        of->owner = "java.lang.Throwable";
+        c.sym = of;
+    }
+    const std::string owner = c.sym->owner.value_or("");
     if (s->name == "clone" && c.args.empty() && c.target != nullptr && c.target->type && c.target->type->kind() == "array")   // a copy of an array: shallow, as Java's
         return mk_.cast(c.target->type, mk_.call(expr(c.target), "Clone", {}, ir::class_type("System.Object")));
     if (s->name == "containsKey" && c.args.size() == 1 && c.target != nullptr && c.target->type && c.args[0]->type) {   // a key of another type: not there
@@ -3200,6 +3222,44 @@ Node* Pass::method_ref(Node* e) {
     return expr(lambda);
 }
 
+// A lambda of a JDK functional interface named raw (Predicate: the decompiler's bytecode, or a raw source) whose parameters are declared of a
+// class: its delegate takes objects (Func<object, bool>), and C# converts a lambda to it only if the lambda takes objects too. Each such
+// parameter is taken as an object and read as its class (`(Item)x`), which is what Java's bridge method does.
+void Pass::raw_lambda_params(ir::Lambda& l, const TypeP& face) {
+    const auto* c = face ? std::get_if<ir::ClassType>(&face->body) : nullptr;
+    if (c == nullptr || !c->args.empty() || !function_table().contains(c->name)) return;
+    std::map<std::string, TypeP> narrowed;
+    for (Node* pn : l.params) {
+        auto* p = ir::get<ir::Param>(pn);
+        if (p == nullptr || !p->sym || !p->type || !std::holds_alternative<ir::ClassType>(p->type->body)) continue;
+        if (std::get<ir::ClassType>(p->type->body).name == "java.lang.Object") continue;
+        narrowed[p->sym->name] = p->type;
+        p->type = ir::class_type("java.lang.Object");
+        p->sym = ir::make_sym(p->sym->kind, p->sym->name, p->sym->owner, p->sym->is_static, p->type);
+    }
+    if (narrowed.empty()) return;
+    std::function<void(Node*&, const std::map<std::string, TypeP>&)> read_as = [&](Node*& n, const std::map<std::string, TypeP>& names) {
+        if (n == nullptr || names.empty() || ir::is<ir::ClassDecl>(n)) return;
+        if (const auto* inner = ir::get<ir::Lambda>(n)) {   // an inner lambda's parameters hide the names they take
+            std::map<std::string, TypeP> left = names;
+            for (Node* pn : inner->params)
+                if (const auto* p = ir::get<ir::Param>(pn); p != nullptr && p->sym) left.erase(p->sym->name);
+            ir::visit(*n, [&](auto& k) { k.each_child([&](Node*& child) { read_as(child, left); }); });
+            return;
+        }
+        if (const auto* name = ir::get<ir::Name>(n); name != nullptr && name->sym && name->sym->kind == ir::SymKind::Param) {
+            if (const auto it = names.find(name->sym->name); it != names.end()) {
+                Node* taken = ir::make(arena_, ir::Name{.sym = ir::make_sym(ir::SymKind::Param, name->sym->name, name->sym->owner, false, ir::class_type("java.lang.Object"))},
+                                       ir::class_type("java.lang.Object"));
+                n = ir::make(arena_, ir::Cast{.x = taken}, it->second);
+                return;
+            }
+        }
+        ir::visit(*n, [&](auto& k) { k.each_child([&](Node*& child) { read_as(child, names); }); });
+    };
+    read_as(l.body, narrowed);
+}
+
 void Pass::check_lambda(Node* e) {
     const std::string* q = qual(e->type);
     if (q == nullptr) return;
@@ -3240,11 +3300,21 @@ Node* Pass::expr(Node* e) {
         }
         return new_object(x);
     }
+    if (auto* is = ir::get<ir::InstanceOf>(x)) {
+        const auto* tested = is->test ? std::get_if<ir::ClassType>(&is->test->body) : nullptr;
+        const ir::ClassDecl* own = tested != nullptr && tested->args.empty() ? class_named(tested->name) : nullptr;
+        if (own != nullptr && !own->typeparams.empty()) {   // `o instanceof Box` of a generic class: a Box of any arguments (C#'s `is` names one)
+            if (is->binding != nullptr) throw Declined{"instanceof", "a pattern of the raw type " + tested->name};
+            Node* closed = ir::make(arena_, ir::ClassLit{.of = is->test}, ir::class_type("System.Type"));   // (its definition is what is compared)
+            return jlib("isRaw", {expr(is->x), closed}, x->type);
+        }
+    }
     if (ir::is<ir::Binary>(x)) return binary(x);
     if (ir::is<ir::Concat>(x)) return concat(x);
     if (ir::is<ir::MethodRef>(x)) return method_ref(x);
     if (auto* l = ir::get<ir::Lambda>(x)) {
         check_lambda(x);
+        raw_lambda_params(*l, x->type);
         const TypeP saved_ret = std::exchange(ret_, TypeP{});
         if (ir::is<ir::Block>(l->body)) {
             auto saved = labels_;

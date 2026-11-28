@@ -1,0 +1,63 @@
+{
+  "platform": "segacd",
+  "title": "Sega CD / Mega-CD",
+  "description": "A disc image's system area as 68000 source (console_segacd.cpp): the boot header field by field, the security code, the IP and the SP each at the address its CPU runs it at, the Genesis's and the Mega-CD's registers by name; rebuilt as the system area.",
+  "machine": {
+    "family": "68000",
+    "container": "disc image boot sectors (.iso, .bin; 2048 or 2352 bytes a sector)",
+    "cpu": {
+      "language": "68000:BE:32:default",
+      "bits": 32,
+      "endian": "big",
+      "decoder": "m68k",
+      "registers": [
+        "D0",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7",
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "SR"
+      ],
+      "stack": "A7"
+    },
+    "results": [
+      "D0",
+      "D1",
+      "D2",
+      "D3",
+      "D4",
+      "D5",
+      "D6",
+      "D7",
+      "A0",
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6"
+    ],
+    "toolchain": "CodeBreaker's own assembler"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Sega CD \"{domestic}\" / \"{overseas}\", {serial}: the system area ({kb} KB) of a {sector}-byte-sector image",
+    ""
+  ],
+  "executable": {
+    "container": "segacd",
+    "built": "{stem}.built.iso"
+  }
+}

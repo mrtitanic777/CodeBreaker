@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/threedo.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.threedo.descriptor", [] {
-    const Platform p = threedo();
+    const Platform p = described("threedo");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "threedo");
     CB_CHECK_EQ(p.title, "3DO");

@@ -2,7 +2,7 @@
 //
 //     engine::register_ngp_lane();     // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A cartridge (formats/ngp) is written back as TLCS-900/H source (source/ngp_writer) and rebuilt; one that comes back identical is the original, an edited one has each function run
+// A cartridge (formats/ngp) is written back as TLCS-900/H source (source/console_writer: config/platforms/ngp.json) and rebuilt; one that comes back identical is the original, an edited one has each function run
 // beside the original's in the TLCS-900/H interpreter (emulate/tlcs900) over the console's memory (24 address lines): the CPU's own I/O at $000000-$0000FF (a logged device: timers,
 // watchdog, the Z80 mailbox), 12 KB of work RAM at $004000, the Z80's 4 KB at $007000, the K2GE's registers at $008000-$0081FF (a logged device that gives back what was written, except
 // that the raster line K2GE_RAS_V and the status register K2GE_STATUS read as a display that is drawing then in VBlank on every second read, so a loop that waits for a frame ends),

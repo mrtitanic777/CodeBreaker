@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/cdi.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.cdi.descriptor", [] {
-    const Platform p = cdi();
+    const Platform p = described("cdi");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "cdi");
     CB_CHECK_EQ(p.title, "Philips CD-i");

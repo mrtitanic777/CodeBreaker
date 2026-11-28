@@ -4,6 +4,7 @@
 //     Pairs pairs{.sdk = *sdk, .csharp = frontend, .arena = arena};
 //     pairs.csharp_to_csharp(files, work);        // Roslyn front end -> L2 -> the C# back end
 //     pairs.java_to_csharp(src_dir, "pkg.Main", work, java_side);
+//     pairs.jvm_to_csharp(src_dir, "pkg.Main", work, java_side);   // the same, through the bytecode and the decompiler
 //     pairs.csharp_to_cpp(files, work, cpp_side);  // Roslyn front end -> L2 -> the C++03 back end
 //
 // Each gives a Verdict: the judge's verdict and detail, what a front or back end declined (where, kind, why), the translation
@@ -68,6 +69,10 @@ struct Pairs {
                              const std::optional<std::string>& main = std::nullopt) const;
     Verdict java_to_csharp(const std::filesystem::path& src_dir, const std::string& main, const std::filesystem::path& work,
                            const JavaSide& java) const;
+    // The same program from its bytecode: compiled by javac (--release 8, or 17), decompiled by Fernflower into L2 (java/decompiler/lower_l2),
+    // written by the C# back end with Java's library, and run beside the Java program.
+    Verdict jvm_to_csharp(const std::filesystem::path& src_dir, const std::string& main, const std::filesystem::path& work,
+                          const JavaSide& java) const;
     Verdict csharp_to_cpp(const std::vector<std::filesystem::path>& files, const std::filesystem::path& work, const CppSide& cpp,
                           const std::string& main_class = "Program") const;
 };

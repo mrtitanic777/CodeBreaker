@@ -12,8 +12,7 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "formats/saturn.hpp"
-#include "source/saturn_writer.hpp"
-#include "source/sega32x_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/sh2_test_programs.hpp"
 
 namespace cb::source {
@@ -117,11 +116,11 @@ CB_TEST("source.sh2_writer.parts_at_their_own_addresses", [] {
     CB_CHECK(has(source, "        .long 0x11223344    ! a field"));
 });
 
-CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
+CB_TEST("source.console_writer.sega32x.a_cartridge_comes_back_as_two_sources", [] {
     fs::ScopedTempDir dir("sega32x-writer");
     const Bytes image = t::cartridge_32x();
     fs::write_file(dir.path() / "game.32x", image);
-    const image_writer::Written r = sega32x_writer::reconstruct(dir.path() / "game.32x", dir.path() / "out");
+    const image_writer::Written r = console_writer::reconstruct("sega32x", dir.path() / "game.32x", dir.path() / "out");
     keep(r, "sega32x");
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
@@ -148,11 +147,11 @@ CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
     CB_CHECK(rebuilt != t::assemble(t::kSdramProgram));
 });
 
-CB_TEST("source.saturn_writer.a_disc_comes_back_as_one_source", [] {
+CB_TEST("source.console_writer.saturn.a_disc_comes_back_as_one_source", [] {
     fs::ScopedTempDir dir("saturn-writer");
     const Bytes disc = t::disc_saturn();
     fs::write_file(dir.path() / "game.iso", disc);
-    const image_writer::Written r = saturn_writer::reconstruct(dir.path() / "game.iso", dir.path() / "out");
+    const image_writer::Written r = console_writer::reconstruct("saturn", dir.path() / "game.iso", dir.path() / "out");
     keep(r, "saturn");
     CB_CHECK(r.linked);
     CB_CHECK(r.same);

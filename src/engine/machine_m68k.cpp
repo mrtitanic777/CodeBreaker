@@ -12,12 +12,10 @@
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
-#include "platforms/segacd.hpp"
 #include "formats/neogeo.hpp"
 #include "formats/segacd.hpp"
 #include "platforms/package.hpp"
 #include "source/console_writer.hpp"
-#include "source/segacd_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -258,7 +256,7 @@ vl::Effects segacd_effects(const stdfs::path& path, std::uint32_t entry, const v
     return outcome(run, {bytes_of(ByteView(bus.memory().data() + ram, sub ? 0x10000 : 0x8000)), bytes_of(ByteView(bus.memory().data() + word, 0x10000))});
 }
 
-vl::Written segacd_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::segacd_writer::reconstruct(module, out)); }
+vl::Written segacd_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("segacd", module, out)); }
 
 }  // namespace m68k_lane_detail
 
@@ -303,7 +301,7 @@ void register_m68k_lanes() {
     });
     register_lane({
         .name = "segacd",
-        .platform = platforms::segacd,
+        .platform = [] { return platforms::described("segacd"); },
         .probe = [](const stdfs::path& p) { return formats::segacd::probe(p); },
         .make_spec = segacd_lane_spec,
         .detectors = {{.priority = 370, .detect = formats::detect::info_segacd}},

@@ -16,6 +16,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/bytes.hpp"
@@ -68,5 +69,8 @@ Program read(const std::filesystem::path& path);
 bool probe(const std::filesystem::path& path);
 // The kind of container an encrypted one is ("CIA", "3DS (NCSD)") when the bytes are one, for `info`.
 std::optional<std::string> encrypted_container(ByteView head);
+
+// The name of a Horizon kernel call by its SVC number ("SendSyncRequest" for 0x32), or empty.
+std::string_view svc_name(std::uint32_t number);
 
 }  // namespace cb::formats::n3ds

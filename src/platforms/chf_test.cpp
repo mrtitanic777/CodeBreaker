@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/chf.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.chf.descriptor", [] {
-    const Platform p = chf();
+    const Platform p = described("chf");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "chf");
     CB_CHECK_EQ(p.title, "Fairchild Channel F");

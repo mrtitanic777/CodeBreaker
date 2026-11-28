@@ -10,9 +10,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_f8.hpp"
 #include "formats/read.hpp"
-#include "platforms/chf.hpp"
+#include "platforms/package.hpp"
 #include "formats/chf.hpp"
-#include "source/chf_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -96,7 +96,7 @@ vl::Effects chf_effects(const stdfs::path& path, std::uint32_t entry, const vl::
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::chf_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("chf", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -125,7 +125,7 @@ vl::ImageLaneSpec chf_lane_spec() {
 void register_chf_lane() {
     register_lane({
         .name = "chf",
-        .platform = platforms::chf,
+        .platform = [] { return platforms::described("chf"); },
         .probe = [](const stdfs::path& p) { return formats::chf::probe(p); },
         .make_spec = chf_lane_spec,
         .detectors = {{.priority = 330, .detect = formats::detect::info_chf}},

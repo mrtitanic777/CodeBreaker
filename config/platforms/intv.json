@@ -1,0 +1,49 @@
+{
+  "platform": "intv",
+  "title": "Mattel Intellivision",
+  "description": "An Intellicart .rom or a raw .int written as as1600 source for the CP1610 (console_cp1610.cpp): each segment at its ORG, flow from the entry, SDBD pairs, the hardware's names, decles where text would not build back.",
+  "machine": {
+    "family": "CP1610",
+    "container": "cartridge (.rom Intellicart / jzIntv, raw .int)",
+    "cpu": {
+      "language": "CP1610:BE:16:default",
+      "bits": 16,
+      "endian": "big",
+      "decoder": "cp1610",
+      "registers": [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "stack": "R6"
+    },
+    "results": [
+      "R0",
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R6",
+      "S",
+      "Z",
+      "OV",
+      "C"
+    ],
+    "toolchain": "CodeBreaker's own assembler (as1600 syntax), or as1600"
+  },
+  "shape": "flat",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Intellivision cartridge, {segments} segment(s), {words} words, \"{title}\"",
+    ""
+  ],
+  "flat": {
+    "cpu": "cp1610",
+    "built": "{stem}.built{ext}"
+  }
+}

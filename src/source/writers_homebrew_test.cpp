@@ -5,12 +5,6 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/console_writer.hpp"
-#include "source/gekko_writer.hpp"
-#include "source/n3ds_writer.hpp"
-#include "source/nds_writer.hpp"
-#include "source/saturn_writer.hpp"
-#include "source/sega32x_writer.hpp"
-#include "source/vita_writer.hpp"
 
 namespace cb::source {
 namespace {
@@ -128,25 +122,25 @@ CB_TEST("source.writers.homebrew.game_boy_advance", [] {
 
 // (the SuperH consoles': the 32X's two SH-2s and the Saturn's disc, each from its source)
 CB_TEST("source.writers.homebrew.superh_consoles", [] {
-    rebuild("sega32x/roq32X.32x", 60, sega32x_writer::reconstruct);
-    rebuild("sega32x/240pSuite_32X_1.0.32x", 80, sega32x_writer::reconstruct);
-    rebuild("saturn/save-game-copier-3.6.18/game.iso", 1000, saturn_writer::reconstruct);
+    rebuild("sega32x/roq32X.32x", 60, console("sega32x"));
+    rebuild("sega32x/240pSuite_32X_1.0.32x", 80, console("sega32x"));
+    rebuild("saturn/save-game-copier-3.6.18/game.iso", 1000, console("saturn"));
 });
 
 // (the GameCube's and the Wii's: devkitPPC's DOLs and ELF, and the Wii U's decompressed RPX and WPS, each rebuilt from its source)
 CB_TEST("source.writers.homebrew.gamecube_wii_and_wii_u", [] {
-    rebuild("gamecube/beanz_gc_monitor.dol", 300, gekko_writer::reconstruct);
-    rebuild("gamecube/beanz_gc_monitor.elf", 300, gekko_writer::reconstruct);
-    rebuild("gamecube/Wii-donut.c-gc.dol", 300, gekko_writer::reconstruct);
-    rebuild("wii/doodle-wii.dol", 800, gekko_writer::reconstruct);
-    rebuild("wii/wii-donut/apps/Wii-donut/boot.dol", 700, gekko_writer::reconstruct);
-    rebuild("wiiu/gamepadtopro.wps", 400, gekko_writer::reconstruct);
+    rebuild("gamecube/beanz_gc_monitor.dol", 300, console("gamecube"));
+    rebuild("gamecube/beanz_gc_monitor.elf", 300, console("gamecube"));
+    rebuild("gamecube/Wii-donut.c-gc.dol", 300, console("gamecube"));
+    rebuild("wii/doodle-wii.dol", 800, console("wii"));
+    rebuild("wii/wii-donut/apps/Wii-donut/boot.dol", 700, console("wii"));
+    rebuild("wiiu/gamepadtopro.wps", 400, console("wiiu"));
 });
 
 // (the DS's: two processors in one ROM, ARM and Thumb)
 CB_TEST("source.writers.homebrew.nintendo_ds", [] {
-    rebuild("nds/dldi_benchmark_dkA.nds", 500, nds_writer::reconstruct);
-    rebuild("nds/dldi_benchmark_blocksds.nds", 600, nds_writer::reconstruct);
+    rebuild("nds/dldi_benchmark_dkA.nds", 500, console("nds"));
+    rebuild("nds/dldi_benchmark_blocksds.nds", 600, console("nds"));
 });
 
 // (the PlayStation 2's R5900 and the PSP's Allegrex: what the MIPS description lacks stays as its bits with the decoder's text)
@@ -157,13 +151,13 @@ CB_TEST("source.writers.homebrew.playstation_2_and_portable", [] {
 });
 
 // (the Vita's Thumb-2)
-CB_TEST("source.writers.homebrew.playstation_vita", [] { rebuild("vita/eboot_safe.bin", 80, vita_writer::reconstruct); });
+CB_TEST("source.writers.homebrew.playstation_vita", [] { rebuild("vita/eboot_safe.bin", 80, console("vita")); });
 
 // (the Virtual Boy's V810: hi(name) / lo(name) for the halves of an address)
 CB_TEST("source.writers.homebrew.virtual_boy", [] { rebuild("vb/multi-color/Multi Color Demo.vb", 1, console("vb")); });
 
 // (the 3DS's ARM11: a 3DSX is large, so the one test is the smallest)
-CB_TEST("source.writers.homebrew.nintendo_3ds", [] { rebuild("3ds/FBI.3dsx", 1000, n3ds_writer::reconstruct); });
+CB_TEST("source.writers.homebrew.nintendo_3ds", [] { rebuild("3ds/FBI.3dsx", 1000, console("n3ds")); });
 
 }  // namespace
 }  // namespace cb::source

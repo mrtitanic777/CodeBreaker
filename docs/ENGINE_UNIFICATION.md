@@ -118,7 +118,13 @@ These come from the Board session's survey of duplicates (`unification-survey-20
 one at a time, in this order. Each is proven by identical output on its existing tests before the old code is deleted, and each
 tests only what it changes.
 
-7. One source writer for every console, plus a description of each platform (~18,000 lines of per-console writers).
+7. One source writer for every console, plus a description of each platform (~18,000 lines of per-console writers). **Done
+   2026-11-28:** every console is written by source/console_writer from config/platforms/<name>.json (48 descriptions, shapes
+   z80-block, banked, cart6502, segmented, vectored, flat, executable); the 42 per-console writers (`src/source/<console>_writer.*`)
+   and 40 per-machine descriptors (`src/platforms/<console>.*`) are deleted, their code either one shape or a processor's or
+   container's file under the console writer. src/source, src/platforms and config/platforms: 15,114 lines out, 6,279 in (8,835
+   fewer). Four machines keep a platforms/ descriptor a description cannot say yet (a Capstone decoder and a calling convention):
+   WonderSwan, PS4, PS5, Xbox One.
 8. File detection from the `.fmt` descriptions.
 9. The remaining hand-written readers onto the format engine: 7 ELF readers, MZ, NES, XEX, XBE, CAB, ISO, OMF and the Xbox
    containers.
@@ -200,5 +206,12 @@ tests only what it changes.
 - 2026-11-28: item 7: the Virtual Boy on `vectored`'s V810 processor, byte-identical on its 4 homebrew programs. Next: the `executable` shape.
 - 2026-11-28: item 7: the `executable` shape, PS2 and PSP on it (container `mips-elf`), byte-identical on their 15 homebrew programs.
   Next: PS3, Vita, 3DS, DS, Switch, GameCube/Wii, Saturn, Dreamcast.
+- 2026-11-28: item 7: the rest of the `executable` shape -- Saturn and Dreamcast (container `sh2`), PS3, GameCube/Wii/Wii U, Vita, 3DS,
+  Switch and DS (containers of their own) -- byte-identical on their 34 homebrew programs. The table's rows are done.
+- 2026-11-28: item 7 done: the last twelve -- 32X, Sega CD, 3DO, CD-i, PS4/PS5 and Xbox One on `executable`; Odyssey 2, Channel F
+  (one 8-bit engine), Neo Geo Pocket, Vectrex, Intellivision and WonderSwan on the new `flat` shape -- byte-identical on their
+  homebrew programs and synthetic test images (48 dumps, old against new).
 - 2026-11-28: item 5 (docs/RECOMPILER.md): the design written; step 0, the baseline (Minecraft and Up checked from the branch;
-  Tetris's package is not on this machine), and step 1, an instruction's p-code as data (`sleigh::Reader::pcode`).
+  Tetris skipped, as Logan said); step 1, an instruction's p-code as data (`sleigh::Reader::pcode`); step 2, the p-code
+  translator beside XenonRecomp, 0 mismatches on the instruction tests; step 3, `recompile-project --translator pcode`: Minecraft
+  and Up with about 78% of their instructions from p-code present 6,600 frames in 120 s, as before.

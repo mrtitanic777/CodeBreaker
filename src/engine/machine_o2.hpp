@@ -2,7 +2,7 @@
 //
 //     engine::register_o2_lane();     // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A cartridge (formats/o2) is written back as 8048 source (source/o2_writer) and rebuilt; one that comes back identical is the original, an edited one has each function run beside
+// A cartridge (formats/o2) is written back as 8048 source (source/console_writer: config/platforms/o2.json) and rebuilt; one that comes back identical is the original, an edited one has each function run beside
 // the original's in the 8048 interpreter (emulate/i8048) over the console's memory: the cartridge at $0400 of the program memory, the BIOS at $0000-$03FF as stubs (every byte a RET,
 // each entry noted by its address: BIOS_01B0 ...), 64 bytes of internal RAM, and the data space (MOVX, the video chip's registers and the cartridge's RAM, 256 bytes that hold what is
 // written; VDC_STATUS reads as an idle display, 0 and $FF alternately). Every port, expander, bus and data access is a logged device access named by what it touches (P1, P2, BUS,

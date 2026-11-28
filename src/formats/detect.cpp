@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "formats/dos.hpp"
 #include "formats/format_builtin.hpp"
+#include "formats/gen/mz.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::detect {
@@ -114,34 +115,40 @@ bool holds_drivers(const std::filesystem::path& file, bool w3_bundles, bool w4_b
     return *sig == NewHeader::Le || *sig == NewHeader::Lx || (w3_bundles && *sig == NewHeader::W3) || (w4_bundles && *sig == NewHeader::W4);
 }
 
+// The header and its relocation table are mz.fmt's (its generated reader, formats/gen/mz).
 std::optional<DosHeader> dos_header(ByteView d) {
-    if (d.size() < 0x1C || !starts_with(d, 0, "MZ")) return std::nullopt;
-    std::uint16_t f[13];
-    for (int k = 0; k < 13; ++k) f[k] = get<std::uint16_t>(d, 2 + 2 * static_cast<std::uint64_t>(k), "detect");
+    if (!starts_with(d, 0, "MZ")) return std::nullopt;   // (mz.fmt also takes "ZM"; this answer is for "MZ" only)
+    gen::mz::Options options;
+    options.parts.dos_relocs = true;
+    std::optional<gen::mz::MzHeader> read;
+    try {
+        read = gen::mz::read(d, options).header;
+    } catch (const FormatError&) {
+        return std::nullopt;
+    }
+    const gen::mz::MzHeader& m = *read;
     DosHeader h;
-    const std::int64_t last = f[0], pages = f[1];
-    h.bytes_in_last_page = f[0];
-    h.pages = f[1];
-    h.relocations = f[2];
-    h.header_paragraphs = f[3];
-    h.header_size = std::uint32_t{f[3]} * 16;
-    h.min_alloc = f[4];
-    h.max_alloc = f[5];
-    h.ss = f[6];
-    h.sp = f[7];
-    h.checksum = f[8];
-    h.ip = f[9];
-    h.cs = f[10];
-    h.relocation_table = f[11];
-    h.overlay = f[12];
-    h.new_header = d.size() >= 0x40 ? get<std::uint32_t>(d, 0x3C, "detect") : 0;
-    const std::int64_t image = std::max<std::int64_t>(0, pages * 512 - (last ? 512 - last : 0) - std::int64_t{h.header_size});
+    h.bytes_in_last_page = m.last_page_bytes;
+    h.pages = m.pages;
+    h.relocations = m.reloc_count;
+    h.header_paragraphs = m.header_paragraphs;
+    h.header_size = static_cast<std::uint32_t>(m.header_size);
+    h.min_alloc = m.min_alloc;
+    h.max_alloc = m.max_alloc;
+    h.ss = m.ss;
+    h.sp = m.sp;
+    h.checksum = m.checksum;
+    h.ip = m.ip;
+    h.cs = m.cs;
+    h.relocation_table = m.reloc_offset;
+    h.overlay = m.overlay_number;
+    h.new_header = static_cast<std::uint32_t>(m.new_header);
+    const std::int64_t image = std::max<std::int64_t>(0, m.image_size - std::int64_t{h.header_size});
     const std::int64_t rest = std::max<std::int64_t>(0, static_cast<std::int64_t>(d.size()) - std::int64_t{h.header_size});
     h.load_size = static_cast<std::uint64_t>(std::min(image, rest));
-    for (std::uint64_t i = 0; i < f[2]; ++i) {
-        const std::uint64_t at = std::uint64_t{f[11]} + i * 4;
-        if (at + 4 > d.size()) break;
-        h.relocation_entries.push_back({get<std::uint16_t>(d, at + 2, "detect"), get<std::uint16_t>(d, at, "detect")});
+    if (m.relocs) {   // the entries that lie inside the file
+        h.relocation_entries.reserve(m.relocs->size());
+        for (const gen::mz::Reloc& r : *m.relocs) h.relocation_entries.push_back({r.segment, r.offset});
     }
     return h;
 }

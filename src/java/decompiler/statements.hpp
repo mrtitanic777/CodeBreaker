@@ -341,6 +341,8 @@ public:
     TextBuffer to_java(int indent, BytecodeMappingTracer& tracer) override;
     Statement* get_simple_copy() override;
     std::vector<VarExprent*>& get_vars() { return vars_; }
+    // Not upstream: each handler's caught types (lower_l2 reads them).
+    const std::vector<std::vector<std::string>>& get_exception_types() const { return exctstrings_; }
 
 private:
     std::vector<std::vector<std::string>> exctstrings_;   // the caught exception types of each handler

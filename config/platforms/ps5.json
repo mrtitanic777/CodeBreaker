@@ -1,0 +1,14 @@
+{
+  "platform": "ps5",
+  "title": "PlayStation 5",
+  "description": "An ELF or an unencrypted SELF holding one, written whole as NASM source by source/x64_writer (console_orbis.cpp): the headers, the segments at their addresses, flow from the entry, the imports by name. The machine's facts stay platforms/ps5 (a Capstone decoder and the System V convention, which a description does not say).",
+  "shape": "executable",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "{container} for the PlayStation {ps4?4|4 or 5}, {size} bytes, entry 0x{entry:X}",
+    "{imports} imports{needed?, needs {needed}|}"
+  ],
+  "executable": {
+    "container": "orbis"
+  }
+}

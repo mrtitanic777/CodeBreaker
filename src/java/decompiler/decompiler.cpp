@@ -243,6 +243,7 @@ DecompileResult decompile_here(const DecompileRequest& request) {
     MemoryResultSaver saver(result);
 
     Fernflower fernflower(saver, request.options, logger);
+    DecompilerContext::current().class_written = request.on_class_written;
     try {
         // the libraries first, then the sources (ConsoleDecompiler's order, and RetroMCP's): a class a library also has is the source's
         for (const std::filesystem::path& library : request.libraries) {

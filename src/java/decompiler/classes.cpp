@@ -288,6 +288,7 @@ void ClassesProcessor::write_class(const StructClass* cl, TextBuffer& buffer) {
 
         TextBuffer class_buffer;
         ClassWriter().class_to_java(root, class_buffer, 0, nullptr);
+        if (ctx.class_written) ctx.class_written(root);   // (not upstream: lower_l2)
 
         int total_offset_lines = 0;
 

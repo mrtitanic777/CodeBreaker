@@ -26,8 +26,7 @@
 #include "platforms/xboxone.hpp"
 #include "formats/orbis.hpp"
 #include "formats/xboxone.hpp"
-#include "source/orbis_writer.hpp"
-#include "source/xboxone_writer.hpp"
+#include "source/console_writer.hpp"
 
 #pragma warning(push, 0)
 #include <unicorn/x86.h>
@@ -383,12 +382,12 @@ vl::ImageLaneSpec spec_for(const std::string& kind, Loader loader, std::function
 
 vl::ImageLaneSpec ps4_lane_spec() {
     namespace d = x64_lane_detail;
-    return d::spec_for("ps4", d::load_orbis, [](const stdfs::path& m, const stdfs::path& o) { return source::orbis_writer::reconstruct(m, o); });
+    return d::spec_for("ps4", d::load_orbis, [](const stdfs::path& m, const stdfs::path& o) { return source::console_writer::reconstruct("ps4", m, o); });
 }
 
 vl::ImageLaneSpec ps5_lane_spec() {
     namespace d = x64_lane_detail;
-    return d::spec_for("ps5", d::load_orbis, [](const stdfs::path& m, const stdfs::path& o) { return source::orbis_writer::reconstruct(m, o); });
+    return d::spec_for("ps5", d::load_orbis, [](const stdfs::path& m, const stdfs::path& o) { return source::console_writer::reconstruct("ps5", m, o); });
 }
 
 void register_ps4_lane() {
@@ -412,7 +411,7 @@ void register_ps5_lane() {
 
 vl::ImageLaneSpec xboxone_lane_spec() {
     namespace d = x64_lane_detail;
-    return d::spec_for("xboxone", d::load_xboxone, [](const stdfs::path& m, const stdfs::path& o) { return source::xboxone_writer::reconstruct(m, o); });
+    return d::spec_for("xboxone", d::load_xboxone, [](const stdfs::path& m, const stdfs::path& o) { return source::console_writer::reconstruct("xboxone", m, o); });
 }
 
 void register_xboxone_lane() {

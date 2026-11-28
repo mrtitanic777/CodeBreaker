@@ -8,6 +8,7 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/log.hpp"
+#include "formats/gen/xpr.hpp"
 
 namespace cb::formats::xbox::xpr {
 
@@ -16,7 +17,6 @@ namespace {
 constexpr std::string_view kXprReader = "xpr";
 constexpr std::size_t kXpr0MinSize = 0x1C;
 constexpr std::size_t kXpr2MinSize = 0x10;
-constexpr std::uint32_t kXprFormatAt = 0x18;   // the D3DTexture's packed Format dword
 
 struct XprFormatName {
     std::uint32_t xfmt;
@@ -53,16 +53,14 @@ std::string format_name(std::uint32_t xfmt) {
     return std::format("0x{:02X}", xfmt);
 }
 
+// The layout is xpr.fmt's (its generated reader, formats/gen/xpr); what the format word means and where the pixels end
+// are this reader's.
 Bundle parse(ByteView file) {
-    io::ByteReader r(file, kXprReader);
+    const gen::xpr::File h = gen::xpr::read(file);   // (a file shorter than the magic, or an XPR0 than its header: cut short)
     Bundle b;
-    const std::string_view magic = as_text(r.bytes(4));
-    if (magic == "XPR0") {
-        if (file.size() < kXpr0MinSize) throw TruncatedError(kXprReader, 0, kXpr0MinSize, file.size());
+    if (h.magic == "XPR0") {
         b.container = Container::Xpr0;
-        const std::uint32_t total = r.u32(), header_size = r.u32();
-        r.seek(kXprFormatAt);
-        const std::uint32_t format = r.u32();
+        const std::uint32_t total = *h.total, header_size = *h.header_size, format = *h.format;
         b.xfmt = (format >> 8) & 0xFF;
         b.mipmaps = (format >> 16) & 0xF;
         b.width = 1u << ((format >> 20) & 0xF);
@@ -74,16 +72,14 @@ Bundle parse(ByteView file) {
         // a total that is zero or larger than the file means "to the end"
         b.pixels = xpr_pixels(file, b.data_offset, (total && total <= file.size()) ? total : file.size());
         b.total = total ? total : file.size();
-    } else if (magic == "XPR2") {
+    } else {   // XPR2 (the description refuses any other magic)
         if (file.size() < kXpr2MinSize) throw TruncatedError(kXprReader, 0, kXpr2MinSize, file.size());
         b.container = Container::Xpr2;
-        b.header_size = r.u32_be();
-        const std::uint32_t data_size = r.u32_be();
+        b.header_size = *h.header_size;
+        const std::uint32_t data_size = *h.data_size;
         b.data_offset = b.header_size;
         b.pixels = xpr_pixels(file, b.data_offset, data_size ? b.data_offset + data_size : file.size());
         b.data_size = data_size ? data_size : static_cast<std::uint32_t>(b.pixels.size());
-    } else {
-        throw FormatError(kXprReader, 0, "unknown magic (expected XPR0 or XPR2)");
     }
     return b;
 }

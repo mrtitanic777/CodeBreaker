@@ -12,9 +12,10 @@
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
-#include "platforms/cdi.hpp"
+#include "knowledge/package.hpp"
+#include "platforms/package.hpp"
 #include "formats/cdi.hpp"
-#include "source/cdi_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -87,9 +88,10 @@ vl::Effects cdi_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     for (const formats::cdi::Module& m : program.modules) {
         if (!m.runs()) continue;
         for (std::uint32_t a = m.address + static_cast<std::uint32_t>(formats::cdi::kHeader); a + 4 <= m.address + m.size; a += 2) {
+    static const std::map<std::uint32_t, std::string> system_calls = knowledge::standard().table_names("cdi", "system_calls");   // (config/knowledge/cdi/registers.json)
             if (mem[a] != 0x4E || mem[a + 1] != 0x40) continue;
             const std::uint32_t call = static_cast<std::uint32_t>(mem[a + 2] << 8 | mem[a + 3]);
-            if (!source::cdi_writer::system_calls().contains(call)) continue;
+            if (!system_calls.contains(call)) continue;
             const std::uint32_t stub = kStubs + 8 * call;
             mem[a] = 0x4E;
             mem[a + 1] = 0xB8;
@@ -130,7 +132,7 @@ vl::Effects cdi_effects(const stdfs::path& path, std::uint32_t entry, const vl::
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::cdi_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("cdi", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -162,7 +164,7 @@ vl::ImageLaneSpec cdi_lane_spec() {
 void register_cdi_lane() {
     register_lane({
         .name = "cdi",
-        .platform = platforms::cdi,
+        .platform = [] { return platforms::described("cdi"); },
         .probe = [](const stdfs::path& p) { return formats::cdi::probe(p); },
         .make_spec = cdi_lane_spec,
         .detectors = {{.priority = 280, .detect = formats::detect::info_cdi}},

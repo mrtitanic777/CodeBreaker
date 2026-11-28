@@ -1,7 +1,12 @@
 #include "translate/dotnet/pairs.hpp"
 
+#include <algorithm>
+
 #include "core/fs.hpp"
+#include "core/process.hpp"
+#include "core/text.hpp"
 #include "dotnet/decompiler/csharp/l2_syntax_builder.hpp"
+#include "java/decompiler/lower_l2.hpp"
 
 namespace cb::translate::dotnet::pairs {
 
@@ -70,6 +75,48 @@ Verdict Pairs::java_to_csharp(const stdfs::path& src_dir, const std::string& mai
     add_unsupported(refused, units);
     const judge::CSharpToolchain tools = judge::CSharpToolchain::of(sdk);
     judge::Run original = judge::java(java.jdk, src_dir, main, work / "run-orig");
+    judge::Run translation = judge::csharp(tools, paths, work / "run-trans", {.main = main});
+    return judged(refused, std::move(original), std::move(translation), paths);
+}
+
+Verdict Pairs::jvm_to_csharp(const stdfs::path& src_dir, const std::string& main, const stdfs::path& work, const JavaSide& java) const {
+    judge::fresh_folder(work);
+    judge::Run original = judge::java(java.jdk, src_dir, main, work / "run-orig");
+    if (!java.jdk) return judged({}, std::move(original), {}, {});
+    // the bytecode the decompiler reads: javac's for Java 8, or 17
+    const stdfs::path classes = work / "classes";
+    fs::make_dirs(classes);
+    std::vector<std::string> sources;
+    std::error_code ec;
+    for (stdfs::recursive_directory_iterator it(src_dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->is_regular_file() && it->path().extension() == ".java") sources.push_back("\"" + text::replace_all(fs::to_text(it->path()), "\\", "/") + "\"");
+    }
+    std::ranges::sort(sources);
+    fs::write_text(work / "files.txt", text::join(sources, "\n"));
+    process::ProcessResult built;
+    for (const char* release : {"8", "17"}) {   // (a program of a later Java's language as Java 17's, its string concatenation inline: no invokedynamic)
+        process::ProcessSpec compile;
+        compile.argv = {fs::to_text(java.jdk->javac), "--release", release, "-XDstringConcat=inline", "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(classes),
+                        "@" + fs::to_text(work / "files.txt")};
+        compile.err = process::Capture::Merge;
+        built = process::run(compile);
+        if (built.exit_code == 0) break;
+    }
+    if (built.exit_code != 0) return judged({{"javac", "compile", std::string(built.out.begin(), built.out.end())}}, std::move(original), {}, {});
+
+    cb::java::decompiler::DecompileRequest request;
+    request.sources = {classes};
+    request.options = {{"rsy", "1"}};   // (the compiler's synthetic members are not the program's: Java 17's $values(), an enum body's access constructor)
+    const cb::java::decompiler::lower_l2::Lowered lowered = cb::java::decompiler::lower_l2::decompile(request, arena);
+    cs::L2CSharpOptions options;
+    options.java_registry = java.registry;
+    options.runtime_dir = java.runtime_dir;
+    cs::L2CSharpProgram out(lowered.units, options);
+    const std::vector<stdfs::path> paths = out.write(work / "cs");
+    std::vector<Refusal> refused;
+    add_ledger(refused, out.ledger());
+    add_unsupported(refused, lowered.units);
+    const judge::CSharpToolchain tools = judge::CSharpToolchain::of(sdk);
     judge::Run translation = judge::csharp(tools, paths, work / "run-trans", {.main = main});
     return judged(refused, std::move(original), std::move(translation), paths);
 }

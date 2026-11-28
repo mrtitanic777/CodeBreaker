@@ -280,6 +280,79 @@ CB_TEST("translate.csharp.pairs.java_programs_round_trip_to_equivalent", [] {
     }
 });
 
+// The same Java programs from their bytecode (docs/JAVA_TO_CSHARP_L2.md, step 4): javac's class files decompiled by Fernflower straight into L2
+// (java/decompiler/lower_l2), then the rule set java and the C# back end, as javac's units of the source are. Judged against the JVM. calc
+// and fixtures agree; modern is printed (its raw collections from the bytecode do not build in C# yet: a raw Iterator over a map's entries).
+CB_TEST("translate.csharp.pairs.decompiled_java_programs_round_trip_to_equivalent", [] {
+    const dn::Sdk* sdk = csf_installed();
+    const stdfs::path jdk = "C:/Program Files/Java/jdk-21/bin";
+    const std::string javac = cb::fs::get_env("CB_JAVAC").value_or((jdk / "javac.exe").string());
+    const std::string java = cb::fs::get_env("CB_JAVA").value_or((jdk / "java.exe").string());
+    std::error_code ec;
+    if (sdk == nullptr || !stdfs::is_regular_file(javac, ec) || !stdfs::is_regular_file(java, ec)) return;
+    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../config/java/api_maps"));
+    dn::pairs::JavaSide side;
+    side.registry = &registry;
+    side.runtime_dir = cb::testing::data_path("../config/translate/dotnet/runtime");
+    side.jdk = dn::judge::Jdk{.javac = javac, .jvm = java};
+    const cs::Frontend frontend = csf_frontend_of(*sdk);
+    struct Case {
+        const char* folder;
+        const char* main;
+        const char* lines;
+    };
+    for (const Case& c : {Case{"calc", "CalcMain", "17 lines"}, Case{"fixtures", "sample.FixtureMain", "15 lines"}, Case{"modern", "Library", nullptr}}) {
+        CsfWork work(std::string("jvm-") + c.folder);
+        cb::Arena arena;
+        const dn::pairs::Verdict v = dn::pairs::Pairs{*sdk, frontend, arena}.jvm_to_csharp(cb::testing::data_path(std::string("../tests/translate/corpus/java/") + c.folder), c.main,
+                                                                                           work.path, side);
+        if (v.verdict != dn::judge::Verdict::Equivalent) std::fprintf(stderr, "%s: %s\n", c.folder, v.detail.substr(0, 400).c_str());
+        if (c.lines == nullptr) continue;
+        CB_CHECK(v.verdict == dn::judge::Verdict::Equivalent);
+        CB_CHECK(v.detail == c.lines);
+        CB_CHECK(v.refused.empty());
+    }
+});
+
+// The kits of the Java -> C# capability test from their bytecode, each alone: the verdict of each is printed, and those listed agree with the JVM.
+// The others: raw generic types from the bytecode where C# needs the arguments (JumpKit's method reference to a raw Op<T>, LocalKit's List.of
+// with no inferred type), methods Fernflower cannot decompile (CollectionKit, LibraryKit, TryKit), and what the source route refuses too.
+CB_TEST("translate.csharp.pairs.decompiled_kits_round_trip", [] {
+    const dn::Sdk* sdk = csf_installed();
+    const stdfs::path jdk = "C:/Program Files/Java/jdk-21/bin";
+    const std::string javac = cb::fs::get_env("CB_JAVAC").value_or((jdk / "javac.exe").string());
+    const std::string java = cb::fs::get_env("CB_JAVA").value_or((jdk / "java.exe").string());
+    std::error_code ec;
+    if (sdk == nullptr || !stdfs::is_regular_file(javac, ec) || !stdfs::is_regular_file(java, ec)) return;
+    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../config/java/api_maps"));
+    dn::pairs::JavaSide side;
+    side.registry = &registry;
+    side.runtime_dir = cb::testing::data_path("../config/translate/dotnet/runtime");
+    side.jdk = dn::judge::Jdk{.javac = javac, .jvm = java};
+    const cs::Frontend frontend = csf_frontend_of(*sdk);
+    const std::set<std::string> agree = {"AnonLibKit", "BoxKit", "ExtKit", "FormatKit", "HeldKit", "MapKeyKit", "SwitchTry", "ToArrayKit"};
+    std::size_t agreed = 0, kits = 0;
+    for (const char* dir : {"translate/testdata/csharp_java/kit", "translate/testdata/c_java/trykit", "translate/testdata/c_java/streamkit"}) {
+        for (const auto& entry : stdfs::directory_iterator(cb::testing::data_path(dir))) {
+            if (entry.path().extension() != ".java") continue;
+            const std::string name = entry.path().stem().string();
+            CsfWork work("jvm-kit-" + name);
+            const stdfs::path src = work.path / "src";
+            cb::fs::make_dirs(src);
+            cb::fs::write_file(src / entry.path().filename(), cb::fs::read_file(entry.path()));
+            cb::Arena arena;
+            const dn::pairs::Verdict v = dn::pairs::Pairs{*sdk, frontend, arena}.jvm_to_csharp(src, name, work.path / "out", side);
+            ++kits;
+            const bool ok = v.verdict == dn::judge::Verdict::Equivalent;
+            agreed += ok ? 1 : 0;
+            std::fprintf(stderr, "%s: %s %s\n", name.c_str(), std::string(dn::judge::word(v.verdict)).c_str(), v.detail.substr(0, 300).c_str());
+            if (agree.contains(name)) CB_CHECK(ok);
+        }
+    }
+    std::fprintf(stderr, "decompiled kits: %zu of %zu agree with the JVM\n", agreed, kits);
+    CB_CHECK(kits >= 20);
+});
+
 // C# -> C++03: what the C++03 path cannot carry is refused with the reason, before anything is built (the converter and host compiler of
 // the Java lane are not needed for that, so stand-ins are given; building and running the C++ is the Java lane's host).
 CB_TEST("translate.csharp.pairs.what_the_cpp03_path_cannot_carry_is_refused", [] {

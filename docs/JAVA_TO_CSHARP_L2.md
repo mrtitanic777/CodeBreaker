@@ -178,3 +178,89 @@ same class: the same tree, apart from source positions. Then the C# from both is
   (`translate.csharp.*` and `translate.csharp_java.*` in `csharp_test.cpp` and `csharp_java_test.cpp`), are deleted once
   those tests are moved onto the new path with reviewed expected text, and the old goldens (`translate/testdata/csharp_*.cs.txt`,
   `csharp_java/*.cs.txt`) with them; the `.l2.json` inputs stay, `dotnet.l2_csharp.*` reads them.
+- 2026-11-28: step 5, second part: the old writer is gone (`translate/backends/csharp.cpp`, `csharp_java.cpp`, their headers,
+  their tests and the goldens `translate/testdata/csharp_*.cs.txt`, `csharp_java/*.cs.txt` and `*.ledger.txt`). Its tests are
+  now tests of the new path, `dotnet/decompiler/csharp/l2_syntax_builder_unit_test.cpp` (`dotnet.l2_csharp.unit.*`, `literals.*`,
+  `expr.*`, `stmt.*`, `decl.*`, `decline.*`, `program.*`, `java.*`). Their corpus tests were already `dotnet.l2_csharp.corpus.*` and
+  `.java.*`. The expected text was reviewed against the old writer's. The differences are the output visitor's layout and spelling:
+  - no blank line between the types of a namespace, as ilspycmd writes them;
+  - `7uL`, `3f`, `1E+10f`, `- -a`, `(long)-1`;
+  - text that is not ASCII written as it is.
+
+  The old writer's harness (test-inputs/csharp-harness, whose inputs went with the state folder) is now
+  `dotnet.l2_csharp.harness.recorded_programs_agree`. It reads the checked-in units of the translator's test programs: the Java
+  ones of `translate/testdata/cpp03`, the zoo and mix, and the C# ones of `cs2cpp`. Each is written whole and unit by unit, and
+  the recording, `dotnet/testdata/l2_csharp_harness.txt`, keeps each file's length and CRC-32 and the ledger
+  (`CB_L2CS_HARNESS_RECORD=1` records it). The recording was reviewed with work/stage15/judge_harness.sh: every whole program
+  built with Roslyn, and the Java ones with a main run against the JVM on their sources. bank, calc, generics, mix, modernlib,
+  sample, shapes, streams, t17, textstats and zoo print the same as the JVM, and feat and t03 (no main) build, as do cs_javart,
+  cs_shadercheck, cs_tool and cs_top. The review found five bugs, fixed here (the old
+  writer had all but the last two):
+  - a switch-expression arm of several constants was written with `||`. It is now the `or` pattern, a non-upstream
+    `BinaryOperatorType::PatternOr`;
+  - a number the C# front end gives with an enum's type (`NumberStyles` 4, `DayOfWeek` 1) was written bare. It is now cast to
+    the enum;
+  - a double a float cannot hold was written as an infinity. It is now declined, as the old writer declined it;
+  - `Number.intValue()` and the other accessors on a Number, which is an object in C#, were written as the object. They are now
+    `JLib.numberInt` and its siblings, which convert as Java's casts do;
+  - `o instanceof Box` of a generic class written raw tested one instantiation (`is Box<object>`). It is now `JLib.isRaw`,
+    which tests any.
+
+  What does not build is the input's own: cs_back declares a property `Item` beside an indexer; cs_corpus and cs_own are several
+  programs with a Main each; cs_gen's `Exercise` holds a pointer, so it is declined, as before. minecraft's NoiseMain needs
+  classes its units do not have.
+- 2026-11-28: step 4, first part: Fernflower's tree lowers into L2, `java/decompiler/lower_l2` (`lower_l2::decompile` decompiles and
+  lowers each root class once ClassWriter has written it, through a non-upstream hook, `DecompileRequest::on_class_written`). It walks
+  what ClassWriter walks, in its order, and makes for each piece what javac's tree of the written text lowers to:
+  - classes, fields (with their initialisers and constants), methods, constructors with javac's implicit `super()`, a default
+    constructor where the text leaves it out, enum constants, member classes;
+  - every statement kind (labels, break and continue, if / else if, the four loops, switch, try / catch / finally, synchronized);
+  - every expression kind Fernflower writes, with the casts the text writes, and the parameters it leaves out;
+  - lambdas and method references: a lambda's parameters are its content method's, which carry the types javac inferred;
+  - symbols named by the class that declares the member, as javac's are, through the classes the run read (a library's first base
+    when none of them declares it);
+  - the bases of a class with no type parameters of its own taken from its Signature (`Comparable<Item>`).
+
+  What it does not carry yet is an Unsupported node with its reason: anonymous and local classes, an enum constant with a body, an
+  assert. Proof:
+  - `java.decompiler.lower_l2.*`: each program compiled with javac (Java 8, or 17), decompiled and lowered, and Fernflower's text of
+    the same run lowered by the javac front end, compared as documents. Positions, Paren nodes, javac's IMPLICIT mark and what only
+    the JDK knows are left out: a JDK member's owner, varargs and generic types (the text is raw).
+  - calc and fixtures are the same document, class for class. So are 10 of the 20 kits: AsListKit, BoxKit, BoxStep, ClientKit,
+    DataKit, ExtKit, FormatKit, LibKit, SwitchTry and ToArrayKit.
+  - modern is not, and cannot be. Its lambdas are passed where the bytecode's interfaces are raw, so javac types the text's
+    lambda parameters as Object and cannot resolve them; the lowering has the compiled lambdas' types.
+  - `translate.csharp.pairs.decompiled_*` (`pairs::jvm_to_csharp`): the program's class files decompiled into L2, the rule set java
+    and the C# back end, run beside the JVM. calc and fixtures agree, and so do BoxKit, ExtKit, FormatKit, MapKeyKit, SwitchTry
+    and ToArrayKit.
+
+  The rule set java gained one rule for this: a lambda of a raw JDK functional interface takes objects, and reads each parameter
+  declared of a class through a cast, as Java's bridge method does. It is needed because C# converts a lambda to Func<object, bool>
+  only if the lambda takes objects. What is left of step 4:
+  - anonymous and local classes, and enum constants with bodies. The rule set hoists them from javac's shape: `New{body}` and
+    `LocalClass`, with the captured locals read by name;
+  - JDK members named by the class the bytecode names. javac names `IllegalStateException.getMessage` as Throwable's, which the
+    API maps key on, so the JDK's class headers (the jmods) should be read for the lookup;
+  - raw collections from the bytecode that do not build in C#, such as modern's raw Iterator over a map's entries;
+  - RetroMCP's jar, and the Java back end reading these units.
+- 2026-11-28: step 4, second part. The lowering now carries the rest of what it declined, in javac's shape:
+  - anonymous classes are `New` with a body: a class of no name extending what it extends, and also implementing it when that is
+    an interface. Its constructor's statements are an initialiser block, after javac's own constructor, which takes the arguments
+    as the base constructor names them;
+  - local classes are `LocalClass`, named by their simple name;
+  - enum constants with a body have a class of kind enum, in its enum;
+  - in all three, the locals they capture from the method around are that method's locals (or parameters), as javac's are, and
+    the `this()` of a local class's constructor takes no argument, as the text writes it.
+
+  `pairs::jvm_to_csharp` decompiles with REMOVE_SYNTHETIC (Java 17's `$values()` and an enum body's access constructor are the
+  compiler's, not the program's). The rule set java names a JDK exception's Throwable methods (getMessage, getSuppressed ...) as
+  Throwable's, the owner javac gives them, where the bytecode names the exception's own class. Proof:
+  - `java.decompiler.lower_l2.*`: calc and fixtures, and now AnonLibKit too (11 of the 20 kits), are javac's tree of their text;
+  - `translate.csharp.pairs.decompiled_*`: calc and fixtures agree with the JVM, and so do 8 kits: AnonLibKit, BoxKit, ExtKit,
+    FormatKit, HeldKit, MapKeyKit, SwitchTry and ToArrayKit.
+
+  What is left:
+  - raw generic types from the bytecode where C# needs the arguments: modern's raw Iterator over a map's entries, JumpKit's method
+    reference to a raw `Op<T>`, and LocalKit's `List.of` with no inferred type;
+  - the methods Fernflower cannot decompile (CollectionKit's, LibraryKit's, TryKit's);
+  - RetroMCP's jar, and the Java back end reading these units.

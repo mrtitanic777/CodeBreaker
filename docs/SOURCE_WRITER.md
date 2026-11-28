@@ -22,6 +22,13 @@ src/source/console_arm.cpp                    the vectored shape's ARM7TDMI proc
 src/source/console_risc.hpp                   what the RISC processors write alike: data rows, a header's fields
 src/source/console_v810.cpp                   the vectored shape's V810 processor (movhi pairs as hi()/lo())
 src/source/console_executable.cpp             the executable shape (a loader-format executable, written by its container's engine)
+src/source/console_ps3.cpp, console_gekko.cpp, console_vita.cpp, console_n3ds.cpp, console_switch.cpp, console_nds.cpp
+                                              the executable shape's containers that are engines of their own (PS3; GameCube, Wii, Wii U;
+                                              Vita; 3DS; Switch; DS); `mips-elf` and `sh2` are source/mips_elf_writer and source/sh2_writer
+src/source/console_segacd.cpp, console_sega32x.cpp, console_threedo.cpp, console_cdi.cpp, console_orbis.cpp, console_xboxone.cpp
+                                              the executable shape's other containers (Sega CD; 32X; 3DO; CD-i; PS4 and PS5; Xbox One)
+src/source/console_flat8.cpp, console_tlcs900.cpp, console_m6809.cpp, console_cp1610.cpp, console_v30.cpp
+                                              the flat shape's processors (8048 and F8 in one engine; TLCS-900/H; 6809; CP1610; V30MZ)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -36,7 +43,8 @@ one way a program sits in memory, shared by every platform that sits that way:
 | `cart6502` | a 6502 cartridge's banks, each seen in a window; its last bytes data; the chips' read and write names | Atari 2600, 5200, 7800 |
 | `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx, PC Engine, SNES |
 | `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar, Neo Geo, PlayStation, Nintendo 64, Game Boy Advance, Virtual Boy |
-| `executable` | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections, written by its container's engine | PS2, PSP; next PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
+| `flat` | a cartridge ROM written whole by its processor's engine (`flat.cpu`) | Odyssey 2, Channel F, Neo Geo Pocket, Vectrex, Intellivision, WonderSwan |
+| `executable` | a loader-format executable (ELF, 3DSX, NSO, SELF, DOL, PE, a disc's boot program) with sections, written by its container's engine | PS2, PSP, PS3, PS4, PS5, Vita, 3DS, DS, Switch, GameCube, Wii, Wii U, Xbox One, Saturn, Dreamcast, Sega CD, 32X, 3DO, CD-i |
 
 The CPU is not the shape: a shape is written once over `image_writer`'s `CodeModel` / `Listing` and given the processor through its
 source module (`z80_source`, `described_source` with a `processors::Processor`, `m6502_source`, `risc_source`).
@@ -146,3 +154,18 @@ engine.
   (`views`: a mask or an offset to the physical address) and the RAM ranges; the loader gives the ELF, the names the container gives
   (a PSP module's exports and imports' stubs) and the format's hardware table. The PlayStation 2 and the PSP moved; byte-identical on
   their 15 homebrew programs.
+- 2026-11-28: the rest of the `executable` shape. Container `sh2` (source/sh2_writer): the Saturn and the Dreamcast, a disc's IP.BIN and
+  first program in one source; the description holds the header's fields (`text` or a big-endian `long`), the RAM ranges (`ram`, less where
+  the loader says the program is loaded: `own`), the knowledge section of the registers (with the SH7604's own: `chip_registers`), `sh4`, the
+  rebuilt file's name (`built`) and the head; the loader gives the parts, the entries and their names, and `after` (the disc the lane runs,
+  the Dreamcast's program scrambled again: console_writer::dreamcast_disc). The writers that were engines of their own moved whole into
+  the console writer as containers (`ps3`, `gekko` for the GameCube, Wii and Wii U, `vita`, `n3ds`, `switch`, `nds`): their heads, the
+  lines after them (`prologue`) and the rebuilt file's name are the description's, a head may name what flow found (`functions`, the DS's
+  `arm9_functions`), the loader gives the program and the values. Byte-identical (source, functions, code bytes, rebuild) on the 34
+  homebrew programs of those consoles, the same refusals on the 5 they do not take.
+- 2026-11-28: the last twelve, and item 7 is done. `flat` (console_executable.cpp: write_flat) is a cartridge ROM written whole by its
+  processor's engine, the description's `flat` section naming it (`cpu`) with the head and the rebuilt file's name; the Odyssey 2's 8048
+  and the Channel F's F8 are one engine (console_flat8.cpp, the BIOS's routines from the description's `fixed`). The Sega CD, the 32X, the
+  3DO, the CD-i, the PS4/PS5 and the Xbox One are containers of the executable shape. A loader hands a container its format's program in
+  `Contained::program` (std::any; console_shapes.hpp: contained_as<T>). Byte-identical on 48 dumps of homebrew programs and the writers'
+  own synthetic images.

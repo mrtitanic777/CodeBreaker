@@ -14,6 +14,7 @@
 // the header's values by name. The file formats themselves are formats/<x>'s.
 #pragma once
 
+#include <any>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -36,6 +37,27 @@ struct Rom;
 }
 namespace cb::formats::mips_elf {
 struct Elf;
+}
+namespace cb::formats::ps3 {
+struct Program;
+}
+namespace cb::formats::ppc_program {
+struct Program;
+}
+namespace cb::formats::vita {
+struct Program;
+}
+namespace cb::formats::n3ds {
+struct Program;
+}
+namespace cb::formats::nro {
+struct Program;
+}
+namespace cb::formats::nds {
+struct Rom;
+}
+namespace cb::source::sh2_writer {
+struct Image;
 }
 
 namespace cb::source::console_writer {
@@ -188,7 +210,8 @@ struct AddressView {
     std::uint32_t minus = 0;          // ... or the address - minus
 };
 struct Executable {
-    std::string container;            // the engine: "mips-elf" (source/mips_elf_writer)
+    std::string container;            // the engine: "mips-elf" (source/mips_elf_writer), "sh2" (source/sh2_writer), "ps3" (console_ps3.cpp), "gekko" (console_gekko.cpp), "vita" (console_vita.cpp), "n3ds" (console_n3ds.cpp), "switch" (console_switch.cpp),
+                                      // "nds" (console_nds.cpp)
     std::string cpu;                  // the processor's SLEIGH description ("r5900", "mips")
     std::string variant;              // the decoder's variant ("r5900", "allegrex")
     std::string description;          // what the program is, for the head (a template over the loader's values)
@@ -196,6 +219,13 @@ struct Executable {
     std::vector<AddressView> views;   // how an address is seen as a physical one (others are their own)
     std::vector<Range> ram;           // physical ranges that are RAM (named `var_<address>` unless the program holds them)
     std::vector<Range> ram_virtual;   // virtual ranges that are RAM (a scratchpad seen at its own address)
+    // ("sh2") the source's head is the description's `head`; the RAM is `ram` but for where the program is loaded (the loader's `own`)
+    bool sh4 = false;                 // an SH-4 program (little-endian, with the FPU; the P4 area holds the chip's registers)
+    std::string registers;            // the knowledge hardware section of the machine's registers
+    bool chip_registers = false;      // ... with the SH7604's own (the SH-2's on-chip registers)
+    std::string built;                // (the containers but "mips-elf") the rebuilt file's name (a template)
+    std::vector<std::string> prologue;   // ("vita" ...) lines after the head (`.syntax unified`)
+    std::vector<VectorField> fields;  // the header's fields, written one by one: "text" (`.ascii`, `.space` or `.byte`), "long" (`.long 0x...`, big-endian)
 };
 
 // A platform's description (config/platforms/<name>.json).
@@ -212,7 +242,7 @@ struct Description {
     CartShape cart;          // (the cart6502 shape's)
     Segmented segmented;     // (the segmented shape's)
     Vectored vectored;       // (the vectored shape's)
-    Executable executable;   // (the executable shape's)
+    Executable executable;   // (the executable shape's, and the flat shape's: its `flat` section, `cpu` the processor)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -284,6 +314,18 @@ struct Contained {
     std::size_t elf_offset = 0;
     image_writer::Names names;                                  // functions and data the container names, by address
     std::function<std::optional<std::string>(std::uint32_t)> hardware;   // the name of the hardware register at an address (the format's table)
+    std::shared_ptr<const sh2_writer::Image> sh2;              // ("sh2") the parts, entries and their names (the bytes are `image`)
+    std::vector<Range> own;                                     // ("sh2") where the program is loaded: never a variable
+    std::shared_ptr<const formats::ps3::Program> ps3;          // ("ps3") the program (`image` is its segments end to end)
+    std::shared_ptr<const formats::ppc_program::Program> gekko;   // ("gekko") the program (`image` is the file: an RPX's decompressed)
+    std::shared_ptr<const formats::vita::Program> vita;        // ("vita") the program (`image` is its segments inflated, end to end)
+    std::shared_ptr<const formats::n3ds::Program> n3ds;        // ("n3ds") the program (`image` is the file)
+    std::shared_ptr<const formats::nro::Program> nswitch;      // ("switch") the program (`image` is the loaded image: a NRO's file)
+    std::shared_ptr<const formats::nds::Rom> nds;              // ("nds") the cartridge (`image` is the ROM)
+    std::any program;                                           // (the flat shape's processors, the later containers) the format's program as a
+                                                                // std::shared_ptr<const T> (console_shapes.hpp: contained_as<T>)
+    // What is still to do once the program is written (`values` has `file` and `stem`): the disc the lane runs.
+    std::function<void(image_writer::Written&, const Values& values, const std::filesystem::path& folder)> after;
 };
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
@@ -309,7 +351,15 @@ Loaded load_lynx(const formats::lynx::Program& program);
 // The Neo Geo's sound program (an M-ROM's bytes, from its own file or a .neo container's) as the loader of the `neogeo_sound` platform reads it.
 Loaded load_neogeo_sound(ByteView sound, std::string_view file_name);
 
-// The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/sega32x_writer).
+// A Dreamcast disc of 2048-byte sectors that holds `image` (IP.BIN, then the program): the system area, an ISO 9660 volume whose root
+// directory has the one file `name`, and the program in the sectors after (scrambled when `scrambled`). The reader (formats/dreamcast) finds
+// the same two parts in it. A `volume_base` numbers the volume's sectors from there, as a GD-ROM's high-density track or a second session does.
+Bytes dreamcast_disc(ByteView image, const std::string& name, bool scrambled, std::uint32_t volume_base = 0);
+
+// The Xbox One's loader with the PE file of a package `member` picks ("" the app's executable).
+Loaded load_xboxone(const std::filesystem::path& file, const std::string& member);
+
+// The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/console_sega32x).
 Loaded load_genesis(const formats::genesis::Rom& rom);
 
 // `text` with each {name} (a value), {name:spec} (a number in std::format's spec: 04X) and {name?yes|no} (the branch for whether the value is

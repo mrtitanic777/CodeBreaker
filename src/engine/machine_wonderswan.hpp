@@ -2,7 +2,7 @@
 //
 //     engine::register_wonderswan_lane();     // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A cartridge (formats/wonderswan) is written back as NASM source (source/wonderswan_writer) and rebuilt; one that comes back identical is the original,
+// A cartridge (formats/wonderswan) is written back as NASM source (source/console_writer: config/platforms/wonderswan.json) and rebuilt; one that comes back identical is the original,
 // an edited one has each function run beside the original's on Unicorn's x86 engine in 16-bit real mode (the V30MZ is an 80186-class core) over the
 // console's memory: 1 MB, the cartridge at the top (formats/wonderswan: the ROM ends at $FFFFF), internal RAM at $0000-$3FFF ($0000-$FFFF on the Color),
 // and the I/O ports as logged devices: every `in` and `out` is an access of the run, named by the ports table of the writer. The ports answer as an idle
