@@ -3,7 +3,7 @@
 //
 //     engine::register_dreamcast_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does it)
 //
-// One verify/lanes/image_lane: the disc's IP.BIN and first program are written back as source (source/dreamcast_writer) and rebuilt; one that
+// One verify/lanes/image_lane: the disc's IP.BIN and first program are written back as source (source/console_writer: config/platforms/dreamcast.json) and rebuilt; one that
 // comes back identical is the original, an edited one has each function run beside the original's in CodeBreaker's own SH-4 interpreter
 // (emulate/sh2 as Variant::Sh4, with emulate/sh4's FPU) over the machine's memory. The comparison is of how the run ended, R0 R1 and FR0 (the
 // results), R8-R15 and FR12-FR15 (what a caller keeps), PR GBR MACH MACL SR FPSCR and FPUL, the memory it changed, and every access to the

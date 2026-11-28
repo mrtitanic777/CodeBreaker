@@ -198,3 +198,5 @@ tests only what it changes.
 - 2026-11-28: item 7: the Virtual Boy on `vectored`'s V810 processor, byte-identical on its 4 homebrew programs. Next: the `executable` shape.
 - 2026-11-28: item 7: the `executable` shape, PS2 and PSP on it (container `mips-elf`), byte-identical on their 15 homebrew programs.
   Next: PS3, Vita, 3DS, DS, Switch, GameCube/Wii, Saturn, Dreamcast.
+- 2026-11-28: item 7: the rest of the `executable` shape -- Saturn and Dreamcast (container `sh2`), PS3, GameCube/Wii/Wii U, Vita, 3DS,
+  Switch and DS (containers of their own) -- byte-identical on their 34 homebrew programs. The table's rows are done.

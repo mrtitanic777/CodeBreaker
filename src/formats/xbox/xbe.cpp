@@ -10,11 +10,8 @@
 #include "core/io.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
-#include "formats/format_builtin.hpp"
 
 namespace cb::formats::xbox::xbe {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -75,46 +72,38 @@ std::string_view key_set_name(KeySet keys) {
     return "unknown";
 }
 
-namespace {
-
-eng::Tree xbe_tree(ByteView file, bool sections) {
-    eng::ReadOptions options;
-    options.keep_source = false;   // only read from
-    if (sections) options.parts.insert("sections");
-    return eng::builtin().read("xbe", file, options);
-}
-
-std::uint32_t xbe_u32(const eng::Node& n, std::string_view field) { return static_cast<std::uint32_t>(n.u(field)); }
-
-}  // namespace
-
 Xbe Xbe::parse(ByteView file) {
-    // The layout is xbe.fmt's.
-    if (file.size() >= 4 && as_text(file.first(4)) != kMagic) throw FormatError(kXbeReader, 0, "not an XBE (bad magic)");   // (shorter: the read says it is cut short)
-    const eng::Tree tree = xbe_tree(file, false);
-    const eng::Node& h = tree.root;
+    io::ByteReader r(file, kXbeReader);
+    if (as_text(r.bytes(4)) != kMagic) throw FormatError(kXbeReader, 0, "not an XBE (bad magic)");
     Xbe x;
     x.file_.assign(file.begin(), file.end());
-    x.base = xbe_u32(h, "base");
-    x.size_of_headers = xbe_u32(h, "size_of_headers");
-    x.size_of_image = xbe_u32(h, "size_of_image");
-    x.cert_addr = xbe_u32(h, "cert_addr");
-    x.section_count = xbe_u32(h, "section_count");
-    x.section_header_addr = xbe_u32(h, "section_header_addr");
-    x.init_flags = xbe_u32(h, "init_flags");
-    x.entry_raw = xbe_u32(h, "entry_raw");
-    x.thunk_raw = xbe_u32(h, "thunk_raw");
-    const eng::Node& c = h.get("certificate");
-    x.cert_size = xbe_u32(c, "size");
-    x.title_id = xbe_u32(c, "title_id");
-    const eng::Node& title = c.get("title_name");
-    x.title_name = text::from_utf16le(file.subspan(title.offset, title.size));
-    x.title_name.resize(std::min(x.title_name.find(std::string_view("", 1)), x.title_name.size()));
-    x.allowed_media = xbe_u32(c, "allowed_media");
-    x.region = xbe_u32(c, "region");
-    x.ratings = xbe_u32(c, "ratings");
-    x.disk_number = xbe_u32(c, "disk_number");
-    x.version = xbe_u32(c, "version");
+    r.seek(0x104);
+    x.base = r.u32();
+    x.size_of_headers = r.u32();
+    x.size_of_image = r.u32();
+    r.seek(0x118);
+    x.cert_addr = r.u32();
+    x.section_count = r.u32();
+    x.section_header_addr = r.u32();
+    x.init_flags = r.u32();
+    x.entry_raw = r.u32();
+    r.seek(0x158);   // the kernel image thunk address (0x148 is the PE time stamp: 2369d3631)
+    x.thunk_raw = r.u32();
+
+    const std::uint64_t cert = xbe_file_offset(x.cert_addr, x.base, "the certificate");
+    io::ByteReader c(file, "xbe certificate");
+    c.seek(cert);
+    x.cert_size = c.u32();
+    c.seek(cert + 0x08);
+    x.title_id = c.u32();
+    x.title_name = text::from_utf16le(c.bytes(80));   // 40 units, ended by the first zero
+    x.title_name.resize(std::min(x.title_name.find('\0'), x.title_name.size()));
+    c.seek(cert + 0x9C);
+    x.allowed_media = c.u32();
+    x.region = c.u32();
+    x.ratings = c.u32();
+    x.disk_number = c.u32();
+    x.version = c.u32();
     return x;
 }
 
@@ -123,18 +112,23 @@ Unscrambled Xbe::kernel_thunk() const { return xbe_unscramble(thunk_raw, *this, 
 
 std::vector<Section> Xbe::sections() const {
     std::vector<Section> out;
-    (void)xbe_file_offset(section_header_addr, base, "the section table");
-    const eng::Tree tree = xbe_tree(file_, true);
-    for (const eng::Node& n : tree.root.get("sections").children) {
+    const std::uint64_t table = xbe_file_offset(section_header_addr, base, "the section table");
+    io::ByteReader r(file_, "xbe sections");
+    for (std::uint32_t i = 0; i < section_count; ++i) {
+        r.seek(table + std::uint64_t{i} * kXbeSectionHeaderSize);
         Section s;
-        s.flags = xbe_u32(n, "flags");
-        s.vaddr = xbe_u32(n, "vaddr");
-        s.vsize = xbe_u32(n, "vsize");
-        s.raw_addr = xbe_u32(n, "raw_addr");
-        s.raw_size = xbe_u32(n, "raw_size");
-        if (const eng::Node* name = n.child("name")) {   // a name the file cuts off ends with the file
-            const std::string_view raw = std::string_view(name->text).substr(0, name->text.find(std::string_view("", 1)));
-            s.name = text::from_latin1(as_bytes(raw));
+        s.flags = r.u32();
+        s.vaddr = r.u32();
+        s.vsize = r.u32();
+        s.raw_addr = r.u32();
+        s.raw_size = r.u32();
+        const std::uint32_t name_va = r.u32();
+        if (name_va) {
+            io::ByteReader n(file_, "xbe section name");
+            n.seek(xbe_file_offset(name_va, base, "a section name"));
+            const ByteView rest = ByteView(file_).subspan(n.pos());
+            const auto end = std::find(rest.begin(), rest.end(), std::uint8_t{0});   // a name the file cuts off ends with the file
+            s.name = text::from_latin1(rest.first(static_cast<std::size_t>(end - rest.begin())));
         }
         out.push_back(std::move(s));
     }

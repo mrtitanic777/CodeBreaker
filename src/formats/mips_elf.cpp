@@ -5,11 +5,8 @@
 #include <optional>
 
 #include "core/error.hpp"
-#include "formats/format_builtin.hpp"
 
 namespace cb::formats::mips_elf {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -18,6 +15,12 @@ constexpr std::string_view kReader = "mips_elf";
 std::uint16_t le16(ByteView b, std::size_t at) { return static_cast<std::uint16_t>(b[at] | b[at + 1] << 8); }
 std::uint32_t le32(ByteView b, std::size_t at) {
     return static_cast<std::uint32_t>(b[at]) | static_cast<std::uint32_t>(b[at + 1]) << 8 | static_cast<std::uint32_t>(b[at + 2]) << 16 | static_cast<std::uint32_t>(b[at + 3]) << 24;
+}
+
+std::string c_string(ByteView data, std::size_t at, std::size_t limit) {
+    std::string s;
+    for (std::size_t i = at; i < limit && i < data.size() && data[i] != 0; ++i) s += static_cast<char>(data[i]);
+    return s;
 }
 
 constexpr std::uint32_t kPtLoad = 1;
@@ -37,83 +40,80 @@ std::uint32_t machine_of(std::uint32_t flags) {
 
 Elf parse(ByteView data) { return parse(data, kMachineMips); }
 
-namespace {
-
-// The file's structures through elf.fmt (the symbol tables when `symbols`).
-eng::Tree read_tree(ByteView data, bool symbols = false) {
-    eng::ReadOptions options;
-    options.keep_source = false;   // only read from
-    if (symbols) options.parts.insert("symbols");
-    return eng::builtin().read("elf", data, options);
-}
-
-std::uint32_t u32_of(const eng::Node& n, std::string_view field) { return static_cast<std::uint32_t>(n.u(field)); }
-
-// A name the tree holds, up to its terminator (empty when it has none).
-std::string text_of(const eng::Node* n) {
-    if (!n) return {};
-    return n->text.substr(0, n->text.find('\0'));
-}
-
-}  // namespace
-
 Elf parse(ByteView data, std::uint16_t machine) {
     if (!probe_header(data, machine)) throw FormatError(kReader, 0, machine == kMachineMips ? "not a 32-bit little-endian MIPS ELF file" : "not a 32-bit little-endian ELF file of the machine asked for");
-    // The layout is elf.fmt's; that the tables lie in the file with entries of this format's size is this reader's rule.
-    const eng::Tree tree = read_tree(data);
-    const eng::Node& e = tree.root.get("elf");
-    const eng::Node& h = e.get("header");
     Elf elf;
     elf.data.assign(data.begin(), data.end());
-    elf.type = static_cast<std::uint16_t>(h.u("type"));
-    elf.machine = static_cast<std::uint16_t>(h.u("machine"));
-    elf.version = u32_of(h, "version");
-    elf.entry = u32_of(h, "entry");
-    elf.phoff = u32_of(h, "phoff");
-    elf.shoff = u32_of(h, "shoff");
-    elf.flags = u32_of(h, "flags");
-    elf.ehsize = static_cast<std::uint16_t>(h.u("ehsize"));
-    elf.phentsize = static_cast<std::uint16_t>(h.u("phentsize"));
-    elf.phnum = static_cast<std::uint16_t>(h.u("phnum"));
-    elf.shentsize = static_cast<std::uint16_t>(h.u("shentsize"));
-    elf.shnum = static_cast<std::uint16_t>(h.u("shnum"));
-    elf.shstrndx = static_cast<std::uint16_t>(h.u("shstrndx"));
+    elf.type = le16(data, 16);
+    elf.machine = le16(data, 18);
+    elf.version = le32(data, 20);
+    elf.entry = le32(data, 24);
+    elf.phoff = le32(data, 28);
+    elf.shoff = le32(data, 32);
+    elf.flags = le32(data, 36);
+    elf.ehsize = le16(data, 40);
+    elf.phentsize = le16(data, 42);
+    elf.phnum = le16(data, 44);
+    elf.shentsize = le16(data, 46);
+    elf.shnum = le16(data, 48);
+    elf.shstrndx = le16(data, 50);
     if (elf.phnum != 0 && (elf.phentsize != kProgramHeaderSize || static_cast<std::uint64_t>(elf.phoff) + static_cast<std::uint64_t>(elf.phnum) * kProgramHeaderSize > data.size()))
         throw FormatError(kReader, elf.phoff, "the program header table is not inside the file");
-    if (const eng::Node* segments = e.find("segments"))
-        for (const eng::Node& p : segments->children)
-            elf.program_headers.push_back({u32_of(p, "type"), u32_of(p, "offset"), u32_of(p, "vaddr"), u32_of(p, "paddr"), u32_of(p, "filesz"), u32_of(p, "memsz"),
-                                           u32_of(p, "flags"), u32_of(p, "align")});
+    for (std::size_t i = 0; i < elf.phnum; ++i) {
+        const std::size_t at = elf.phoff + i * kProgramHeaderSize;
+        ProgramHeader p;
+        p.type = le32(data, at);
+        p.offset = le32(data, at + 4);
+        p.vaddr = le32(data, at + 8);
+        p.paddr = le32(data, at + 12);
+        p.filesz = le32(data, at + 16);
+        p.memsz = le32(data, at + 20);
+        p.flags = le32(data, at + 24);
+        p.align = le32(data, at + 28);
+        elf.program_headers.push_back(p);
+    }
     if (elf.shnum != 0 && (elf.shentsize != kSectionHeaderSize || static_cast<std::uint64_t>(elf.shoff) + static_cast<std::uint64_t>(elf.shnum) * kSectionHeaderSize > data.size()))
         throw FormatError(kReader, elf.shoff, "the section header table is not inside the file");
-    const eng::Node* names = e.find("names");
-    if (const eng::Node* sections = e.find("sections"))
-        for (std::size_t i = 0; i < sections->children.size(); ++i) {
-            const eng::Node& n = sections->children[i];
-            SectionHeader s{u32_of(n, "name_offset"), u32_of(n, "type"), u32_of(n, "flags"), u32_of(n, "address"), u32_of(n, "offset"), u32_of(n, "size"),
-                            u32_of(n, "link"), u32_of(n, "info"), u32_of(n, "align"), u32_of(n, "entsize"), {}};
-            if (names) s.name = text_of(names->children[i].child("text"));
-            elf.sections.push_back(std::move(s));
-        }
+    for (std::size_t i = 0; i < elf.shnum; ++i) {
+        const std::size_t at = elf.shoff + i * kSectionHeaderSize;
+        SectionHeader s;
+        s.name_offset = le32(data, at);
+        s.type = le32(data, at + 4);
+        s.flags = le32(data, at + 8);
+        s.address = le32(data, at + 12);
+        s.offset = le32(data, at + 16);
+        s.size = le32(data, at + 20);
+        s.link = le32(data, at + 24);
+        s.info = le32(data, at + 28);
+        s.align = le32(data, at + 32);
+        s.entsize = le32(data, at + 36);
+        elf.sections.push_back(s);
+    }
+    if (elf.shstrndx < elf.sections.size()) {
+        const SectionHeader& names = elf.sections[elf.shstrndx];
+        if (names.type != kTypeNobits && static_cast<std::uint64_t>(names.offset) + names.size <= data.size())
+            for (SectionHeader& s : elf.sections)
+                if (s.name_offset < names.size) s.name = c_string(data, names.offset + s.name_offset, static_cast<std::size_t>(names.offset) + names.size);
+    }
     return elf;
 }
 
 std::vector<Symbol> Elf::symbols() const {
     std::vector<Symbol> out;
-    const eng::Tree tree = read_tree(data, true);
-    const eng::Node* tables = tree.root.get("elf").find("symbols");
-    if (!tables) return out;
-    for (const eng::Node& table : tables->children) {
-        const eng::Node* entries = table.child("entries");
-        if (!entries) continue;
-        for (const eng::Node& e : entries->children) {
+    for (const SectionHeader& s : sections) {
+        if (s.type != kTypeSymtab || s.entsize != 16 || s.link >= sections.size()) continue;
+        const SectionHeader& strings = sections[s.link];
+        if (strings.type == kTypeNobits || static_cast<std::uint64_t>(strings.offset) + strings.size > data.size()) continue;
+        if (static_cast<std::uint64_t>(s.offset) + s.size > data.size()) continue;
+        for (std::size_t at = s.offset; at + 16 <= static_cast<std::size_t>(s.offset) + s.size; at += 16) {
             Symbol sym;
-            sym.name = text_of(e.child("name"));
-            sym.value = u32_of(e, "value");
-            sym.size = u32_of(e, "size");
-            sym.type = static_cast<std::uint8_t>(e.u("type"));
-            sym.bind = static_cast<std::uint8_t>(e.u("bind"));
-            sym.section = static_cast<std::uint16_t>(e.u("section"));
+            const std::uint32_t name_at = le32(data, at);
+            sym.value = le32(data, at + 4);
+            sym.size = le32(data, at + 8);
+            sym.type = data[at + 12] & 15;
+            sym.bind = data[at + 12] >> 4;
+            sym.section = le16(data, at + 14);
+            if (name_at != 0 && name_at < strings.size) sym.name = c_string(data, strings.offset + name_at, static_cast<std::size_t>(strings.offset) + strings.size);
             out.push_back(std::move(sym));
         }
     }

@@ -66,6 +66,14 @@ const std::string* class_of(const TypeP& t) {
     const auto* c = std::get_if<ir::ClassType>(&t->body);
     return c != nullptr ? &c->name : nullptr;
 }
+// A .NET class a number is itself of (or boxed in): a literal of it is the number, not an enum's value.
+bool numeric_box(std::string_view n) {
+    static const std::unordered_set<std::string_view> names = {"System.Int32", "System.Int64", "System.Int16", "System.SByte", "System.Byte", "System.UInt16",
+                                                               "System.UInt32", "System.UInt64", "System.Char", "System.Boolean", "System.Single", "System.Double",
+                                                               "System.Decimal", "System.IntPtr", "System.UIntPtr", "System.Object", "System.ValueType",
+                                                               "System.Enum", "System.Nullable", "System.String"};
+    return names.contains(n);
+}
 bool is_string(const TypeP& t) {
     const std::string* n = class_of(t);
     return n != nullptr && (*n == "System.String" || *n == "java.lang.String");
@@ -1787,6 +1795,7 @@ Expression* UnitBuilder::literal(const ir::Lit& l, const TypeP& t) {
         const bool single = prim == ir::Prim::F32;
         if (std::isnan(d)) return type_member(single ? "float" : "double", "NaN");
         if (std::isinf(d)) return type_member(single ? "float" : "double", d > 0 ? "PositiveInfinity" : "NegativeInfinity");
+        if (single && std::isinf(static_cast<float>(d))) throw Declined{"literal", "a float literal beyond the range of float"};   // (not the infinity C# would make of it)
         if (single) return make<PrimitiveExpression>(typesystem::ConstantValue(static_cast<float>(d)));
         return make<PrimitiveExpression>(typesystem::ConstantValue(d));
     };
@@ -1814,6 +1823,14 @@ Expression* UnitBuilder::literal(const ir::Lit& l, const TypeP& t) {
     }
     if (const auto* iv = std::get_if<std::int64_t>(&v)) {
         const std::int64_t val = *iv;
+        if (const std::string* cls = class_of(t); cls != nullptr && !cls->starts_with("java.lang.") && !numeric_box(*cls)) {
+            // a number of a class's type is an enum's value the front end knew only as its number (NumberStyles 4, DayOfWeek 1): C#
+            // converts only 0 to an enum implicitly, so the number is cast to it
+            Expression* number = val < std::numeric_limits<std::int32_t>::min() || val > std::numeric_limits<std::int32_t>::max()
+                                     ? static_cast<Expression*>(make<PrimitiveExpression>(typesystem::ConstantValue(val)))
+                                     : int_lit(static_cast<std::int32_t>(val));
+            return make<CastExpression>(type(t), number);
+        }
         if (prim == ir::Prim::U16 && std::get<ir::PrimType>(t->body).encoding) return char_lit(static_cast<char32_t>(val));
         if (prim == ir::Prim::I64) {
             if (val == std::numeric_limits<std::int64_t>::min()) return type_member("long", "MinValue");
@@ -2083,7 +2100,7 @@ Expression* UnitBuilder::dispatch(Node* e) {
             } else {
                 for (Node* l : c->labels) {
                     Expression* one = case_label(l, x->expr);
-                    pattern = pattern == nullptr ? one : make<BinaryOperatorExpression>(pattern, BinaryOperatorType::ConditionalOr, one);
+                    pattern = pattern == nullptr ? one : make<BinaryOperatorExpression>(pattern, BinaryOperatorType::PatternOr, one);
                 }
             }
             sw->switch_sections().add(make<SwitchExpressionSection>(pattern, val));

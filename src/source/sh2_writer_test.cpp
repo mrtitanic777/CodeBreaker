@@ -12,7 +12,7 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "formats/saturn.hpp"
-#include "source/saturn_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/sega32x_writer.hpp"
 #include "source/sh2_test_programs.hpp"
 
@@ -148,11 +148,11 @@ CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
     CB_CHECK(rebuilt != t::assemble(t::kSdramProgram));
 });
 
-CB_TEST("source.saturn_writer.a_disc_comes_back_as_one_source", [] {
+CB_TEST("source.console_writer.saturn.a_disc_comes_back_as_one_source", [] {
     fs::ScopedTempDir dir("saturn-writer");
     const Bytes disc = t::disc_saturn();
     fs::write_file(dir.path() / "game.iso", disc);
-    const image_writer::Written r = saturn_writer::reconstruct(dir.path() / "game.iso", dir.path() / "out");
+    const image_writer::Written r = console_writer::reconstruct("saturn", dir.path() / "game.iso", dir.path() / "out");
     keep(r, "saturn");
     CB_CHECK(r.linked);
     CB_CHECK(r.same);

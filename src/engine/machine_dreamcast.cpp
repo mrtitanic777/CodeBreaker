@@ -15,9 +15,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/dreamcast.hpp"
+#include "platforms/package.hpp"
 #include "formats/dreamcast.hpp"
-#include "source/dreamcast_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -251,7 +251,7 @@ vl::Effects dreamcast_effects(const stdfs::path& path, std::uint32_t entry, cons
     return outcome(run, watched);
 }
 
-vl::Written dreamcast_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::dreamcast_writer::reconstruct(module, out)); }
+vl::Written dreamcast_written_by(const stdfs::path& module, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("dreamcast", module, out)); }
 
 }  // namespace dc_lane_detail
 
@@ -277,7 +277,7 @@ vl::ImageLaneSpec dreamcast_lane_spec() {
 void register_dreamcast_lane() {
     register_lane({
         .name = "dreamcast",
-        .platform = platforms::dreamcast,
+        .platform = [] { return platforms::described("dreamcast"); },
         .probe = [](const stdfs::path& p) { return formats::dreamcast::probe(p); },
         .make_spec = dreamcast_lane_spec,
         .detectors = {{.priority = 380, .detect = formats::detect::info_dreamcast}},

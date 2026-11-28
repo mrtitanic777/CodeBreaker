@@ -1,0 +1,25 @@
+{
+  "platform": "vita",
+  "title": "PlayStation Vita",
+  "description": "An unencrypted SELF (a .vpk's eboot.bin) or the ELF inside it: the loadable segments inflated and laid end to end as one image written whole in Thumb state (console_vita.cpp), an address an image offset; flow from the module's start and stop functions, the imports' stubs named from their NIDs, an IT block's conditions as comments, what the tables do not say as .half with the disassembler's text. Rebuilt as the plain ELF the program's layout makes.",
+  "machine": {
+    "family": "arm",
+    "container": "unencrypted SELF (eboot.bin of a .vpk) or the ELF it holds (.velf)",
+    "cpu": {"language": "ARM:LE:32:v7", "bits": 32, "endian": "little", "decoder": "arm",
+            "registers": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"], "stack": "SP"},
+    "results": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"],
+    "toolchain": "CodeBreaker's own assembler, or VitaSDK's GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "PlayStation Vita {self?SELF|ELF} {module}, image {size} bytes in {segments} segments; the processor is the Cortex-A9 (ARMv7-A, Thumb-2, VFP, NEON)",
+    "addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned",
+    ""
+  ],
+  "executable": {
+    "container": "vita",
+    "prologue": ["        .syntax unified", "        .thumb", ""],
+    "built": "{stem}.built.velf"
+  }
+}

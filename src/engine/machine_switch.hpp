@@ -2,7 +2,7 @@
 //
 //     engine::register_switch_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// A homebrew `.nro`, a `.nso` or the AArch64 ELF devkitA64 links (formats/nro) is written back as GNU as source (source/switch_writer) and rebuilt; one that comes back
+// A homebrew `.nro`, a `.nso` or the AArch64 ELF devkitA64 links (formats/nro) is written back as GNU as source (source/console_writer: config/platforms/switch.json) and rebuilt; one that comes back
 // identical is the original, an edited one has each function run beside the original's in CodeBreaker's AArch64 interpreter (emulate/a64). The memory is the process's as the
 // homebrew loader leaves it: the segments at $08000000 (the dynamic R_AARCH64_RELATIVE relocations applied, the bss zero), a stack, the thread-local storage that
 // TPIDRRO_EL0 and TPIDR_EL0 point at, the loader's configuration entries, and a work area of 64 KB the starting states hand out pointers into. A function is called with x0-x3 as the
@@ -10,7 +10,7 @@
 // kernel call: logged by its name and x0-x3 (and, for SendSyncRequest, the IPC command and the service it names), answered by emulate/a64's default handler; ExitProcess,
 // ExitThread and Break end the run. The comparison is of how a function ended, x0, x1, x19-x28, SP, the memory it changed and the kernel calls.
 //
-// A rebuilt NSO or ELF is the loaded image alone (switch_writer says so), not a file that parses; the lane then runs it as one flat region (everything writable).
+// A rebuilt NSO or ELF is the loaded image alone (the writer says so), not a file that parses; the lane then runs it as one flat region (everything writable).
 #pragma once
 
 #include "verify/lanes/image_lane.hpp"

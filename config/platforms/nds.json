@@ -1,0 +1,24 @@
+{
+  "platform": "nds",
+  "title": "Nintendo DS",
+  "description": "A cartridge ROM written whole as one source (console_nds.cpp): the header field by field, the ARM9's and the ARM7's programs each under its own .cpu at its RAM address, flow in ARM and Thumb state through literal pools, bx and blx, the registers by libnds's names, the file name and allocation tables, the overlays, the banner and each file as data.",
+  "machine": {
+    "family": "arm",
+    "container": "cartridge ROM (.nds)",
+    "cpu": {"language": "ARM:LE:32:v5t", "bits": 32, "endian": "little", "decoder": "arm",
+            "registers": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"], "stack": "SP"},
+    "results": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "executable",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Nintendo DS cartridge \"{title}\" ({game_code}): {size} bytes, ARM9 {arm9_functions} functions, ARM7 {arm7_functions} functions",
+    ""
+  ],
+  "executable": {
+    "container": "nds",
+    "prologue": ["        .syntax unified", ""],
+    "built": "{stem}.built.nds"
+  }
+}

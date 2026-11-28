@@ -213,6 +213,34 @@ public static partial class JLib
         throw new NotSupportedException("== of two equal boxes outside Java's shared range compares references");
     }
 
+    // `o instanceof Box` of a generic class written raw: whether o is a Box of any type arguments, or of a class or interface derived from it
+    // (`closed` is one Box: its generic definition is compared).
+    public static bool isRaw(object o, Type closed)
+    {
+        if (o is null) return false;
+        Type definition = closed.GetGenericTypeDefinition();
+        for (Type t = o.GetType(); t != null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == definition) return true;
+        foreach (Type i in o.GetType().GetInterfaces())
+            if (i.IsGenericType && i.GetGenericTypeDefinition() == definition) return true;
+        return false;
+    }
+
+    // Number's intValue(), longValue() ... on a number known only as a Number (object here): the box's own value, converted as Java's
+    // casts convert it (an integer wraps; a double truncates, NaN is 0 and a value out of range saturates, as .NET's casts do since 9).
+    public static long numberLong(object n) => n switch
+    {
+        int v => v, long v => v, short v => v, sbyte v => v, byte v => v, char v => v,
+        double v => (long)v, float v => (long)v,
+        null => throw new NullReferenceException(),
+        _ => throw new InvalidCastException(n.GetType().FullName + " is not a number Java's Number has"),
+    };
+    public static double numberDouble(object n) => n switch { double v => v, float v => v, _ => numberLong(n) };
+    public static int numberInt(object n) => n is double d ? (int)d : n is float f ? (int)f : unchecked((int)numberLong(n));
+    public static float numberFloat(object n) => n is float f ? f : n is double d ? (float)d : numberLong(n);
+    public static short numberShort(object n) => unchecked((short)numberInt(n));
+    public static sbyte numberByte(object n) => unchecked((sbyte)numberInt(n));
+
     // List.of: no nulls.
     public static List<T> listOf<T>(params T[] items)
     {

@@ -156,4 +156,20 @@ bool probe(const std::filesystem::path& path) {
     return false;
 }
 
+std::string_view svc_name(std::uint32_t number) {
+    static const char* const names[0x4C] = {
+        "",                    "ControlMemory",      "QueryMemory",       "ExitProcess",        "GetProcessAffinityMask", "SetProcessAffinityMask", "GetProcessIdealProcessor",
+        "SetProcessIdealProcessor", "CreateThread",  "ExitThread",        "SleepThread",        "GetThreadPriority",   "SetThreadPriority",    "GetThreadAffinityMask",
+        "SetThreadAffinityMask",    "GetThreadIdealProcessor", "SetThreadIdealProcessor", "GetCurrentProcessorNumber", "Run", "CreateMutex", "ReleaseMutex",
+        "CreateSemaphore",     "ReleaseSemaphore",   "CreateEvent",       "SignalEvent",        "ClearEvent",          "CreateTimer",          "SetTimer",
+        "CancelTimer",         "ClearTimer",         "CreateMemoryBlock", "MapMemoryBlock",     "UnmapMemoryBlock",    "CreateAddressArbiter", "ArbitrateAddress",
+        "CloseHandle",         "WaitSynchronization1", "WaitSynchronizationN", "SignalAndWait", "DuplicateHandle",     "GetSystemTick",        "GetHandleInfo",
+        "GetSystemInfo",       "GetProcessInfo",     "GetThreadInfo",     "ConnectToPort",      "SendSyncRequest1",    "SendSyncRequest2",     "SendSyncRequest3",
+        "SendSyncRequest4",    "SendSyncRequest",    "OpenProcess",       "OpenThread",         "GetProcessId",        "GetProcessIdOfThread", "GetThreadId",
+        "GetResourceLimit",    "GetResourceLimitLimitValues", "GetResourceLimitCurrentValues", "GetThreadContext", "Break", "OutputDebugString", "ControlProcessMemory",
+        "MapProcessMemory",    "UnmapProcessMemory", "CreateCodeSet",     "RandomStub",         "CreateProcess",       "TerminateProcess",     "SetProcessResourceLimits",
+        "CreateResourceLimit", "SetResourceLimitValues", "AddCodeSegment", "Backdoor",          "KernelSetState"};
+    return number < 0x4C ? std::string_view(names[number]) : std::string_view();
+}
+
 }  // namespace cb::formats::n3ds

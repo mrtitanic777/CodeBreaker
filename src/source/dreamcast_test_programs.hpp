@@ -10,7 +10,8 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "core/bytes.hpp"
-#include "source/dreamcast_writer.hpp"
+#include "formats/dreamcast.hpp"
+#include "source/console_writer.hpp"
 
 namespace cb::source::dreamcast_test {
 
@@ -112,7 +113,7 @@ inline std::string big_source() {
 inline Bytes iso(const Bytes& program, bool scrambled = false, std::uint32_t volume_base = 0) {
     Bytes image = ip_bin();
     image.insert(image.end(), program.begin(), program.end());
-    return dreamcast_writer::minimal_disc(image, "1ST_READ.BIN", scrambled, volume_base);
+    return console_writer::dreamcast_disc(image, "1ST_READ.BIN", scrambled, volume_base);
 }
 inline Bytes iso(bool scrambled = false) { return iso(assemble(kProgram), scrambled); }
 

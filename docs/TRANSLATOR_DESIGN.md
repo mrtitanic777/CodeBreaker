@@ -602,7 +602,7 @@ format, `lifted ++/--`, lifted `&`/`|`/`!` on `bool?` (three-valued logic), `awa
 
 **Corpus.** See docs/TESTED_SOFTWARE.md, "The universal translator".
 
-**The second back end (the hub is N:M).** The same L2 goes out as C# again (`backends/csharp`: `yield return`, `yield break`, `await`; a
+**The second back end (the hub is N:M).** The same L2 goes out as C# again (the one C# back end, `dotnet/decompiler/csharp/l2_syntax_builder`, since stage 15: `yield return`, `yield break`, `await`; a
 `var` pattern as `(x = v) is var _`; the compiler's range-variable names made plain), and the written C# is compiled and run beside the
 original: `translate.csharp.pairs.language_features_round_trip_to_equivalent` judges every program of csharp_features equivalent. The C#
 -> C++03 path (`dotnet/cs2cpp`) refuses an `iterator` or `async` method with that reason.

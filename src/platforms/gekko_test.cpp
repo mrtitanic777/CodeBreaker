@@ -1,14 +1,12 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-#include "platforms/gamecube.hpp"
-#include "platforms/wii.hpp"
-#include "platforms/wiiu.hpp"
+#include "platforms/package.hpp"
 
 #include "core/testing.hpp"
 
 namespace cb::platforms {
 
 CB_TEST("platforms.gekko.descriptors", [] {
-    const Platform gc = gamecube(), w = wii(), u = wiiu();
+    const Platform gc = described("gamecube"), w = described("wii"), u = described("wiiu");
     CB_CHECK(gc.id == Id::Machine && w.id == Id::Machine && u.id == Id::Machine);
     CB_CHECK_EQ(gc.name, "gamecube");
     CB_CHECK_EQ(w.name, "wii");

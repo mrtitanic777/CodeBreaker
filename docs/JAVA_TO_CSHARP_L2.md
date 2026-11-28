@@ -178,3 +178,34 @@ same class: the same tree, apart from source positions. Then the C# from both is
   (`translate.csharp.*` and `translate.csharp_java.*` in `csharp_test.cpp` and `csharp_java_test.cpp`), are deleted once
   those tests are moved onto the new path with reviewed expected text, and the old goldens (`translate/testdata/csharp_*.cs.txt`,
   `csharp_java/*.cs.txt`) with them; the `.l2.json` inputs stay, `dotnet.l2_csharp.*` reads them.
+- 2026-11-28: step 5, second part: the old writer is gone (`translate/backends/csharp.cpp`, `csharp_java.cpp`, their headers,
+  their tests and the goldens `translate/testdata/csharp_*.cs.txt`, `csharp_java/*.cs.txt` and `*.ledger.txt`). Its tests are
+  now tests of the new path, `dotnet/decompiler/csharp/l2_syntax_builder_unit_test.cpp` (`dotnet.l2_csharp.unit.*`, `literals.*`,
+  `expr.*`, `stmt.*`, `decl.*`, `decline.*`, `program.*`, `java.*`). Their corpus tests were already `dotnet.l2_csharp.corpus.*` and
+  `.java.*`. The expected text was reviewed against the old writer's. The differences are the output visitor's layout and spelling:
+  - no blank line between the types of a namespace, as ilspycmd writes them;
+  - `7uL`, `3f`, `1E+10f`, `- -a`, `(long)-1`;
+  - text that is not ASCII written as it is.
+
+  The old writer's harness (test-inputs/csharp-harness, whose inputs went with the state folder) is now
+  `dotnet.l2_csharp.harness.recorded_programs_agree`. It reads the checked-in units of the translator's test programs: the Java
+  ones of `translate/testdata/cpp03`, the zoo and mix, and the C# ones of `cs2cpp`. Each is written whole and unit by unit, and
+  the recording, `dotnet/testdata/l2_csharp_harness.txt`, keeps each file's length and CRC-32 and the ledger
+  (`CB_L2CS_HARNESS_RECORD=1` records it). The recording was reviewed with work/stage15/judge_harness.sh: every whole program
+  built with Roslyn, and the Java ones with a main run against the JVM on their sources. bank, calc, generics, mix, modernlib,
+  sample, shapes, streams, t17, textstats and zoo print the same as the JVM, and feat and t03 (no main) build, as do cs_javart,
+  cs_shadercheck, cs_tool and cs_top. The review found five bugs, fixed here (the old
+  writer had all but the last two):
+  - a switch-expression arm of several constants was written with `||`. It is now the `or` pattern, a non-upstream
+    `BinaryOperatorType::PatternOr`;
+  - a number the C# front end gives with an enum's type (`NumberStyles` 4, `DayOfWeek` 1) was written bare. It is now cast to
+    the enum;
+  - a double a float cannot hold was written as an infinity. It is now declined, as the old writer declined it;
+  - `Number.intValue()` and the other accessors on a Number, which is an object in C#, were written as the object. They are now
+    `JLib.numberInt` and its siblings, which convert as Java's casts do;
+  - `o instanceof Box` of a generic class written raw tested one instantiation (`is Box<object>`). It is now `JLib.isRaw`,
+    which tests any.
+
+  What does not build is the input's own: cs_back declares a property `Item` beside an indexer; cs_corpus and cs_own are several
+  programs with a Main each; cs_gen's `Exercise` holds a pointer, so it is declined, as before. minecraft's NoiseMain needs
+  classes its units do not have.

@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/n3ds.hpp"
+#include "platforms/package.hpp"
 #include "formats/n3ds.hpp"
-#include "source/n3ds_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -167,7 +167,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     }
     std::vector<std::string> calls;
     for (const emulate::arm::BiosCall& c : run.bios) {
-        const std::string_view name = source::n3ds_writer::svc_name(c.function);
+        const std::string_view name = formats::n3ds::svc_name(c.function);
         calls.push_back(std::format("svc{}({:x},{:x},{:x},{:x})", name.empty() ? std::format("_{:02X}", c.function) : std::string(name), c.args[0], c.args[1], c.args[2], c.args[3]));
     }
     const auto number = [](std::uint64_t v) { return vl::Effect(static_cast<std::int64_t>(v)); };
@@ -176,7 +176,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::n3ds_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("n3ds", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -207,7 +207,7 @@ vl::ImageLaneSpec n3ds_lane_spec() {
 void register_n3ds_lane() {
     register_lane({
         .name = "n3ds",
-        .platform = platforms::n3ds,
+        .platform = [] { return platforms::described("n3ds"); },
         .probe = [](const stdfs::path& p) { return formats::n3ds::probe(p); },
         .make_spec = n3ds_lane_spec,
     });

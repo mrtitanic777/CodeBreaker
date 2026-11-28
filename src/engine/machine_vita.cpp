@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/vita.hpp"
+#include "platforms/package.hpp"
 #include "formats/vita.hpp"
-#include "source/vita_writer.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -136,7 +136,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::vita_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("vita", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -167,7 +167,7 @@ vl::ImageLaneSpec vita_lane_spec() {
 void register_vita_lane() {
     register_lane({
         .name = "vita",
-        .platform = platforms::vita,
+        .platform = [] { return platforms::described("vita"); },
         .probe = [](const stdfs::path& p) { return formats::vita::probe(p); },
         .make_spec = vita_lane_spec,
     });

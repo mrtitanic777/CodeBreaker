@@ -12,13 +12,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "source/gekko_writer.hpp"
-#include "source/n3ds_writer.hpp"
 #include "source/console_writer.hpp"
-#include "source/nds_writer.hpp"
-#include "source/ps3_writer.hpp"
-#include "source/vita_writer.hpp"
-#include "source/switch_writer.hpp"
 
 namespace cb::source {
 namespace {
@@ -47,15 +41,15 @@ CB_TEST("source.writers_speed.files", [] {
         const auto start = std::chrono::steady_clock::now();
         image_writer::Written w;
         if (ext == ".pbp" || ext == ".prx") w = console_writer::reconstruct("psp", file, folder);
-        else if (ext == ".3dsx") w = n3ds_writer::reconstruct(file, folder);
-        else if (ext == ".nro" || ext == ".nso") w = switch_writer::reconstruct(file, folder);
-        else if (ext == ".dol" || ext == ".rpx" || ext == ".rpl") w = gekko_writer::reconstruct(file, folder);
-        else if (ext == ".sprx" || file.filename() == "EBOOT.BIN") w = ps3_writer::reconstruct(file, folder);
-        else if (ext == ".elf" && fs::to_text(file).find("ps3") != std::string::npos) w = ps3_writer::reconstruct(file, folder);
-        else if (ext == ".elf" && fs::to_text(file).find("3ds") != std::string::npos) w = n3ds_writer::reconstruct(file, folder);
-        else if (ext == ".elf") w = gekko_writer::reconstruct(file, folder);
-        else if (ext == ".bin" && fs::to_text(file).find("vita") != std::string::npos) w = vita_writer::reconstruct(file, folder);
-        else if (ext == ".nds") w = nds_writer::reconstruct(file, folder);
+        else if (ext == ".3dsx") w = console_writer::reconstruct("n3ds", file, folder);
+        else if (ext == ".nro" || ext == ".nso") w = console_writer::reconstruct("switch", file, folder);
+        else if (ext == ".dol" || ext == ".rpx" || ext == ".rpl") w = console_writer::reconstruct("gamecube", file, folder);
+        else if (ext == ".sprx" || file.filename() == "EBOOT.BIN") w = console_writer::reconstruct("ps3", file, folder);
+        else if (ext == ".elf" && fs::to_text(file).find("ps3") != std::string::npos) w = console_writer::reconstruct("ps3", file, folder);
+        else if (ext == ".elf" && fs::to_text(file).find("3ds") != std::string::npos) w = console_writer::reconstruct("n3ds", file, folder);
+        else if (ext == ".elf") w = console_writer::reconstruct("gamecube", file, folder);
+        else if (ext == ".bin" && fs::to_text(file).find("vita") != std::string::npos) w = console_writer::reconstruct("vita", file, folder);
+        else if (ext == ".nds") w = console_writer::reconstruct("nds", file, folder);
         else if (ext == ".gba") w = console_writer::reconstruct("gba", file, folder);
         else if (ext == ".n64" || ext == ".z64") w = console_writer::reconstruct("n64", file, folder);
         else {

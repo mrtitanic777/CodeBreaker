@@ -106,6 +106,8 @@ PrecedenceLevel get_precedence(Expression* expr) {
                 return PrecedenceLevel::NullCoalescing;
             case BinaryOperatorType::IsPattern:
                 return PrecedenceLevel::RelationalAndTypeTesting;
+            case BinaryOperatorType::PatternOr:   // (not upstream; the combinators bind loosest of a pattern's operators)
+                return PrecedenceLevel::ConditionalOr;
             default:
                 throw std::logic_error("Invalid value for BinaryOperatorType");
         }

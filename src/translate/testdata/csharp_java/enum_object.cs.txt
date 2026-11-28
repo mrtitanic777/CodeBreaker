@@ -1,5 +1,0 @@
-// ==== EnumObject.cs ====
-// Translated by CodeBreaker from EnumObject (java).
-#nullable disable
-
-// CB-GAP: EnumObject was not translated: a Java enum with fields, methods or constructor arguments (an enum of objects)
