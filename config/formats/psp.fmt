@@ -1,0 +1,14 @@
+# psp.fmt -- how the PSP's files are told (formats/detect): an EBOOT.PBP, whose DATA.PSP (the seventh offset of its
+# header) is an ELF or an encrypted ~PSP module (recognised, not handled). The PSP's ELF and PRX files are told with the
+# PlayStation 2's (ps2.fmt: the MIPS flags say which).
+
+format psp
+
+fn data_psp() = peek32(8 + 4 * 6)
+
+detect 180 psp "PSP EBOOT.PBP (encrypted ~PSP module)" command gap
+    when $size >= 40 && at(0, "\0PBP") && data_psp() + 4 <= $size && at(data_psp(), "~PSP")
+    detail "not handled: the module is encrypted"
+detect 180 psp "PSP EBOOT.PBP" command reach
+    when $size >= 40 && at(0, "\0PBP") && data_psp() + 4 <= $size && at(data_psp(), "\x7fELF")
+    detail "DATA.PSP at 0x{data_psp():X}, {$size} bytes"

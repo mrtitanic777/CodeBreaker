@@ -1,0 +1,14 @@
+# neogeo.fmt -- how the Neo Geo's files are told (formats/detect): a P-ROM ("NEO-GEO" at $100, or with its words
+# swapped) and a .neo file (a 4 KB header giving the sizes of the P, S, M, V and C ROMs).
+
+format neogeo
+
+detect 350 neogeo "Neo Geo cartridge (P-ROM)" command reach
+    when $size >= 0x108 && at(0x100, "NEO-GEO")
+    detail "NGH {peek8(0x108) << 8 | peek8(0x109):04X}, {$size / 1024} KB"
+detect 350 neogeo "Neo Geo cartridge (P-ROM)" command reach
+    when $size >= 0x108 && at(0x100, "EN-OEG")
+    detail "NGH {peek8(0x109) << 8 | peek8(0x108):04X}, {$size / 1024} KB, words swapped"
+detect 350 neogeo "Neo Geo .neo file" command reach
+    when at(0, "NEO") && $size >= 4096
+    detail "{peek32(4) / 1024} KB P-ROM, {peek32(12) / 1024} KB sound program, {peek32(24) / 1024} KB sprites"

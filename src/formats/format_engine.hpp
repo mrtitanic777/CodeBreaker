@@ -40,6 +40,13 @@
 //     caller wants is read behind the headers every caller wants.
 //   * `$name` in an expression is a variable the caller gave (ReadOptions::vars), 0 when it did not.
 //
+// What a file is (formats/detect): a description may say how its files are told, at the top level, one rule a line:
+//     detect 50 switch "Nintendo Switch homebrew executable (NRO)" command reach
+//         when $size >= 0x80 && at(0x10, "NRO0") detail "AArch64, text {peek32(0x24)} bytes, entry 0x{peek32(4):08X}"
+// The condition is an expression over the raw file (no structure is read): peek*, at(o, "text"), ends(".ext", ...) (the
+// file's name), $size. The detail is text with `{expr}`, `{expr:spec}` (std::format's) and `{str(o, n)}` (raw bytes, the
+// NULs at the end left out; `{raw(o, n)}` keeps them). The family is the lane unless `family` says otherwise. Lower priorities are tried first.
+//
 // The tree keeps every field's offset and size. write() puts the values back: onto the bytes that were read (so what
 // the description does not cover stays as it was; an unmodified tree gives the same bytes), or, with
 // `covered_only`, onto zeros (only what the description names; a check that the description covers what it says).
@@ -128,6 +135,14 @@ struct ReadOptions {
     bool keep_source = true;                   // false: Tree::source stays empty (the tree is only read from, never written)
 };
 
+// A rule of a description that says what a file is (`detect` lines; formats/detect runs them by priority).
+struct DetectRule {
+    std::string description;   // the format whose description holds it
+    std::string lane, format, family, command;
+    int priority = 0;
+    std::size_t index = 0;     // the rule's place in its description
+};
+
 class Registry {
 public:
     Registry();
@@ -152,6 +167,10 @@ public:
     std::optional<Tree> try_read(std::string_view format, ByteView data, const ReadOptions& options) const;
     // The names of the `part` fields of a format's description (and of what it `use`s).
     std::vector<std::string> parts(std::string_view format) const;
+    // Every description's detect rules, by priority (equal ones in the order of the descriptions' names, then of the lines).
+    std::vector<DetectRule> detect_rules() const;
+    // The rule's detail (what `detail` makes of the file) when its condition holds; `file_name` is what `ends(...)` sees.
+    std::optional<std::string> detect(const DetectRule& rule, ByteView data, std::string_view file_name = {}) const;
     // The formats whose description reads `data` without an error.
     std::vector<std::string> identify(ByteView data) const;
 

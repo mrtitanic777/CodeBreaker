@@ -1,0 +1,18 @@
+# ps2.fmt -- how the PlayStation 2's and the PSP's MIPS ELF files are told (formats/detect): a 32-bit little-endian
+# ELF of machine 8, whose flags name the MIPS (EF_MIPS_MACH $00920000: the Emotion Engine's R5900; $00A20000: the PSP's
+# Allegrex, a module when its type is $FFA0).
+
+format ps2
+
+fn mips_elf() = $size >= 52 && at(0, "\x7fELF") && peek8(4) == 1 && peek8(5) == 1 && peek16(18) == 8
+fn mach() = peek32(36) & 0x00FF0000
+
+detect 20 ps2 "PlayStation 2 executable (ELF)" command reach
+    when mips_elf() && mach() == 0x00920000
+    detail "Emotion Engine R5900, entry 0x{peek32(24):08X}, {$size} bytes"
+detect 20 ps2 "PSP module (PRX)" family psp command reach
+    when mips_elf() && mach() == 0x00A20000 && peek16(16) == 0xFFA0
+    detail "Allegrex, entry 0x{peek32(24):08X}, {$size} bytes"
+detect 20 ps2 "PSP executable (ELF)" family psp command reach
+    when mips_elf() && mach() == 0x00A20000
+    detail "Allegrex, entry 0x{peek32(24):08X}, {$size} bytes"

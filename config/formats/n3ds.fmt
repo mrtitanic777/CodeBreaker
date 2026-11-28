@@ -1,0 +1,14 @@
+# n3ds.fmt -- how the Nintendo 3DS's files are told (formats/detect): a homebrew 3DSX, an ARM ELF whose entry is in the
+# homebrew's range ($00100000 up: devkitARM's output), and an encrypted NCSD cartridge image (recognised, not handled).
+
+format n3ds
+
+detect 30 n3ds "Nintendo 3DS homebrew executable (3DSX)" command reach
+    when $size >= 32 && at(0, "3DSX")
+    detail "ARM11, code {peek32(16)} bytes, rodata {peek32(20)} bytes, data {(peek32(24) - peek32(28)) & 0xFFFFFFFF} bytes, bss {peek32(28)} bytes"
+detect 40 n3ds "Nintendo 3DS executable (ELF)" command reach   # 32-bit little-endian, machine 40 (ARM), an executable
+    when $size >= 52 && at(0, "\x7fELF") && peek8(4) == 1 && peek8(5) == 1 && peek16(18) == 40 && peek16(16) == 2 && peek32(24) >= 0x00100000 && peek32(24) < 0x01000000
+    detail "ARM11, entry 0x{peek32(24):08X}, {$size} bytes"
+detect 170 n3ds "Nintendo 3DS cartridge image (NCSD)" command gap
+    when $size >= 0x104 && at(0x100, "NCSD")
+    detail "not handled: the contents are encrypted"

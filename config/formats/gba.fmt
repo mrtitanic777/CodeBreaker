@@ -30,3 +30,8 @@ struct Header {
     let entry      = (0x08000008 + (((entry_word & 0xFFFFFF) ^ 0x800000) - 0x800000) * 4) & 0xFFFFFFFF
     let computed_complement = (0 - (0x19 + sum8(0xA0, 29))) & 0xFF   # $A0..$BC
 }
+
+# How formats/detect tells a cartridge: $96 at $B2 and the entry branch.
+detect 210 gba "Game Boy Advance cartridge" command reach
+    when $size >= 0xC0 && peek8(0xB2) == 0x96 && (peek8(3) & 0x0E) == 0x0A && (peek8(3) >> 4) != 0xF
+    detail "\"{str(0xA0, 12)}\" ({raw(0xAC, 4)}), {$size} bytes"

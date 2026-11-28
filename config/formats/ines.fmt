@@ -43,3 +43,6 @@ struct Header {
     let battery      = (flags6 & 0x02) != 0
     let mirroring    = (flags6 & 0x08) ? 2 : (flags6 & 1)      # 0 horizontal, 1 vertical, 2 four-screen
 }
+
+# How formats/detect tells an image: the magic (tried after every other console's rule).
+detect 10000 nes "NES ROM (iNES)" when at(0, "NES\x1a")

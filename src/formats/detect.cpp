@@ -279,6 +279,12 @@ std::shared_ptr<const std::vector<DetectorEntry>> detector_snapshot() {
     return t.entries;
 }
 
+// The built-in descriptions' detect rules, by priority (read once).
+const std::vector<engine::DetectRule>& detect_rules() {
+    static const std::vector<engine::DetectRule> rules = engine::builtin().detect_rules();
+    return rules;
+}
+
 }  // namespace
 
 void add_detector(std::string lane, int priority, Detector detector) {
@@ -344,10 +350,21 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         if (0 < n && n < 30) return one("Mach-O universal binary", std::format("{} architectures", n), "apple", "");
         return one("Java class file", "", "java", "java");
     }
-    {   // the lanes' detectors (the platforms that registered one: engine/lane_registry.hpp)
+    {   // the descriptions' detect rules (config/formats/*.fmt) and the lanes' code detectors, by priority (a rule before code of
+        // the same priority)
         const DetectInput input{file, head, size, name};
-        for (const DetectorEntry& entry : *detector_snapshot())
-            if (std::optional<std::vector<Detected>> found = entry.run(input)) return std::move(*found);
+        const std::shared_ptr<const std::vector<DetectorEntry>> code = detector_snapshot();
+        const engine::Registry& descriptions = engine::builtin();
+        const std::vector<engine::DetectRule>& rules = detect_rules();
+        std::size_t c = 0, r = 0;
+        while (c < code->size() || r < rules.size()) {
+            if (r < rules.size() && (c >= code->size() || rules[r].priority <= (*code)[c].priority)) {
+                const engine::DetectRule& rule = rules[r++];
+                if (std::optional<std::string> detail = descriptions.detect(rule, file, name)) return one(rule.format, std::move(*detail), rule.family, rule.command);
+            } else if (std::optional<std::vector<Detected>> found = (*code)[c++].run(input)) {
+                return std::move(*found);
+            }
+        }
     }
     for (const Magic& m : kMagic) {
         if (starts_with(head, 0, m.magic)) {

@@ -1,0 +1,20 @@
+# ps3.fmt -- how the PlayStation 3's files are told (formats/detect): a 64-bit big-endian PowerPC ELF (PSL1GHT's
+# output) and a SELF, whose segment table (the 64-bit offset at $48) says whether the segments are encrypted.
+
+format ps3
+
+# the ELF's 64-bit entry point (the address of its descriptor), printed without leading zeros
+detect 100 ps3 "PlayStation 3 executable (ELF)" command reach
+    when $size >= 64 && at(0, "\x7fELF") && peek8(4) == 2 && peek8(5) == 2 && peek16be(18) == 21 && peek32be(24) == 0
+    detail "Cell PPU, entry descriptor 0x{peek32be(28):X}, {$size} bytes"
+detect 100 ps3 "PlayStation 3 executable (ELF)" command reach
+    when $size >= 64 && at(0, "\x7fELF") && peek8(4) == 2 && peek8(5) == 2 && peek16be(18) == 21 && peek32be(24) != 0
+    detail "Cell PPU, entry descriptor 0x{peek32be(24):X}{peek32be(28):08X}, {$size} bytes"
+
+# a SELF: plain when its first segment's entry (in the first 1 KB of the file) says "not encrypted", else encrypted
+detect 110 ps3 "PlayStation 3 SELF" command reach
+    when $size >= 0x60 && at(0, "SCE\0") && peek32be(4) == 2 && peek32be(0x48) == 0 && peek32be(0x4C) + 32 <= min($size, 0x400) && peek32be(peek32be(0x4C) + 28) != 1
+    detail "Cell PPU, {$size} bytes"
+detect 110 ps3 "PlayStation 3 SELF (encrypted)" command gap
+    when $size >= 0x60 && at(0, "SCE\0") && peek32be(4) == 2
+    detail "not handled: the segments are encrypted"

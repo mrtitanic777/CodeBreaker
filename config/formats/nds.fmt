@@ -51,3 +51,8 @@ struct Header {
     header_crc    : u16           # $15E: CRC-16 of $000-$15D
     reserved4     : bytes(160)
 }
+
+# How formats/detect tells a cartridge: the logo, and its checksum $CF56 at $15C.
+detect 200 nds "Nintendo DS cartridge" command reach
+    when $size >= 0x200 && peek8(0x15C) == 0x56 && peek8(0x15D) == 0xCF && peek8(0xC0) == 0x24 && peek8(0xC1) == 0xFF
+    detail "\"{str(0, 12)}\" ({raw(0x0C, 4)}), {$size} bytes, ARM9 {peek32(0x2C)} bytes at 0x{peek32(0x28):08X}, ARM7 {peek32(0x3C)} bytes at 0x{peek32(0x38):08X}"

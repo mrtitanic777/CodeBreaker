@@ -266,8 +266,31 @@ struct EnumDef {
 
 }  // namespace desc
 
+namespace desc {
+
+// A piece of a detect rule's detail: literal text, then (when `value` is set) a number in `spec`'s std::format form, or
+// with `length` the text of `length` raw bytes at `value` (its NULs at the end left out).
+struct DetailPiece {
+    std::string text;
+    ExprP value, length;
+    std::string spec;
+    bool trim = true;   // str(): the NULs at the end left out; raw(): kept
+};
+
+// `detect PRIORITY LANE "FORMAT" family F command C when EXPR detail "TEXT {expr:spec} {str(at, n)}"`
+struct DetectDef {
+    int priority = 0;
+    std::string lane, format, family, command;
+    ExprP when;
+    std::vector<DetailPiece> detail;
+    std::uint32_t line = 0;
+};
+
+}  // namespace desc
+
 class Format {
 public:
+    std::vector<desc::DetectDef> detects;
     std::string name, origin;
     bool big = false;
     std::string root = "File";
@@ -335,6 +358,8 @@ public:
                 expect("{");
                 block(d.body);
                 f->structs[d.name] = std::move(d);
+            } else if (kw == "detect") {
+                f->detects.push_back(detect_rule());
             } else if (kw == "enum" || kw == "flags") {
                 EnumDef e;
                 e.flags = kw == "flags";
@@ -467,6 +492,73 @@ private:
         next();
         return s;
     }
+    std::string quoted(const char* what) {
+        if (peek().t != T::Text) fail(peek(), std::string("expected ") + what + " (a quoted text)");
+        std::string s = peek().s;
+        next();
+        return s;
+    }
+
+    // `detect PRIORITY LANE "FORMAT" [family F] [command C] when EXPR [detail "TEXT"]`
+    DetectDef detect_rule() {
+        DetectDef d;
+        d.line = peek().line;
+        d.priority = static_cast<int>(number());
+        d.lane = ident("the lane the rule answers for");
+        d.format = quoted("what the file is");
+        d.family = d.lane;
+        while (true) {
+            if (word("family")) next(), d.family = ident("a family");
+            else if (word("command")) next(), d.command = peek().t == T::Text ? quoted("a command") : ident("a command");
+            else if (word("when")) next(), d.when = expr(true);
+            else if (word("detail")) next(), d.detail = detail_pieces(quoted("the detail"));
+            else break;
+        }
+        if (!d.when) fail(peek(), "a detect rule needs `when CONDITION`");
+        return d;
+    }
+
+    // The detail's text: `{expr}` and `{expr:spec}` (a number), `{str(at, n)}` (raw text); `{{` and `}}` are braces.
+    std::vector<DetailPiece> detail_pieces(const std::string& t) {
+        std::vector<DetailPiece> out(1);
+        for (std::size_t k = 0; k < t.size(); ++k) {
+            if ((t[k] == '{' || t[k] == '}') && k + 1 < t.size() && t[k + 1] == t[k]) {
+                out.back().text += t[k++];
+                continue;
+            }
+            if (t[k] != '{') {
+                out.back().text += t[k];
+                continue;
+            }
+            const std::size_t close = t.find('}', k);
+            if (close == std::string::npos) fail(prev(), "a `{` without its `}` in a detail");
+            std::string inner = t.substr(k + 1, close - k - 1);
+            DetailPiece piece;
+            const std::size_t colon = inner.rfind(':');
+            if (colon != std::string::npos && colon + 1 < inner.size() &&
+                inner.find_first_not_of("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ#+-", colon + 1) == std::string::npos) {
+                piece.spec = inner.substr(colon + 1);
+                inner.resize(colon);
+            }
+            Parser sub(inner, origin_);
+            if ((sub.word("str") || sub.word("raw")) && sub.punct("(", 1)) {
+                piece.trim = sub.word("str");
+                sub.next(), sub.next();
+                piece.value = sub.expr(true);
+                sub.expect(",");
+                piece.length = sub.expr(true);
+                sub.expect(")");
+            } else {
+                piece.value = sub.expr(true);
+            }
+            if (sub.peek().t != T::End) fail(prev(), "a detail's `{" + inner + "}` is not one expression");
+            out.push_back(std::move(piece));
+            out.emplace_back();
+            k = close;
+        }
+        return out;
+    }
+
     std::uint64_t number() {
         if (peek().t != T::Num) fail(peek(), "expected a number");
         const std::uint64_t n = peek().n;
@@ -754,8 +846,38 @@ struct Val {
 
 class Reader {
 public:
-    Reader(std::vector<const Format*> chain, ByteView data, const ReadOptions& options)
-        : chain_(std::move(chain)), data_(data), opt_(options) {}
+    Reader(std::vector<const Format*> chain, ByteView data, const ReadOptions& options, std::string_view file_name = {})
+        : chain_(std::move(chain)), data_(data), opt_(options), file_name_(file_name) {}
+
+    // A detect rule on the file: its detail when the condition holds.
+    std::optional<std::string> detect(const DetectDef& d) {
+        Node none;
+        std::uint64_t pos = 0;
+        const Scope sc{&none, nullptr, 0, data_.size(), &pos, 0};
+        const Ctx c{&sc, nullptr};
+        if (num(d.when, c) == 0) return std::nullopt;
+        std::string out;
+        for (const DetailPiece& p : d.detail) {
+            if (!p.value) {
+                out += p.text;
+                continue;
+            }
+            const std::int64_t v = num(p.value, c);
+            if (p.length) {   // raw text, clamped to the file, without its NULs at the end
+                const std::int64_t n = num(p.length, c);
+                if (v < 0 || n <= 0 || static_cast<std::uint64_t>(v) >= data_.size()) continue;
+                const std::size_t take = static_cast<std::size_t>(std::min<std::uint64_t>(static_cast<std::uint64_t>(n), data_.size() - static_cast<std::uint64_t>(v)));
+                std::string text(reinterpret_cast<const char*>(data_.data()) + v, take);
+                while (p.trim && !text.empty() && text.back() == '\0') text.pop_back();
+                out += text;
+            } else if (p.spec.empty()) {
+                out += std::to_string(v);
+            } else {
+                out += std::vformat("{:" + p.spec + "}", std::make_format_args(v));
+            }
+        }
+        return out;
+    }
 
     Node read_root() {
         const Format& f = *chain_.front();
@@ -771,6 +893,7 @@ private:
     std::vector<const Format*> chain_;
     ByteView data_;
     const ReadOptions& opt_;
+    std::string_view file_name_;   // (what a detect rule's `ends` sees)
 
     const FnDef* find_fn(std::string_view name) const {
         for (const Format* f : chain_) {
@@ -934,6 +1057,26 @@ private:
                     const Val v = eval(*e.kids[0], c);
                     if (!v.ref) fail(here, "count of a number");
                     return {s64(v.ref->children.size()), nullptr};
+                }
+                if (f == "at") {   // at(o, "text"): the file holds the text at offset o
+                    if (e.kids.size() != 2 || e.kids[1]->op != Expr::Op::Text) fail(here, "at(offset, \"text\")");
+                    const std::int64_t o = num(e.kids[0]);
+                    const std::string& t = e.kids[1]->name;
+                    const bool hit = o >= 0 && u(o) <= data_.size() && t.size() <= data_.size() - u(o) &&
+                                     std::equal(t.begin(), t.end(), data_.begin() + static_cast<std::ptrdiff_t>(o),
+                                                [](char a, std::uint8_t b) { return static_cast<std::uint8_t>(a) == b; });
+                    return {hit ? 1 : 0, nullptr};
+                }
+                if (f == "ends") {   // ends(".a", ".b" ...): the file's name ends in one of them, whatever its case
+                    for (const ExprP& k : e.kids) {
+                        if (k->op != Expr::Op::Text) fail(here, "ends(\".ext\", ...) takes texts");
+                        const std::string& x = k->name;
+                        if (file_name_.size() >= x.size() &&
+                            std::equal(x.begin(), x.end(), file_name_.end() - static_cast<std::ptrdiff_t>(x.size()),
+                                       [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); }))
+                            return {1, nullptr};
+                    }
+                    return {0, nullptr};
                 }
                 if (f.starts_with("peek")) {   // peek8 peek16 peek32 (little-endian), peek16be peek32be: the file's raw bytes at an offset, -1 outside it
                     if (e.kids.size() != 1) fail(here, f + " takes one argument (an offset)");
@@ -1307,6 +1450,26 @@ std::optional<Tree> Registry::try_read(std::string_view format, ByteView data, c
     } catch (const FormatError&) {   // probing: a file of another format is an ordinary answer
         return std::nullopt;
     }
+}
+
+std::vector<DetectRule> Registry::detect_rules() const {
+    std::vector<DetectRule> out;
+    for (const auto& [name, f] : formats_)
+        for (std::size_t k = 0; k < f->detects.size(); ++k) {
+            const desc::DetectDef& d = f->detects[k];
+            out.push_back({name, d.lane, d.format, d.family, d.command, d.priority, k});
+        }
+    std::stable_sort(out.begin(), out.end(), [](const DetectRule& a, const DetectRule& b) { return a.priority < b.priority; });
+    return out;
+}
+
+std::optional<std::string> Registry::detect(const DetectRule& rule, ByteView data, std::string_view file_name) const {
+    auto it = formats_.find(rule.description);
+    if (it == formats_.end() || rule.index >= it->second->detects.size())
+        throw NotFoundError(std::filesystem::path(rule.description), 0, "no such detect rule");
+    const ReadOptions none;
+    Reader reader({it->second.get()}, data, none, file_name);
+    return reader.detect(it->second->detects[rule.index]);
 }
 
 std::vector<std::string> Registry::identify(ByteView data) const {

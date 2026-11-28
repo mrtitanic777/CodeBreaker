@@ -1,0 +1,14 @@
+# vita.fmt -- how the PlayStation Vita's files are told (formats/detect): a SELF (its segment table says whether the
+# segments are encrypted) and an ARM ELF of a Sony type ($FE00-$FE04: VitaSDK's .velf).
+
+format vita
+
+detect 150 vita "PlayStation Vita SELF (encrypted)" command gap
+    when $size >= 0x60 && at(0, "SCE\0") && peek32(4) == 3 && peek32(0x58) + 32 <= $size && peek32(peek32(0x58) + 24) == 1
+    detail "not handled: the segments are encrypted"
+detect 150 vita "PlayStation Vita SELF" command reach
+    when $size >= 0x60 && at(0, "SCE\0") && peek32(4) == 3
+    detail "ARMv7-A Thumb-2, {$size} bytes"
+detect 160 vita "PlayStation Vita executable (ELF)" command reach
+    when $size >= 52 && at(0, "\x7fELF") && peek8(4) == 1 && peek8(5) == 1 && peek16(18) == 40 && peek16(16) >= 0xFE00 && peek16(16) <= 0xFE04
+    detail "ARMv7-A Thumb-2, entry field 0x{peek32(24):08X}, {$size} bytes"

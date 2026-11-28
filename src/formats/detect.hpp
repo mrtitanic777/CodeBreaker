@@ -67,7 +67,11 @@ std::vector<Detected> identify(const std::filesystem::path& file);
 // The same on bytes that are already in memory; `name` is only used for files told by extension (.zar, .pck).
 std::vector<Detected> identify(ByteView whole_file, std::string_view name);
 
-// ---- what a platform lane adds: its own detector --------------------------------------------------------------------
+// ---- the descriptions' rules, and what a platform lane adds: its own detector ------------------------------------------
+// A description says how its files are told by `detect` rules (config/formats/*.fmt; formats/format_engine.hpp): a priority, a
+// condition on the file's bytes and name, the text of the answer. identify runs them with the lanes' code detectors below, by
+// priority; a lane keeps code only for what a condition cannot say (a disc's file system, an archive's members, a reader's
+// verdict).
 // A platform lane (engine/lane_registry.hpp) says what its files are by a detector: the text `info` prints for one of its files. identify
 // tries the registered detectors, in the order of their priority (then of registration), after the Xbox and Windows headers and before the
 // generic magic table; the first that answers decides. A detector answers nullopt for a file that is not its platform's.

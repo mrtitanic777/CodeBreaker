@@ -1,0 +1,8 @@
+# xboxone.fmt -- how an Xbox One / Series retail package is told (formats/detect): by its name, as it is encrypted with
+# the console's keys (recognised, not handled). A dev-mode package is told by the lane's own code, which opens the zip.
+
+format xboxone
+
+detect 140 xboxone "Xbox One / Series package (encrypted)" command gap
+    when ends(".xvc", ".msixvc", ".eappx", ".eappxbundle")
+    detail "not handled: CodeBreaker does not decrypt"

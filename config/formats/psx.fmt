@@ -1,0 +1,8 @@
+# psx.fmt -- how a PlayStation executable is told (formats/detect): "PS-X EXE" and a 2 KB header that says where the
+# program starts and loads. (A PlayStation disc is told by the lane's own code, which reads its SYSTEM.CNF.)
+
+format psx
+
+detect 10 ps1 "PlayStation executable (PS-X EXE)" family playstation command reach
+    when at(0, "PS-X EXE") && $size >= 0x800
+    detail "entry 0x{peek32(0x10):08X}, program at 0x{peek32(0x18):08X}, {$size - 0x800} bytes"

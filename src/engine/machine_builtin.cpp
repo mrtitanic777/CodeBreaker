@@ -35,13 +35,7 @@ std::optional<std::vector<Detected>> info_ps1(const DetectInput& in) {
     [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
     [[maybe_unused]] const std::uint64_t size = in.size;
     [[maybe_unused]] const std::string_view name = in.name;
-    if (starts_with(head, 0, "PS-X EXE") && size >= 0x800) {   // a PlayStation executable: the header says where it starts and loads
-        return one("PlayStation executable (PS-X EXE)",
-                   std::format("entry 0x{:08X}, program at 0x{:08X}, {} bytes", get<std::uint32_t>(file, 0x10, "detect"),
-                               get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
-                   "playstation", "reach");
-    }
-    // a PlayStation disc (raw or cooked sectors): the program its SYSTEM.CNF boots
+    // (a PlayStation executable is told by config/formats/psx.fmt, before this) a PlayStation disc (raw or cooked sectors): the program its SYSTEM.CNF boots
     if (size >= 17 * disc::kSector && (disc::raw_sync(head) || disc::is_image_name(std::filesystem::path(name)))) {
         try {
             const psx::Exe exe = psx::parse_disc(disc::Sectors::of(file));
@@ -60,30 +54,12 @@ std::optional<std::vector<Detected>> info_ps1(const DetectInput& in) {
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_gba(const DetectInput& in) {
-    [[maybe_unused]] const ByteView file = in.file;
-    [[maybe_unused]] const ByteView head = in.head;
-    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
-    [[maybe_unused]] const std::uint64_t size = in.size;
-    [[maybe_unused]] const std::string_view name = in.name;
-    if (head.size() >= 0xC0 && head[0xB2] == 0x96 && (head[3] & 0x0E) == 0x0A && (head[3] >> 4) != 0xF) {   // a Game Boy Advance cartridge: $96 at $B2 and the entry branch
-        std::string title(as_text(clamped(head, 0xA0, 12)));
-        while (!title.empty() && title.back() == '\0') title.pop_back();
-        std::string code(as_text(clamped(head, 0xAC, 4)));
-        return one("Game Boy Advance cartridge", std::format("\"{}\" ({}), {} bytes", title, code, size), "gba", "reach");
-    }
-    return std::nullopt;
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
 // The iNES magic, which formats/detect.cpp's table of magic numbers used to hold.
 namespace cb::formats::detect {
 namespace {
-std::optional<std::vector<Detected>> info_nes(const DetectInput& in) {
-    if (!starts_with(in.head, 0, std::string_view("NES\x1a", 4))) return std::nullopt;
-    return one("NES ROM (iNES)", "", "nes", "");
-}
 }  // namespace
 }  // namespace cb::formats::detect
 
@@ -94,7 +70,6 @@ void register_nes_lane() {
         .name = "nes",
         .platform = platforms::nes,
         .probe = [](const std::filesystem::path& p) { return formats::nes::probe(p); },
-        .detectors = {{.priority = 10000, .detect = formats::detect::info_nes}},
         .program_extensions = {".nes"},
     });
 }
@@ -140,7 +115,6 @@ void register_gba_lane() {
         .name = "gba",
         .platform = platforms::gba,
         .probe = [](const std::filesystem::path& p) { return formats::gba::probe(p); },
-        .detectors = {{.priority = 210, .detect = formats::detect::info_gba}},
         .program_extensions = {".gba"},
     });
 }

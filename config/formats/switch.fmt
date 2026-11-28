@@ -1,0 +1,20 @@
+# switch.fmt -- how the Nintendo Switch's files are told (formats/detect): homebrew NRO and NSO executables, an AArch64
+# ELF (devkitA64's output), and the encrypted NSP and XCI containers (recognised, not handled).
+
+format switch
+
+detect 50 switch "Nintendo Switch homebrew executable (NRO)" command reach
+    when $size >= 0x80 && at(0x10, "NRO0")
+    detail "AArch64, text {peek32(0x24)} bytes, rodata {peek32(0x2C)} bytes, data {peek32(0x34)} bytes, bss {peek32(0x38)} bytes, {$size} bytes in all"
+detect 60 switch "Nintendo Switch executable (NSO)" command reach
+    when $size >= 0x100 && at(0, "NSO0")
+    detail "AArch64, {$size} bytes (the segments may be LZ4-compressed)"
+detect 70 switch "AArch64 executable (ELF)" command reach   # a 64-bit little-endian ELF of machine 183 (AArch64)
+    when $size >= 64 && at(0, "\x7fELF") && peek8(4) == 2 && peek8(5) == 1 && peek16(18) == 183
+    detail "ARMv8-A, entry 0x{peek32(24):X}, {$size} bytes"
+detect 80 switch "Nintendo Switch NSP (PFS0)" command gap
+    when $size >= 4 && at(0, "PFS0")
+    detail "not handled: the contents are encrypted"
+detect 90 switch "Nintendo Switch cartridge image (XCI)" command gap
+    when $size >= 0x104 && at(0x100, "HEAD")
+    detail "not handled: the contents are encrypted"
