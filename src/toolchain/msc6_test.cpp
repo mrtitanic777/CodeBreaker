@@ -1,4 +1,4 @@
-// Tests of cb/build/msc6.hpp. The text passes are checked on the decompiler-shaped samples with the recorded outputs (read over by hand: the argument order, the far pointers, the folded temporaries).
+// Tests of toolchain/msc6.hpp. The text passes are checked on the decompiler-shaped samples with the recorded outputs (read over by hand: the argument order, the far pointers, the folded temporaries).
 // compile_many runs against a runner that stands in for the DOS executive: it reads the C files the compile wrote and answers with
 // object files (or the compiler's complaint), so what is tested is the batching, the bisecting of a refused file and the cache.
 #include "toolchain/msc6.hpp"

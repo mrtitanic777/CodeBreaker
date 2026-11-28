@@ -1,4 +1,4 @@
-// toolchain/native_dos_runner.hpp -- DosRunner (build/dos_run.hpp) on CodeBreaker's own DOS executive: what the toolchain drivers
+// toolchain/native_dos_runner.hpp -- DosRunner (toolchain/dos_run.hpp) on CodeBreaker's own DOS executive: what the toolchain drivers
 // ask for -- folders as drives, BLD.BAT's lines, the files read back -- run in-process.
 //
 //     NativeDosRunner runner(executive);

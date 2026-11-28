@@ -478,7 +478,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::dos_lane() {
         if (impl_->dos_) return impl_->dos_;
     }
     Impl& i = *impl_;
-    const base::watcom::OpenWatcom ow = i.openwatcom();
+    const toolchain::watcom::OpenWatcom ow = i.openwatcom();
     if (build::driver::tool(ow, "wasm").empty() || build::driver::tool(ow, "wlink").empty()) return nullptr;
     LaneKit* kit = this;
     source::dos_writer::Options options = source::dos_writer::options_for(ow, i.config.state() / "assembly_probes.json");
