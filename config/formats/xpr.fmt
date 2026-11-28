@@ -1,0 +1,19 @@
+# xpr.fmt -- an XPR resource bundle (formats/xbox/xpr): XPR0 (the original Xbox, little-endian: the total size, the
+# header size where the pixels begin, and the D3DTexture's packed format word at 0x18) or XPR2 (the Xbox 360, big-endian:
+# the header size and the data size). What the format word means, and where the pixels end, are the reader's.
+
+format xpr
+endian le
+
+struct File {
+    magic : str(4)
+    assert peek32(0) == 0x30525058 || peek32(0) == 0x32525058 : "unknown magic (expected XPR0 or XPR2)"
+    if peek32(0) == 0x30525058 {
+        total       : u32
+        header_size : u32
+        format @ 0x18 : u32
+    } else if peek32(0) == 0x32525058 {
+        header_size : u32be
+        data_size   : u32be
+    }
+}

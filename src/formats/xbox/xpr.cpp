@@ -8,8 +8,11 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/log.hpp"
+#include "formats/format_builtin.hpp"
 
 namespace cb::formats::xbox::xpr {
+
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -53,16 +56,18 @@ std::string format_name(std::uint32_t xfmt) {
     return std::format("0x{:02X}", xfmt);
 }
 
+// The layout is xpr.fmt's; what the format word means and where the pixels end are this reader's.
 Bundle parse(ByteView file) {
-    io::ByteReader r(file, kXprReader);
+    eng::ReadOptions options;
+    options.keep_source = false;   // only read from
+    const eng::Tree tree = eng::builtin().read("xpr", file, options);   // (an XPR0 shorter than its header, or a file shorter than the magic: cut short)
+    const eng::Node& h = tree.root;
     Bundle b;
-    const std::string_view magic = as_text(r.bytes(4));
+    const std::string& magic = h.get("magic").text;
     if (magic == "XPR0") {
-        if (file.size() < kXpr0MinSize) throw TruncatedError(kXprReader, 0, kXpr0MinSize, file.size());
         b.container = Container::Xpr0;
-        const std::uint32_t total = r.u32(), header_size = r.u32();
-        r.seek(kXprFormatAt);
-        const std::uint32_t format = r.u32();
+        const std::uint32_t total = static_cast<std::uint32_t>(h.u("total")), header_size = static_cast<std::uint32_t>(h.u("header_size"));
+        const std::uint32_t format = static_cast<std::uint32_t>(h.u("format"));
         b.xfmt = (format >> 8) & 0xFF;
         b.mipmaps = (format >> 16) & 0xF;
         b.width = 1u << ((format >> 20) & 0xF);
@@ -77,8 +82,8 @@ Bundle parse(ByteView file) {
     } else if (magic == "XPR2") {
         if (file.size() < kXpr2MinSize) throw TruncatedError(kXprReader, 0, kXpr2MinSize, file.size());
         b.container = Container::Xpr2;
-        b.header_size = r.u32_be();
-        const std::uint32_t data_size = r.u32_be();
+        b.header_size = static_cast<std::uint32_t>(h.u("header_size"));
+        const std::uint32_t data_size = static_cast<std::uint32_t>(h.u("data_size"));
         b.data_offset = b.header_size;
         b.pixels = xpr_pixels(file, b.data_offset, data_size ? b.data_offset + data_size : file.size());
         b.data_size = data_size ? data_size : static_cast<std::uint32_t>(b.pixels.size());
