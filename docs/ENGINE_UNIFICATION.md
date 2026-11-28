@@ -183,3 +183,6 @@ tests only what it changes.
   from two bugs (ldc's directions; caxi compared r30). Proof: 200,000 and 300,000 random instructions and programs per core and
   300,000 focused V810 runs, 0 differing; the NGP and Virtual Boy homebrew judged on both cores with no cap (1,746 edited
   copies, 0 verdicts disagreeing); the runs' digests are kept in `engine/pcode_cpu_tlcs900_test` and `pcode_cpu_v810_test`.
+- 2026-11-27: item 7 started (docs/SOURCE_WRITER.md): one console writer (source/console_writer) and one file per platform
+  (config/platforms/<name>.json). On it: ZX Spectrum, MSX, ColecoVision, Amstrad CPC (`z80-block`), Game Boy, Master System (`banked`);
+  written source byte-identical on their tests, goldens and homebrew samples. Next: the 6502 family, then `vectored`, then `executable`.

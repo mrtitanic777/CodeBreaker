@@ -11,7 +11,7 @@
 namespace cb::source::console_writer::coleco_test {
 namespace {
 
-// The platform's writer over a file (the description: config/source/platforms/coleco.json).
+// The platform's writer over a file (the description: config/platforms/coleco.json).
 image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
     return console_writer::reconstruct("coleco", file, folder);
 }

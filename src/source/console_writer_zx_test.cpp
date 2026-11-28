@@ -12,7 +12,7 @@
 namespace cb::source::console_writer::zx_test {
 namespace {
 
-// The platform's writer over a file (the description: config/source/platforms/zx.json).
+// The platform's writer over a file (the description: config/platforms/zx.json).
 image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
     return console_writer::reconstruct("zx", file, folder);
 }

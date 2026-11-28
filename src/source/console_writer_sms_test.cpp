@@ -2,14 +2,29 @@
 // held to what it is for -- the source it writes, built again, is the cartridge it came from -- and to the text it writes, a golden
 // file that was read through for correctness (testdata/writers/sms.golden.asm).
 
-#include "source/sms_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/sms.hpp"
+#include "knowledge/package.hpp"
 #include "core/text.hpp"
 
-namespace cb::source::sms_writer {
+namespace cb::source::console_writer::sms_test {
 namespace {
+
+// The platform's writer over a file (the description: config/platforms/sms.json).
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("sms", file, folder);
+}
+
+// `data` kept in `folder` as `name` and written beside it.
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), data);
+    return reconstruct(folder / std::string(name), folder);
+}
+
 
 // $0000: DI; IM 1; JP $0080      $0038: EI; RETI      $0066: RETN
 // $0080: LD HL,$C000; LD A,1; OUT ($BF),A; CALL $0100; LD ($FFFD),A; LD HL,$0120; JP *
@@ -37,10 +52,10 @@ void check_golden(std::string_view name, const std::string& actual) {
     CB_CHECK_EQ(actual, golden(name));
 }
 
-CB_TEST("source.sms_writer.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
+CB_TEST("source.console_writer.sms.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
     fs::ScopedTempDir dir("cb_sms");
     const Bytes image = cartridge();
-    const image_writer::Written r = write(formats::sms::parse(image, ".sms"), "demo.sms", dir.path());
+    const image_writer::Written r = write(image, "demo.sms", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0x00, "reset"}, {0x38, "irq"}, {0x66, "nmi"}, {0x100, "sub_0100"}}));
@@ -51,7 +66,7 @@ CB_TEST("source.sms_writer.the_cartridge_comes_back_as_source_that_builds_the_sa
     check_golden("sms.golden.asm", fs::read_text(r.source));
 });
 
-CB_TEST("source.sms_writer.the_golden_names_what_the_code_touches", [] {
+CB_TEST("source.console_writer.sms.the_golden_names_what_the_code_touches", [] {
     // Read for what it says: the ports and the mapper register the code uses are defined and written by name, a word loaded into HL that
     // is the start of a line has a data label, and a jump target a local label.
     const std::string text = golden("sms.golden.asm");
@@ -63,14 +78,11 @@ CB_TEST("source.sms_writer.the_golden_names_what_the_code_touches", [] {
     CB_CHECK(text.find("        LD HL,$C000") != std::string::npos);   // a RAM address is a number: not a line of the program
 });
 
-CB_TEST("source.sms_writer.pages_after_the_second_are_shown_in_the_third_slot_as_data", [] {
-    CB_CHECK_EQ(slot_of(0), 0u);
-    CB_CHECK_EQ(slot_of(1), 1u);
-    CB_CHECK_EQ(slot_of(2), 2u);
-    CB_CHECK_EQ(slot_of(7), 2u);
+CB_TEST("source.console_writer.sms.pages_after_the_second_are_shown_in_the_third_slot_as_data", [] {
+    CB_CHECK((describe("sms").banked.slots == std::vector<std::uint32_t>{0x0000, 0x4000, 0x8000}));   // (page n in slot min(n, 2))
     fs::ScopedTempDir dir("cb_sms");
     const Bytes image = cartridge(0x10000);
-    const image_writer::Written r = write(formats::sms::parse(image, ".sms"), "big.sms", dir.path());
+    const image_writer::Written r = write(image, "big.sms", dir.path());
     CB_CHECK(r.same);
     const std::string source = fs::read_text(r.source);
     CB_CHECK(source.find("BANKSTOTAL 4") != std::string::npos);
@@ -78,38 +90,41 @@ CB_TEST("source.sms_writer.pages_after_the_second_are_shown_in_the_third_slot_as
     CB_CHECK_EQ(r.functions.size(), 4u);
 });
 
-CB_TEST("source.sms_writer.the_game_gears_own_port_is_named_for_a_game_gear_only", [] {
+CB_TEST("source.console_writer.sms.the_game_gears_own_port_is_named_for_a_game_gear_only", [] {
     Bytes rom = cartridge();
     rom[0x85] = 0xDB;   // IN A,($00): the Game Gear's start button
     rom[0x86] = 0x00;
     fs::ScopedTempDir dir("cb_sms");
-    const image_writer::Written gg = write(formats::sms::parse(rom, ".gg"), "game.gg", dir.path() / "gg");
+    const image_writer::Written gg = write(rom, "game.gg", dir.path() / "gg");
     CB_CHECK(gg.same);
     const std::string gg_source = fs::read_text(gg.source);
     CB_CHECK(gg_source.find("; Game Gear, 32 KB ROM") != std::string::npos);
     CB_CHECK(gg_source.find(".DEFINE GG_START") != std::string::npos);
     CB_CHECK(gg_source.find("        IN A,(GG_START)") != std::string::npos);
-    const image_writer::Written sms = write(formats::sms::parse(rom, ".sms"), "game.sms", dir.path() / "sms");
+    const image_writer::Written sms = write(rom, "game.sms", dir.path() / "sms");
     CB_CHECK(sms.same);
     CB_CHECK(fs::read_text(sms.source).find("GG_START") == std::string::npos);   // the same bytes on a Master System are just port 0
     CB_CHECK(fs::read_text(sms.source).find("        IN A,($00)") != std::string::npos);
 });
 
-CB_TEST("source.sms_writer.a_cartridge_header_is_said_in_the_head", [] {
+CB_TEST("source.console_writer.sms.a_cartridge_header_is_said_in_the_head", [] {
     Bytes rom = cartridge();
     const Bytes header = {'T', 'M', 'R', ' ', 'S', 'E', 'G', 'A', 0, 0, 0x78, 0x56, 0x34, 0x12, 0x02, 0x4C};
     std::copy(header.begin(), header.end(), rom.begin() + 0x7FF0);
     const formats::sms::Rom parsed = formats::sms::parse(rom, ".sms");
     CB_CHECK(parsed.header.has_value());
     fs::ScopedTempDir dir("cb_sms");
-    const image_writer::Written r = write(parsed, "demo.sms", dir.path());
+    const image_writer::Written r = write(rom, "demo.sms", dir.path());
     CB_CHECK(r.same);
     const std::string expected = std::format("; Master System, 32 KB ROM, header product {} version {} ({})", parsed.header->product, parsed.header->version, parsed.header->region);
     CB_CHECK(fs::read_text(r.source).find(expected) != std::string::npos);
     CB_CHECK(expected.find("version 2") != std::string::npos);
 });
 
-CB_TEST("source.sms_writer.the_tables_are_the_documented_ones", [] {
+CB_TEST("source.console_writer.sms.the_tables_are_the_documented_ones", [] {
+    const auto ports = [] { return knowledge::standard().hardware_names("sms", "ports"); };   // (the description's tables)
+    const auto game_gear_ports = [] { return knowledge::standard().hardware_names("sms", "game_gear_ports"); };
+    const auto mapper_registers = [] { return knowledge::standard().hardware_names("sms", "mapper"); };
     CB_CHECK_EQ(ports().at(0xBE), "VDP_DATA");
     CB_CHECK_EQ(ports().at(0xDC), "JOYPAD_1");
     CB_CHECK_EQ(ports().size(), 8u);
@@ -117,7 +132,7 @@ CB_TEST("source.sms_writer.the_tables_are_the_documented_ones", [] {
     CB_CHECK_EQ(mapper_registers().at(0xFFFC), "MAPPER_CONTROL");
 });
 
-CB_TEST("source.sms_writer.reconstruct_reads_the_file_and_refuses_what_is_not_one", [] {
+CB_TEST("source.console_writer.sms.reconstruct_reads_the_file_and_refuses_what_is_not_one", [] {
     fs::ScopedTempDir dir("cb_sms");
     fs::write_file(dir.path() / "game.sms", cartridge());
     const image_writer::Written r = reconstruct(dir.path() / "game.sms", dir.path() / "out");
@@ -127,4 +142,4 @@ CB_TEST("source.sms_writer.reconstruct_reads_the_file_and_refuses_what_is_not_on
 });
 
 }  // namespace
-}  // namespace cb::source::sms_writer
+}  // namespace cb::source::console_writer::sms_test

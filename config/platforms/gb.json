@@ -1,0 +1,50 @@
+{
+  "platform": "gb",
+  "title": "Game Boy / Game Boy Color cartridge",
+  "description": "A cartridge of 16 KB banks: bank 0 at $0000 and bank 1 at $4000 at power-on, where flow is followed from the entry and the interrupt vectors, around the header at $0104-$014F, which is data with its fields named. I/O and bank-controller registers in hardware.inc's spelling, written in RGBDS.",
+  "shape": "banked",
+  "dialect": "rgbds",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "\"{title}\", {mbc}, {kb} KB ROM{color?, Game Boy Color ({color})|}{sgb?, Super Game Boy|}",
+    ""
+  ],
+  "banked": {
+    "cpu": "sm83",
+    "assembler": "rgbds",
+    "bank_size": "0x4000",
+    "slots": ["0x0000", "0x4000"],
+    "power_on": "0x8000",
+    "bank_blocks": ["rom0", "romx"],
+    "data": [["0x0104", "0x0150"]],
+    "data_floor": "0x0150",
+    "no_data_labels": ["LD (nn)"],
+    "header_fields": [
+      {"at": "0x0104", "size": "0x30", "what": "Nintendo's logo (the boot ROM checks it)"},
+      {"at": "0x0134", "size": "0x0F", "what": "title"},
+      {"at": "0x0143", "size": 1, "what": "Color support"},
+      {"at": "0x0144", "size": 2, "what": "licensee"},
+      {"at": "0x0146", "size": 1, "what": "Super Game Boy support"},
+      {"at": "0x0147", "size": 1, "what": "cartridge type"},
+      {"at": "0x0148", "size": 1, "what": "ROM size"},
+      {"at": "0x0149", "size": 1, "what": "RAM size"},
+      {"at": "0x014A", "size": 1, "what": "destination"},
+      {"at": "0x014B", "size": 1, "what": "old licensee"},
+      {"at": "0x014C", "size": 1, "what": "version"},
+      {"at": "0x014D", "size": 1, "what": "header checksum"},
+      {"at": "0x014E", "size": 2, "what": "global checksum"}
+    ],
+    "vectors": [
+      {"at": "0x0100", "name": "entry"},
+      {"at": "0x0040", "name": "vblank"},
+      {"at": "0x0048", "name": "stat"},
+      {"at": "0x0050", "name": "timer"},
+      {"at": "0x0058", "name": "serial"},
+      {"at": "0x0060", "name": "joypad"}
+    ],
+    "hardware": [
+      {"section": "io", "spelling": "rgbds", "as": "constant", "digits": 4},
+      {"section": "mbc", "spelling": "rgbds", "as": "constant", "digits": 4}
+    ]
+  }
+}

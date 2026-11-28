@@ -10,8 +10,9 @@ recipe. That part is a description, not code.
 ## The shape
 
 ```
-config/source/platforms/<platform>.json      what the platform is, as data
+config/platforms/<platform>.json             what the platform is, as data (the machine's facts and its writer's)
 src/source/console_writer.{hpp,cpp}           the one writer: reads the description, runs the shape it names
+src/source/console_banked.cpp                 the banked shape (the processor a CPU trait: Z80, SM83)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -22,7 +23,7 @@ one way a program sits in memory, shared by every platform that sits that way:
 | shape | how the image lies | platforms (today's writers) |
 |---|---|---|
 | `z80-block` | one block at one address, flow from the entries | ZX Spectrum, MSX, ColecoVision, Amstrad CPC (and the Neo Geo's sound CPU) |
-| `banked` (next) | fixed-size banks, the first N mapped at power-on, a header range that is data, vectors at fixed places | Game Boy, Master System / Game Gear / SG-1000, NES, PC Engine, Atari 2600/5200/7800, Lynx, SNES |
+| `banked` | fixed-size banks, the first N mapped at power-on, a header range that is data, vectors at fixed places | Game Boy, Master System / Game Gear / SG-1000, NES, PC Engine, Atari 2600/5200/7800, Lynx, SNES |
 | `vectored` (later) | a 68000/ARM/MIPS image with a vector table or entry header | Genesis, Sega CD, 32X, Neo Geo, Jaguar, GBA, PS1, N64, Virtual Boy |
 | `executable` (later) | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections | PS2, PSP, PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
 
@@ -78,3 +79,7 @@ engine.
 ## Status
 
 - 2026-11-27: design; `z80-block` shape and the description reader; ZX Spectrum, MSX, ColecoVision and Amstrad CPC moved.
+- 2026-11-27: the descriptions move to `config/platforms/` (one file per platform). `banked` shape: Game Boy (SM83, RGBDS: the header
+  fields, the interrupt vectors, a write into ROM space is the bank controller's) and Master System / Game Gear / SG-1000 (Z80, WLA-DX:
+  the Game Gear's ports and the SG-1000's missing mapper as `variants` by system). Their goldens and the five homebrew samples are
+  byte-identical.

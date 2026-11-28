@@ -13,7 +13,7 @@
 namespace cb::source::console_writer::cpc_test {
 namespace {
 
-// The platform's writer over a file (the description: config/source/platforms/cpc.json).
+// The platform's writer over a file (the description: config/platforms/cpc.json).
 image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
     return console_writer::reconstruct("cpc", file, folder);
 }

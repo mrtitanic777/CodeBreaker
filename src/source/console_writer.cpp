@@ -12,6 +12,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "knowledge/package.hpp"
+#include "source/console_shapes.hpp"
 #include "source/z80_writer.hpp"
 
 namespace cb::source::console_writer {
@@ -23,9 +24,84 @@ std::string text_of(const nlohmann::ordered_json& j, const char* key) {
     return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
 }
 
+// A number in a description: a JSON number, or a text in hex ("0x0104", "$0104") or decimal.
+std::uint32_t number_of(const nlohmann::ordered_json& j) {
+    if (j.is_number_unsigned() || j.is_number_integer()) return j.get<std::uint32_t>();
+    const std::string s = j.get<std::string>();
+    if (s.starts_with("0x") || s.starts_with("0X")) return static_cast<std::uint32_t>(std::stoul(s.substr(2), nullptr, 16));
+    if (s.starts_with("$")) return static_cast<std::uint32_t>(std::stoul(s.substr(1), nullptr, 16));
+    return static_cast<std::uint32_t>(std::stoul(s));
+}
+
+std::uint32_t number_of(const nlohmann::ordered_json& j, const char* key, std::uint32_t fallback) {
+    const auto it = j.find(key);
+    return it == j.end() ? fallback : number_of(*it);
+}
+
+std::vector<std::string> texts_of(const nlohmann::ordered_json& j, const char* key) {
+    std::vector<std::string> out;
+    if (const auto it = j.find(key); it != j.end()) {
+        for (const auto& s : *it) out.push_back(s.get<std::string>());
+    }
+    return out;
+}
+
+std::vector<HardwareTable> tables_of(const nlohmann::ordered_json& j) {
+    std::vector<HardwareTable> out;
+    if (const auto it = j.find("hardware"); it != j.end()) {
+        for (const auto& t : *it) {
+            out.push_back({text_of(t, "section"), text_of(t, "spelling"), text_of(t, "as") == "port", number_of(t, "digits", text_of(t, "as") == "port" ? 2 : 4)});
+        }
+    }
+    return out;
+}
+
+Banked banked_of(const nlohmann::ordered_json& j) {
+    Banked b;
+    b.cpu = text_of(j, "cpu");
+    b.assembler = text_of(j, "assembler");
+    b.bank_size = number_of(j, "bank_size", 0x4000);
+    if (const auto it = j.find("slots"); it != j.end()) {
+        for (const auto& s : *it) b.slots.push_back(number_of(s));
+    }
+    if (b.slots.empty()) b.slots.push_back(0);
+    b.power_on = number_of(j, "power_on", 0x8000);
+    b.data_floor = number_of(j, "data_floor", 0);
+    if (const auto it = j.find("data"); it != j.end()) {
+        for (const auto& r : *it) b.data.push_back({number_of(r.at(0)), number_of(r.at(1))});
+    }
+    if (const auto it = j.find("header_fields"); it != j.end()) {
+        for (const auto& f : *it) b.header_fields.push_back({number_of(f.at("at")), number_of(f.at("size")), text_of(f, "what")});
+    }
+    if (const auto it = j.find("vectors"); it != j.end()) {
+        for (const auto& v : *it) b.vectors.push_back({number_of(v.at("at")), text_of(v, "name"), v.value("always", false)});
+    }
+    b.no_data_labels = texts_of(j, "no_data_labels");
+    b.hardware = tables_of(j);
+    b.prologue = text_of(j, "prologue");
+    b.bank_blocks = texts_of(j, "bank_blocks");
+    if (b.bank_blocks.empty()) b.bank_blocks.push_back("bank");
+    if (const auto it = j.find("variants"); it != j.end()) {
+        b.variant_by = text_of(*it, "by");
+        if (const auto each = it->find("each"); each != it->end()) {
+            for (const auto& [when, v] : each->items()) {
+                Variant variant{when, tables_of(v), {}, {}, v.value("constants", true)};
+                if (const auto drop = v.find("drop_ports"); drop != v.end()) {
+                    for (const auto& p : *drop) variant.drop_ports.push_back(number_of(p));
+                }
+                if (const auto add = v.find("add_ports"); add != v.end()) {
+                    for (const auto& [name, at] : add->items()) variant.add_ports[number_of(at)] = name;
+                }
+                b.variants.push_back(std::move(variant));
+            }
+        }
+    }
+    return b;
+}
+
 Description read_description(std::string_view name) {
-    const std::filesystem::path file = config::current().config_root() / "source" / "platforms" / (std::string(name) + ".json");
-    if (!std::filesystem::exists(file)) throw UsageError(std::format("no console platform {} (config/source/platforms/{}.json)", name, name));
+    const std::filesystem::path file = config::current().config_root() / "platforms" / (std::string(name) + ".json");
+    if (!std::filesystem::exists(file)) throw UsageError(std::format("no console platform {} (config/platforms/{}.json)", name, name));
     const nlohmann::ordered_json j = nlohmann::ordered_json::parse(fs::read_text(file));
     Description d;
     d.name = std::string(name);
@@ -45,6 +121,7 @@ Description read_description(std::string_view name) {
             }
         }
     }
+    if (const auto banked = j.find("banked"); banked != j.end()) d.banked = banked_of(*banked);
     return d;
 }
 
@@ -158,9 +235,15 @@ image_writer::Written write(const Description& description, const Loaded& progra
     values.insert_or_assign("size", static_cast<std::int64_t>(program.image.size()));
     values.insert_or_assign("kb", static_cast<std::int64_t>(program.image.size() / 1024));
     values.insert_or_assign("origin", static_cast<std::int64_t>(program.origin));
-    const std::vector<std::string> head = head_lines(description, values);
     const std::string stem = std::filesystem::path(file_name).stem().string();
+    values.insert_or_assign("stem", stem);
+    const std::vector<std::string> head = head_lines(description, values);
     if (description.shape == "z80-block") return write_z80_block(description, program, head, stem, folder);
+    if (description.shape == "banked") {
+        std::vector<std::string> comment;
+        for (const std::string& line : head) comment.push_back(line.empty() ? std::string() : "; " + line);
+        return write_banked(description, program, comment, values, file_name, folder);
+    }
     throw UsageError(std::format("console platform {} names the shape {}, which the writer does not have", description.name, description.shape));
 }
 

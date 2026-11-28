@@ -1,0 +1,37 @@
+{
+  "platform": "sms",
+  "title": "Master System / Game Gear / SG-1000 cartridge",
+  "description": "A cartridge of 16 KB pages: pages 0-2 in slots 0-2 at power-on, where flow is followed from the reset, IRQ and NMI vectors. The VDP, PSG and controller ports and the mapper's registers by name (the Game Gear's own ports for a Game Gear; the SG-1000 has no mapper, memory control, I/O control or V counter, and its SC-3000 8255 at $DC-$DF), written in WLA-DX.",
+  "shape": "banked",
+  "dialect": "wla-dx",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "{system}, {kb} KB ROM{header?, header product {product} version {version} ({region})|}"
+  ],
+  "banked": {
+    "cpu": "z80",
+    "assembler": "wla-z80",
+    "bank_size": "0x4000",
+    "slots": ["0x0000", "0x4000", "0x8000"],
+    "power_on": "0xC000",
+    "prologue": "prologue",
+    "bank_blocks": ["bank"],
+    "data_floor": "0x0100",
+    "vectors": [
+      {"at": "0x0000", "name": "reset", "always": true},
+      {"at": "0x0038", "name": "irq"},
+      {"at": "0x0066", "name": "nmi"}
+    ],
+    "hardware": [
+      {"section": "ports", "as": "port", "digits": 2},
+      {"section": "mapper", "as": "constant", "digits": 4}
+    ],
+    "variants": {
+      "by": "system",
+      "each": {
+        "Game Gear": {"hardware": [{"section": "game_gear_ports", "as": "port", "digits": 2}]},
+        "SG-1000": {"constants": false, "drop_ports": ["0x3E", "0x3F", "0x7E"], "add_ports": {"PPI_C": "0xDE", "PPI_CONTROL": "0xDF"}}
+      }
+    }
+  }
+}

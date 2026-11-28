@@ -2,14 +2,29 @@
 // held to what it is for -- the source it writes, built again, is the cartridge it came from -- and to the text it writes, a golden
 // file that was read through for correctness (testdata/writers/gb.golden.asm).
 
-#include "source/gb_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/gb.hpp"
+#include "knowledge/package.hpp"
 #include "core/text.hpp"
 
-namespace cb::source::gb_writer {
+namespace cb::source::console_writer::gb_test {
 namespace {
+
+// The platform's writer over a file (the description: config/platforms/gb.json).
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return console_writer::reconstruct("gb", file, folder);
+}
+
+// `data` kept in `folder` as `name` and written beside it.
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), data);
+    return reconstruct(folder / std::string(name), folder);
+}
+
 
 // $0100: NOP; JP $0150      $0040 (vblank): RETI
 // $0150: CALL $0170; wait: LDH A,($FF44); CP $90; JR NZ,wait; LD HL,$0180; LD ($2000),A; JP *
@@ -44,10 +59,10 @@ void check_golden(std::string_view name, const std::string& actual) {
     CB_CHECK_EQ(actual, golden(name));
 }
 
-CB_TEST("source.gb_writer.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
+CB_TEST("source.console_writer.gb.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
     fs::ScopedTempDir dir("cb_gb");
     const Bytes image = cartridge();
-    const image_writer::Written r = write(formats::gb::parse(image), "demo.gb", dir.path());
+    const image_writer::Written r = write(image, "demo.gb", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0x40, "vblank"}, {0x100, "entry"}, {0x170, "sub_0170"}}));
@@ -58,7 +73,7 @@ CB_TEST("source.gb_writer.the_cartridge_comes_back_as_source_that_builds_the_sam
     check_golden("gb.golden.asm", fs::read_text(r.source));
 });
 
-CB_TEST("source.gb_writer.the_golden_names_what_the_code_touches", [] {
+CB_TEST("source.console_writer.gb.the_golden_names_what_the_code_touches", [] {
     // The golden file, read for what it says: the registers the code touches are defined and named in its operands, the header is data with
     // its fields named, a pointer into the program gets a data label, and a write into ROM space is a bank controller register, not a pointer.
     const std::string text = golden("gb.golden.asm");
@@ -70,10 +85,10 @@ CB_TEST("source.gb_writer.the_golden_names_what_the_code_touches", [] {
     CB_CHECK(text.find("D_2000") == std::string::npos);
 });
 
-CB_TEST("source.gb_writer.banks_past_the_second_are_data_and_the_head_says_what_the_cartridge_is", [] {
+CB_TEST("source.console_writer.gb.banks_past_the_second_are_data_and_the_head_says_what_the_cartridge_is", [] {
     fs::ScopedTempDir dir("cb_gb");
     const Bytes image = cartridge(0x10000, 0x80, 0x01);
-    const image_writer::Written r = write(formats::gb::parse(image), "big.gbc", dir.path());
+    const image_writer::Written r = write(image, "big.gbc", dir.path());
     CB_CHECK(r.same);
     CB_CHECK(r.built && *r.built == dir.path() / "big.built.gbc");   // the extension is the original's
     const std::string source = fs::read_text(r.source);
@@ -83,24 +98,26 @@ CB_TEST("source.gb_writer.banks_past_the_second_are_data_and_the_head_says_what_
     CB_CHECK_EQ(r.image_bytes, 0x10000u);
 });
 
-CB_TEST("source.gb_writer.registers_are_named_only_when_the_code_uses_them", [] {
+CB_TEST("source.console_writer.gb.registers_are_named_only_when_the_code_uses_them", [] {
+    const auto registers = [] { return knowledge::standard().hardware_names("gb", "io", "rgbds"); };       // (the description's tables)
+    const auto mbc_registers = [] { return knowledge::standard().hardware_names("gb", "mbc", "rgbds"); };
     CB_CHECK_EQ(registers().at(0xFF40), "rLCDC");
     CB_CHECK_EQ(registers().at(0xFFFF), "rIE");
     CB_CHECK_EQ(registers().size(), 55u);
     CB_CHECK_EQ(mbc_registers().at(0x2000), "rROMB0");
     fs::ScopedTempDir dir("cb_gb");
-    const image_writer::Written r = write(formats::gb::parse(cartridge()), "demo.gb", dir.path());
+    const image_writer::Written r = write(cartridge(), "demo.gb", dir.path());
     CB_CHECK(fs::read_text(r.source).find("rNR10") == std::string::npos);   // a register no instruction touches is not defined
 });
 
-CB_TEST("source.gb_writer.a_file_too_short_for_a_header_is_refused", [] {
+CB_TEST("source.console_writer.gb.a_file_too_short_for_a_header_is_refused", [] {
     fs::ScopedTempDir dir("cb_gb");
     fs::write_file(dir.path() / "short.gb", Bytes(0x100, 0));
     CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "short.gb", dir.path() / "out"));
     CB_CHECK_THROWS_AS(IoError, reconstruct(dir.path() / "none.gb", dir.path() / "out"));
 });
 
-CB_TEST("source.gb_writer.reconstruct_reads_the_file", [] {
+CB_TEST("source.console_writer.gb.reconstruct_reads_the_file", [] {
     fs::ScopedTempDir dir("cb_gb");
     fs::write_file(dir.path() / "game.gb", cartridge());
     const image_writer::Written r = reconstruct(dir.path() / "game.gb", dir.path() / "out");
@@ -109,4 +126,4 @@ CB_TEST("source.gb_writer.reconstruct_reads_the_file", [] {
 });
 
 }  // namespace
-}  // namespace cb::source::gb_writer
+}  // namespace cb::source::console_writer::gb_test

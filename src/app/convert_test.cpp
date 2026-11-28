@@ -277,7 +277,7 @@ CB_TEST("app.convert.the_article_agrees_with_the_sound", [] {
 
 // ---- the real routes ---------------------------------------------------------------------------------------------------------------------
 
-// A Game Boy cartridge of its own: NOP; JP $0150, a main loop and a subroutine (as source/gb_writer_test.cpp has it).
+// A Game Boy cartridge of its own: NOP; JP $0150, a main loop and a subroutine (as source/console_writer_gb_test.cpp has it).
 Bytes cv_cartridge() {
     Bytes rom(0x8000, 0xFF);
     rom[0x40] = 0xD9;

@@ -36,12 +36,10 @@
 #include "formats/zx.hpp"
 #include "source/console_writer.hpp"
 #include "source/dos_writer.hpp"
-#include "source/gb_writer.hpp"
 #include "source/gba_writer.hpp"
 #include "source/genesis_writer.hpp"
 #include "source/ps1_writer.hpp"
 #include "source/nes_writer.hpp"
-#include "source/sms_writer.hpp"
 #include "verify/lanes/dos.hpp"
 #include "verify/lanes/image_lane.hpp"
 #include "verify/lanes/msx.hpp"
@@ -542,7 +540,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.effects = gb_effects;
         spec.what = {"end", "A", "flags", "BC", "DE", "HL", "RAM", "I/O and bank accesses"};
         spec.start = [](const lanes::State& s) { return std::format("from A={:02X} BC={:02X}{:02X} HL={:02X}{:02X}", at(s, "a"), at(s, "b"), at(s, "c"), at(s, "h"), at(s, "l")); };
-        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::gb_writer::reconstruct(m, out)); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("gb", m, out)); };
     } else if (name == "nes") {
         spec.kind = "nes";
         spec.rev = 2;
@@ -559,7 +557,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.effects = sms_effects;
         spec.what = {"end", "A", "flags", "BC", "DE", "HL", "IX", "IY", "RAM", "port and mapper accesses"};
         spec.start = [](const lanes::State& s) { return std::format("from A={:02X} BC={:02X}{:02X} HL={:02X}{:02X}", at(s, "a"), at(s, "b"), at(s, "c"), at(s, "h"), at(s, "l")); };
-        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::sms_writer::reconstruct(m, out)); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("sms", m, out)); };
     } else if (name == "genesis") {
         spec.kind = "genesis";
         spec.rev = 1;

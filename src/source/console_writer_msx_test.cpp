@@ -11,7 +11,7 @@
 namespace cb::source::console_writer::msx_test {
 namespace {
 
-// The platform's writer over a file (the description: config/source/platforms/msx.json).
+// The platform's writer over a file (the description: config/platforms/msx.json).
 image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
     return console_writer::reconstruct("msx", file, folder);
 }

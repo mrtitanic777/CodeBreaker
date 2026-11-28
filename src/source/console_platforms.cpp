@@ -1,15 +1,18 @@
 // source/console_platforms.cpp -- the console writer's loaders (console_writer.hpp): for each platform, which bytes of a file are the program,
 // where they sit, its entry points and its header's values by the names the description's templates use. The rest of a platform is its
-// description (config/source/platforms/<name>.json).
+// description (config/platforms/<name>.json).
 
 #include "source/console_writer.hpp"
 
 #include <format>
 
 #include "core/error.hpp"
+#include "source/isa.hpp"
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
+#include "formats/gb.hpp"
 #include "formats/msx.hpp"
+#include "formats/sms.hpp"
 #include "formats/zx.hpp"
 
 namespace cb::source::console_writer {
@@ -77,12 +80,39 @@ Loaded load_cpc(const std::filesystem::path& file) {
     return l;
 }
 
+Loaded load_gb(const std::filesystem::path& file) {
+    formats::gb::Rom rom = formats::gb::read(file);
+    Loaded l{.image = {}, .origin = 0, .entries = {}, .values = {}, .starts = rom.functions(isa::sm83_decoder()), .memory = rom.memory()};
+    using Color = formats::gb::ColorSupport;
+    l.values = {{"title", rom.title},
+                {"mbc", rom.mbc()},
+                {"color", std::string(rom.color == Color::None ? "" : rom.color == Color::Also ? "also" : "only")},
+                {"sgb", Num{rom.sgb}}};
+    l.image = std::move(rom.data);
+    return l;
+}
+
+Loaded load_sms(const std::filesystem::path& file) {
+    formats::sms::Rom rom = formats::sms::read(file);
+    Loaded l{.image = {}, .origin = 0, .entries = {}, .values = {}, .starts = rom.functions(isa::z80_decoder()), .memory = rom.memory()};
+    l.values = {{"system", std::string(formats::sms::to_string(rom.system))}, {"header", Num{rom.header.has_value()}}};
+    if (rom.header) {
+        l.values.insert_or_assign("product", rom.header->product);
+        l.values.insert_or_assign("version", Num{rom.header->version});
+        l.values.insert_or_assign("region", rom.header->region);
+    }
+    l.image = std::move(rom.data);
+    return l;
+}
+
 using Loader = Loaded (*)(const std::filesystem::path&);
 
 constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"coleco", load_coleco},
     {"cpc", load_cpc},
+    {"gb", load_gb},
     {"msx", load_msx},
+    {"sms", load_sms},
     {"zx", load_zx},
 };
 

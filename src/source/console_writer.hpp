@@ -1,11 +1,11 @@
-// source/console_writer.hpp -- the one source writer for the consoles: a platform is a description (config/source/platforms/<name>.json), the
+// source/console_writer.hpp -- the one source writer for the consoles: a platform is a description (config/platforms/<name>.json), the
 // writer reads it and writes the program through the shape it names (docs/SOURCE_WRITER.md).
 //
 //     image_writer::Written r = console_writer::reconstruct("coleco", "game.col", "out");
 //     r.source                  out/game.asm, in the platform's dialect (the description's `dialect`: sjasmplus for the Z80 machines)
 //     r.same                    the source, built, is the program byte for byte
 //
-// What a platform says, as data: its title, its shape (how the program lies in memory: `z80-block`, one block at one address), its dialect,
+// What a platform says, as data: its title, its shape (how the program lies in memory: `z80-block`, one block at one address; `banked`, a cartridge of banks), its dialect,
 // which knowledge tables name its hardware (config/knowledge/<platform>/registers.json: `ports` a hardware section for IN/OUT ports, `fixed`
 // a table of fixed addresses outside the program -- BIOS or firmware entry points, system variables) and the head comment, one template per
 // line over the values the platform's loader read from the file's header.
@@ -38,7 +38,51 @@ struct HeadLine {
     std::string each;
 };
 
-// A platform's description (config/source/platforms/<name>.json).
+// ---- the banked shape's part of a description (docs/SOURCE_WRITER.md) ----
+struct Range {
+    std::uint32_t from = 0, to = 0;   // [from, to): a range of the address space that is data (a header), not code
+};
+struct HeaderField {
+    std::uint32_t at = 0, size = 0;
+    std::string what;                 // its name, said beside its data rows
+};
+struct VectorName {
+    std::uint32_t at = 0;
+    std::string name;
+    bool always = false;              // named even when flow finds no function there
+};
+struct HardwareTable {
+    std::string section;              // the knowledge hardware section (config/knowledge/<platform>/registers.json)
+    std::string spelling;             // the dialect spelling of its names ("" the knowledge base's own)
+    bool port = false;                // I/O ports (IN/OUT), else addresses the code reads and writes
+    unsigned digits = 4;              // the hex digits of its `.equ` values
+};
+struct Variant {
+    std::string when;                 // the value of `variant_by` it applies to ("Game Gear")
+    std::vector<HardwareTable> hardware;   // more tables
+    std::vector<std::uint32_t> drop_ports;
+    image_writer::Names add_ports;
+    bool constants = true;            // false: the constant tables do not apply (no such hardware)
+};
+struct Banked {
+    std::string cpu;                  // "z80", "sm83"
+    std::string assembler;            // the L2 assembly's syntax ("rgbds", "wla-z80")
+    std::uint32_t bank_size = 0x4000;
+    std::vector<std::uint32_t> slots; // the address each bank is seen at: bank i at slots[min(i, last)]; the first slots.size() banks are mapped at power-on
+    std::uint32_t power_on = 0x8000;  // flow runs below this address
+    std::uint32_t data_floor = 0;     // an operand below this is not a pointer into the program
+    std::vector<Range> data;
+    std::vector<HeaderField> header_fields;
+    std::vector<VectorName> vectors;
+    std::vector<std::string> no_data_labels;   // instruction patterns whose operand is never a data label ("LD (nn)": a write into ROM goes to the mapper)
+    std::vector<HardwareTable> hardware;
+    std::string prologue;             // the dialect block ahead of the banks ({pages})
+    std::vector<std::string> bank_blocks;      // the dialect blocks that open a bank: the first bank's, then the rest's ({bank}, {slot})
+    std::string variant_by;           // the loader's value that picks a variant ("system")
+    std::vector<Variant> variants;
+};
+
+// A platform's description (config/platforms/<name>.json).
 struct Description {
     std::string name;        // the file's name: what reconstruct() is asked for
     std::string platform;    // the knowledge base's platform (config/knowledge/<platform>)
@@ -48,6 +92,7 @@ struct Description {
     std::string ports;       // the knowledge hardware section of the I/O ports ("" none)
     std::string fixed;       // the knowledge table of the fixed addresses outside the program ("" none)
     std::vector<HeadLine> head;
+    Banked banked;           // (the banked shape's)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -59,6 +104,8 @@ struct Loaded {
     std::uint32_t origin = 0;
     image_writer::Names entries;
     Values values;
+    std::vector<std::uint32_t> starts;   // (banked) where flow starts, in the order the format found them
+    Bytes memory;                        // (banked) the address space at power-on that flow decodes
 };
 
 // The program in `file`, as the platform's loader reads it (IoError when the file cannot be read, FormatError when it is not the platform's).
@@ -69,7 +116,8 @@ Loaded load(std::string_view platform, const std::filesystem::path& file);
 std::string fill(std::string_view text, const Values& values);
 
 // The program written as source to `folder` (<stem>.asm for a file named `file_name`) and rebuilt. The writer adds the values every program
-// has: `file` (file_name), `size` and `kb` (the image's), `origin`.
+// has: `file` (file_name), `stem` (its name without the extension), `size` and `kb` (the image's), `origin`. A head template that is
+// empty is an empty line; the others are comment lines.
 image_writer::Written write(const Description& description, const Loaded& program, std::string_view file_name, const std::filesystem::path& folder);
 
 // load() and write() for a file.

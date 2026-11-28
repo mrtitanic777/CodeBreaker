@@ -7,7 +7,6 @@
 #include "source/atari2600_writer.hpp"
 #include "source/atari5200_writer.hpp"
 #include "source/console_writer.hpp"
-#include "source/gb_writer.hpp"
 #include "source/lynx_writer.hpp"
 #include "source/pce_writer.hpp"
 #include "source/snes_writer.hpp"
@@ -23,7 +22,6 @@
 #include "source/psp_writer.hpp"
 #include "source/saturn_writer.hpp"
 #include "source/sega32x_writer.hpp"
-#include "source/sms_writer.hpp"
 #include "source/vb_writer.hpp"
 #include "source/vita_writer.hpp"
 
@@ -38,7 +36,7 @@ std::optional<std::filesystem::path> sample(std::string_view relative) {
     return file;
 }
 
-// The console writer for a platform (config/source/platforms/<platform>.json), as a writer of a file.
+// The console writer for a platform (config/platforms/<platform>.json), as a writer of a file.
 auto console(std::string_view platform) {
     return [platform](const std::filesystem::path& f, const std::filesystem::path& d) { return console_writer::reconstruct(platform, f, d); };
 }
@@ -64,14 +62,14 @@ CB_TEST("source.writers.homebrew.samples_are_here", [] {
 });
 
 CB_TEST("source.writers.homebrew.master_system", [] {
-    rebuild("sms-peterlemon/HelloWorld.sms", 3, sms_writer::reconstruct);
-    rebuild("sms-peterlemon/Sprite.sms", 3, sms_writer::reconstruct);
-    rebuild("sms-peterlemon/SMSAudio.sms", 3, sms_writer::reconstruct);
+    rebuild("sms-peterlemon/HelloWorld.sms", 3, console("sms"));
+    rebuild("sms-peterlemon/Sprite.sms", 3, console("sms"));
+    rebuild("sms-peterlemon/SMSAudio.sms", 3, console("sms"));
 });
 
 // (the SG-1000 is the Master System's lane; the MSX and the ColecoVision write a flat block)
 CB_TEST("source.writers.homebrew.z80_family", [] {
-    rebuild("sg1000-240p/suitesg.sg", 1, sms_writer::reconstruct);
+    rebuild("sg1000-240p/suitesg.sg", 1, console("sms"));
     rebuild("msx-nohzdyve/nohzdyve.rom", 1, console("msx"));
     rebuild("msx-wrally/rally-demo.rom", 1, console("msx"));
     rebuild("coleco-240p/suitecv.rom", 1, console("coleco"));
@@ -98,7 +96,7 @@ CB_TEST("source.writers.homebrew.m6502_family", [] {
         rebuild(std::string("snes/opensnes-examples/extracted/opensnes-examples_v0.55.0/examples/bin/") + name + ".sfc", 1, snes);
 });
 
-CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, gb_writer::reconstruct); });
+CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, console("gb")); });
 
 // (the ZX Spectrum's: a tape's code block, written with the Spectrum's names)
 CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, console("zx")); });
