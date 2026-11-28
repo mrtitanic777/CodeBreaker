@@ -68,6 +68,10 @@ Proof, on the 15 MINI.CAB modules (this checkout's own state; work/win95-track1/
   byte-identical to the build's `m.dll` for all 15 (KRNL386's delivered file then has the build's whole-file length patch on top,
   3 bytes of the MZ header: a CodeBreaker step, not a tool's);
 * cb_tests_build `build.source_form.*` 4/4.
+* `tools\gate.cmd` (a full run: this worktree had no passing gate on record): cb_tests 6,806 passed, 0 failed in 16 shards
+  (shard 0 hit the gate's time limit under the 8-job load; alone it passes, 454/454 in 16 minutes); command cases 152 passed,
+  15 known, 1 failed: `settings`, which fails the same way with this checkout's unchanged exe (the order of the settings this
+  worktree's settings.json gives), so it is not this change's.
 
 Measure (work/win95-track1/measure.py; the build folders before, the source forms after):
 
