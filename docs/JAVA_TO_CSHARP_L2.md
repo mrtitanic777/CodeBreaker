@@ -137,3 +137,30 @@ same class: the same tree, apart from source positions. Then the C# from both is
 
   Expression bodies (`=> expr;`) are kept. They come from one non-upstream flag on `EntityDeclaration`, which the output visitor
   reads and ILSpy's builders never set. Nothing calls the plain lowering yet: the old writer stays the one in use until step 5.
+- 2026-11-28: step 3, first part: the rule set java, `translate/rules/java_csharp`. It is an L2 → L2 pass over a copy of the
+  units: it moves Java's types onto .NET's and sets dispatch modifiers and names. It also carries over:
+  - construction order;
+  - library calls through the API-mapping registry, its 140 C# templates read into L2 by a small expression reader with the
+    call's own target and arguments in the holes;
+  - Java's text conversions and reference comparisons;
+  - labelled break and continue as goto;
+  - try-with-resources with Java's suppressed exceptions;
+  - a finally that jumps.
+
+  `L2CSharpProgram` runs it when its options give the registry, and writes the runtime files the units use. Proof:
+  `dotnet.l2_csharp.java.*` (goldens in `dotnet/testdata/l2_csharp_java`). calc, fixtures, modern and features build with Roslyn
+  and print what the old translation prints (work/stage15/judge_java.sh). calc, fixtures and modern also print what the JVM prints
+  for their Java sources. calls, exception_cause and hash_order build. The diff against the old goldens is layout (as in step 2),
+  plus `var` where the declared and made types are now the same .NET type, and plain concatenation where the old writer also
+  wrote it for Java.
+
+  Not yet carried, each declined by name (step 3, second part):
+  - classes declared in a method, and anonymous classes;
+  - inner classes that reach their outer instance;
+  - lambdas of the program's own interfaces (JFn);
+  - enums of objects (JEnum);
+  - boxes that may hold a null (`int?`, JLib.Unbox);
+  - java.util.stream;
+  - Iterable and Comparator classes;
+  - switch-expression arms with statements;
+  - the reflection classes.

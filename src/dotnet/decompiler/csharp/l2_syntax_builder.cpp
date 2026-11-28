@@ -26,6 +26,7 @@
 #include "dotnet/decompiler/csharp/syntax/syntax.hpp"
 #include "dotnet/decompiler/il/il_instruction.hpp"
 #include "dotnet/decompiler/util/char_info.hpp"
+#include "translate/rules/java_csharp.hpp"
 
 namespace cb::dotnet::decompiler::csharp {
 
@@ -218,8 +219,20 @@ Modifiers modifiers_of(const std::vector<std::string>& mods) {
 
 // ---- constants: where a constant expression leaves its type's range ---------------------------------------------------
 
+// `int.MaxValue` and the other limits of an integer type (what the rule set java writes Java's Integer.MAX_VALUE as): a constant.
+std::optional<std::int64_t> limit_value(Node* e) {
+    const auto* s = ir::get<ir::Select>(e);
+    if (s == nullptr || !s->sym || !ir::is<ir::TypeName>(s->obj)) return std::nullopt;
+    const auto rg = range_of(s->obj->type);
+    if (!rg || rg->bits == 64 && prim_of(s->obj->type) == ir::Prim::U64) return std::nullopt;
+    if (s->sym->name == "MaxValue") return rg->hi;
+    if (s->sym->name == "MinValue") return rg->lo;
+    return std::nullopt;
+}
+
 bool is_const(Node* e0) {
     Node* e = strip(e0);
+    if (limit_value(e)) return true;
     if (const auto* l = ir::get<ir::Lit>(e)) {
         if (is_null(l->value)) return false;
         if (const auto* s = std::get_if<std::string>(&l->value)) return code_points(*s).size() == 1;
@@ -252,6 +265,7 @@ public:
             if (const auto* b = std::get_if<bool>(&l->value)) return *b ? 1 : 0;
             return std::nullopt;
         }
+        if (const auto lc = limit_value(x)) return lc;
         std::optional<std::int64_t> r;
         bool big = false;
         if (const auto* u = ir::get<ir::Unary>(x)) {
@@ -505,6 +519,8 @@ class UnitBuilder {
 public:
     UnitBuilder(L2CSharpProgram& prog, Node* unit_node) : prog_(prog), u_(*ir::get<ir::Unit>(unit_node)) {
         lang_ = u_.lang && !u_.lang->empty() ? *u_.lang : "java";
+        java_ = lang_ == "java" && prog.java_rules();
+        csharp_ = lang_ == "csharp";
         scopes_.emplace_back();
     }
 
@@ -578,6 +594,8 @@ private:
     L2CSharpProgram& prog_;
     ir::Unit& u_;
     std::string lang_;
+    bool java_ = false;     // a Java unit the rule set restated
+    bool csharp_ = false;   // a C# unit: the source's own forms are put back (initialisers, expression bodies, `?.`)
     std::set<std::string> usings_;
     ir::ClassDecl* cls_ = nullptr;
     ir::MethodDecl* method_ = nullptr;
@@ -800,15 +818,16 @@ SyntaxTree* UnitBuilder::unit() {
         for (Node* c : nodes) {
             auto* cd = ir::get<ir::ClassDecl>(c);
             try {
+                if (const auto* un = ir::get<ir::Unsupported>(c)) throw Declined{un->kind.value_or(""), un->raw.value_or(un->kind.value_or(""))};
                 if (cd == nullptr) throw Declined{"member", "a unit member " + describe(c)};
-                if (lang_ != "csharp") throw Declined{"library", "no rule set for " + lang_ + " source in the plain lowering yet"};
+                if (!csharp_ && !java_) throw Declined{"library", "no rule set for " + lang_ + " source in the plain lowering yet"};
                 EntityDeclaration* d = class_decl(*cd);
                 for (Comment* p : pending) d->add_leading_trivia(p);
                 pending.clear();
                 written.push_back(d);
             } catch (const Declined& d) {
                 note(d.kind, d.why);
-                pending.push_back(line_comment("CB-GAP: " + (cd != nullptr ? cd->name.value_or("") : std::string("?")) + " was not translated: " + d.why));
+                pending.push_back(line_comment(cd != nullptr ? "CB-GAP: " + cd->name.value_or("") + " was not translated: " + d.why : "CB-GAP: " + d.why));
             }
         }
         if (!ns.empty()) {
@@ -1086,7 +1105,7 @@ EntityDeclaration* UnitBuilder::prop(ir::Property& p) {
     }
     decl->set_modifiers(modifiers_of(mods));
     // a lone getter that returns an expression: `T P => expr;`
-    if (p.accessors.size() == 1) {
+    if (csharp_ && p.accessors.size() == 1) {
         ir::MethodDecl& a0 = accessor_of(p.accessors[0]);
         if (a0.kind == "get" && ir::present(a0.body) && a0.mods.empty()) {
             const auto b = body_stmts(a0);
@@ -1116,7 +1135,7 @@ EntityDeclaration* UnitBuilder::prop(ir::Property& p) {
             acc->set_body(body_block(a.body, &a));
             const auto st = body_stmts(a);
             const auto* ret = st.size() == 1 ? ir::get<ir::Return>(st[0]) : nullptr;
-            acc->set_expression_bodied((ret != nullptr && ret->expr != nullptr) || (st.size() == 1 && ir::is<ir::ExprStmt>(st[0])));   // `get => expr;`
+            acc->set_expression_bodied(csharp_ && ((ret != nullptr && ret->expr != nullptr) || (st.size() == 1 && ir::is<ir::ExprStmt>(st[0]))));   // `get => expr;`
         }
         if (acc->accessor_kind() == AccessorKind::Getter) {
             if (property != nullptr) property->set_getter(acc);
@@ -1201,7 +1220,7 @@ EntityDeclaration* UnitBuilder::method_decl(Node* node, ir::ClassDecl& c) {
         auto* op = make<OperatorDeclaration>(std::vector<AttributeSection*>{}, type(m.ret), nullptr, declared_operators().at(mname), params(m.params));
         op->set_modifiers(modifiers_of(mods));
         op->set_body(body);
-        op->set_expression_bodied(lang_ == "csharp" && single_return(m.body));
+        op->set_expression_bodied(csharp_ && single_return(m.body));
         return op;
     }
     auto* md = make<MethodDeclaration>();
@@ -1214,7 +1233,7 @@ EntityDeclaration* UnitBuilder::method_decl(Node* node, ir::ClassDecl& c) {
         if (Constraint* k = constraint(tp)) md->constraints().add(k);
     }
     md->set_body(body);
-    md->set_expression_bodied(lang_ == "csharp" && md->constraints().empty() && single_return(m.body));   // a lone `return expr;` of a C# method
+    md->set_expression_bodied(csharp_ && md->constraints().empty() && single_return(m.body));   // a lone `return expr;` of a C# method
     return md;
 }
 
@@ -1440,7 +1459,7 @@ Statement* UnitBuilder::switch_stmt(const ir::Switch& s) {
 // where `dispatch` writes the initialiser in its place.
 std::vector<Node*> UnitBuilder::initializers(const std::vector<Node*>& in) {
     std::vector<Node*> stmts = in;
-    if (lang_ != "csharp") return stmts;
+    if (!csharp_) return stmts;
     bool changed = true;
     while (changed) {
         changed = false;
@@ -1633,6 +1652,22 @@ Expression* UnitBuilder::coerce(Node* e, const TypeP& t) {
         }
         return make<CastExpression>(keyword_type("char"), expr(e));
     }
+    if (java_) {
+        // a char constant narrowed to a byte or short is its number
+        if ((tp == ir::Prim::I8 || tp == ir::Prim::I16 || tp == ir::Prim::U8) && ep == ir::Prim::U16) {
+            if (const auto* l = ir::get<ir::Lit>(strip(e))) {
+                if (const auto* sv = std::get_if<std::string>(&l->value)) {
+                    const auto cps = code_points(*sv);
+                    if (!cps.empty()) return int_lit(static_cast<std::int32_t>(cps.front()));
+                }
+                if (const auto* iv = std::get_if<std::int64_t>(&l->value)) return int_lit(static_cast<std::int32_t>(*iv));
+            }
+        }
+        // a constant arm of ?: narrowed to a byte, short or char: C# types the whole expression int unless each arm is cast
+        if (const auto* choice = ir::get<ir::Cond>(strip(e)); choice != nullptr && tp && ep && (tp == ir::Prim::I8 || tp == ir::Prim::I16 || tp == ir::Prim::U16)) {
+            return make<ConditionalExpression>(expr(choice->cond), make<CastExpression>(type(t), expr(choice->then)), make<CastExpression>(type(t), expr(choice->orelse)));
+        }
+    }
     return expr(e);
 }
 
@@ -1699,7 +1734,7 @@ Expression* UnitBuilder::expr(Node* e, bool statement) {
     Expression* r = dispatch(e);
     if (!statement) {
         Node* se = strip(e);
-        if (!ir::is<ir::Lit>(se) && !ir::is<ir::Paren>(se)) {
+        if (!ir::is<ir::Lit>(se) && !ir::is<ir::Paren>(se) && !limit_value(se)) {
             if (range_of(type_of(e)) && is_const(e) && overflows(e)) return make<UncheckedExpression>(r);
         }
     }
@@ -1895,7 +1930,7 @@ Expression* UnitBuilder::dispatch(Node* e) {
         return t;
     }
     if (const auto* x = ir::get<ir::Concat>(e)) {
-        if (x->parts.size() > 2) {
+        if (csharp_ && x->parts.size() > 2) {
             const bool literals_are_text = std::all_of(x->parts.begin(), x->parts.end(), [](Node* p) {
                 const auto* l = ir::get<ir::Lit>(p);
                 return l == nullptr || is_text(l->value);
@@ -1920,7 +1955,9 @@ Expression* UnitBuilder::dispatch(Node* e) {
         return t;
     }
     if (const auto* x = ir::get<ir::Cond>(e)) {
-        if (Expression* got = null_conditional(*x)) return got;
+        if (csharp_) {
+            if (Expression* got = null_conditional(*x)) return got;
+        }
         Expression* c = expr(x->cond);
         Expression* a = e->type ? coerce(x->then, e->type) : expr(x->then);
         Expression* b = e->type ? coerce(x->orelse, e->type) : expr(x->orelse);
@@ -2075,11 +2112,17 @@ std::string tree_text(SyntaxTree* tree) {
 
 // ---- L2CSharpProgram ----------------------------------------------------------------------------------------------------------------
 
-L2CSharpProgram::L2CSharpProgram(std::span<ir::Node* const> units) : units_(units.begin(), units.end()) {
+L2CSharpProgram::L2CSharpProgram(std::span<ir::Node* const> units, L2CSharpOptions options) : options_(std::move(options)), units_(units.begin(), units.end()) {
     for (ir::Node* n : units_) {
-        auto* u = ir::get<ir::Unit>(n);
-        if (u == nullptr) throw UsageError("the C# back end writes Unit nodes");
-        for (ir::Node* c : u->types) index(c);
+        if (ir::get<ir::Unit>(n) == nullptr) throw UsageError("the C# back end writes Unit nodes");
+    }
+    if (options_.java_registry != nullptr) {   // Java's library and semantics, restated as .NET's
+        translate::rules::java_csharp::Result restated = translate::rules::java_csharp::lower(arena_, units_, *options_.java_registry);
+        units_ = std::move(restated.units);
+        runtime_ = std::move(restated.runtime);
+    }
+    for (ir::Node* n : units_) {
+        for (ir::Node* c : ir::get<ir::Unit>(n)->types) index(c);
     }
 }
 
@@ -2118,6 +2161,13 @@ const std::vector<L2File>& L2CSharpProgram::files() {
         for (int k = 2; taken.contains(name); ++k) name = stem + "_" + std::to_string(k);   // (two units of one stem would be one file)
         taken.insert(name);
         out.push_back({name + ".cs", l2_plain::tree_text(tree)});
+    }
+    for (const std::string& r : runtime_) {   // (a set: by name)
+        std::string runtime_text = fs::read_text(options_.runtime_dir / (r + ".cs"));
+        if (r == "JavaCharTypes") {   // (the one table of Java's Unicode categories, which the C and C++ translations carry too)
+            runtime_text = cb::text::replace_all(runtime_text, "/*JAVA_CHAR_TYPES*/", fs::read_text(options_.runtime_dir.parent_path().parent_path() / "runtime" / "java_char_types.inc"));
+        }
+        out.push_back({r + ".cs", cb::text::replace_all(runtime_text, "\r\n", "\n")});
     }
     files_ = std::move(out);
     return *files_;

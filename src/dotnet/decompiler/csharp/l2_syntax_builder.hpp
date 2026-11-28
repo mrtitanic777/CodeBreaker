@@ -15,7 +15,8 @@
 //
 // What it cannot write faithfully it declines, never guesses: a method body holding something it does not carry becomes
 // `throw new System.NotSupportedException("CB-GAP: ...")` with a ledger line; a class it cannot carry is a `// CB-GAP:` comment.
-// Units of a language that needs a library (Java: the rule set java, not yet ported) are declined class by class.
+// Java units are first restated by the rule set java (translate/rules/java_csharp) when the options give the API-mapping registry;
+// without it they are declined class by class.
 //
 // Not upstream code: ILSpy writes C# from the IL only.
 #pragma once
@@ -23,12 +24,15 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
+#include "core/arena.hpp"
+#include "java/apimap.hpp"
 #include "translate/ir.hpp"
 
 namespace cb::dotnet::decompiler::csharp {
@@ -49,16 +53,24 @@ struct L2File {
     std::string text;
 };
 
+struct L2CSharpOptions {
+    // Java's library and its C# templates (config/java/api_maps): Java units are written only with it. It must outlive the program.
+    const cb::java::apimap::Registry* java_registry = nullptr;
+    // Where the runtime files (`JavaRt.cs` ...) the rule set asks for are. Reading one that is not there is an IoError.
+    std::filesystem::path runtime_dir;
+};
+
 // The units to write, what they declare, and what came of writing them.
 class L2CSharpProgram {
 public:
     // `units`: Unit nodes (anything else is a UsageError). They must outlive the program.
-    explicit L2CSharpProgram(std::span<ir::Node* const> units);
+    explicit L2CSharpProgram(std::span<ir::Node* const> units, L2CSharpOptions options = {});
     ~L2CSharpProgram();
     L2CSharpProgram(const L2CSharpProgram&) = delete;
     L2CSharpProgram& operator=(const L2CSharpProgram&) = delete;
 
-    // One file per unit, named by its path's stem (a stem met twice gets `_2`, `_3` ...). Written on first use.
+    // One file per unit, named by its path's stem (a stem met twice gets `_2`, `_3` ...), then the runtime files used, by name.
+    // Written on first use.
     const std::vector<L2File>& files();
     // What was declined, in the order it was met (after files()).
     const std::vector<L2Gap>& ledger();
@@ -70,11 +82,16 @@ public:
     // The class a class extends, when it is one of these units'.
     ir::ClassDecl* base_of(const ir::ClassDecl& c) const;
     void note(L2Gap gap) { ledger_.push_back(std::move(gap)); }
+    // Whether Java units were restated by the rule set (and are written).
+    bool java_rules() const { return options_.java_registry != nullptr; }
 
 private:
     void index(ir::Node* class_node);
 
+    L2CSharpOptions options_;
+    Arena arena_;                       // the rule set's copies of the Java units
     std::vector<ir::Node*> units_;
+    std::set<std::string> runtime_;
     std::unordered_map<std::string, ir::ClassDecl*> classes_;   // lookup only
     std::vector<L2Gap> ledger_;
     std::optional<std::vector<L2File>> files_;
