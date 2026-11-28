@@ -1,12 +1,12 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-#include "platforms/n64.hpp"
+#include "platforms/package.hpp"
 
 #include "core/testing.hpp"
 
 namespace cb::platforms {
 
 CB_TEST("platforms.n64.descriptor", [] {
-    const Platform p = n64();
+    const Platform p = described("n64");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "n64");
     CB_CHECK_EQ(p.title, "Nintendo 64");

@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
-#include "platforms/n64.hpp"
 #include "formats/n64.hpp"
-#include "source/n64_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -131,7 +131,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::n64_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("n64", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -163,7 +163,7 @@ vl::ImageLaneSpec n64_lane_spec() {
 void register_n64_lane() {
     register_lane({
         .name = "n64",
-        .platform = platforms::n64,
+        .platform = [] { return platforms::described("n64"); },
         .probe = [](const stdfs::path& p) { return formats::n64::probe(p); },
         .make_spec = n64_lane_spec,
         .detectors = {{.priority = 190, .detect = formats::detect::info_n64}},

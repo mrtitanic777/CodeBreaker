@@ -11,7 +11,9 @@
 #include <set>
 
 #include "core/error.hpp"
+#include "core/text.hpp"
 #include "source/isa.hpp"
+#include "source/isa_r4300.hpp"
 #include "formats/atari2600.hpp"
 #include "formats/atari5200.hpp"
 #include "formats/atari7800.hpp"
@@ -22,7 +24,9 @@
 #include "formats/jaguar.hpp"
 #include "formats/lynx.hpp"
 #include "formats/msx.hpp"
+#include "formats/n64.hpp"
 #include "formats/nes.hpp"
+#include "formats/psx.hpp"
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
 
@@ -283,6 +287,65 @@ Loaded load_jaguar(const std::filesystem::path& file) {
 
 Loaded load_genesis_file(const std::filesystem::path& file) { return load_genesis(formats::genesis::read(file)); }
 
+// The PlayStation: a PS-X EXE (or the program a disc boots, named as the disc names it): the 2048-byte header, then the program at its load
+// address. An executable's extension goes from its name; a disc's SLUS_000.01 keeps its whole name (".01" is no extension).
+Loaded load_ps1(const std::filesystem::path& path) {
+    const formats::psx::Exe exe = formats::psx::read(path);
+    const std::filesystem::path named = exe.boot_file.empty() ? path.filename() : std::filesystem::path(exe.boot_file).filename();
+    const bool known = std::ranges::any_of(formats::psx::kExtensions, [&](std::string_view e) { return text::iequals(named.extension().string(), e); });
+    Loaded l;
+    l.image = exe.data;
+    l.starts = exe.functions(isa::mips_decoder());
+    l.entries = {{exe.header.pc0, "entry"}};
+    const std::uint32_t header = static_cast<std::uint32_t>(formats::psx::kHeaderSize);
+    Segments& s = l.segments;
+    s.pieces.push_back({"header", "header", "header", 0, header, 0, false});
+    Piece text{"text", "text", "", header, static_cast<std::uint32_t>(exe.data.size() - header), exe.header.t_addr, true};
+    text.org = true;
+    s.pieces.push_back(std::move(text));
+    s.measured = exe.data.size();
+    l.values = {{"file", named.string()}, {"stem", known || !named.has_extension() ? named.stem().string() : named.string()}, {"pc0", Num{exe.header.pc0}}};
+    return l;
+}
+
+// The Nintendo 64: the header and the boot code (IPL3) as data, the program at its load address (what the boot code copies to RDRAM, up to
+// 1 MB), and what is past it as data at its cartridge address. The source is the ROM in the console's byte order; the rebuilt file is made in
+// the file's own.
+Loaded load_n64(const std::filesystem::path& path) {
+    namespace n64 = formats::n64;
+    const auto rom = std::make_shared<const n64::Rom>(n64::read(path));
+    constexpr std::uint32_t kCartKseg1 = 0xB0000000;   // the cartridge as a program reads it: ROM offset + this
+    Loaded l;
+    l.image = rom->data;
+    l.starts = rom->functions(isa::r4300_decoder());
+    const std::uint32_t base = rom->load_address();
+    l.entries = {{base, "entry"}};
+    const ByteView text = rom->program();
+    Segments& s = l.segments;
+    s.pieces.push_back({"header", "header", "header", 0, static_cast<std::uint32_t>(n64::kBootSize), 0, false});
+    Piece program{"text", "text", "", static_cast<std::uint32_t>(n64::kBootSize), static_cast<std::uint32_t>(text.size()), base, true};
+    program.org = true;
+    s.pieces.push_back(std::move(program));
+    const std::size_t rest_at = n64::kBootSize + text.size();
+    if (rest_at < rom->data.size()) {
+        Piece rest{"cartridge", "cartridge", "data", static_cast<std::uint32_t>(rest_at), static_cast<std::uint32_t>(rom->data.size() - rest_at), kCartKseg1 + static_cast<std::uint32_t>(rest_at), false};
+        rest.org = true;
+        s.pieces.push_back(std::move(rest));
+    }
+    s.measured = rom->data.size();
+    s.original = rom->in_order();
+    s.rebuilt = [order = rom->order](const Bytes& image) { return n64::Rom::convert(image, n64::ByteOrder::Z64, order); };
+    const n64::Header& h = rom->header;
+    const auto sums = rom->checksums();
+    std::string crc_note;
+    if (!sums) crc_note = "CRCs not checked (the ROM is shorter than the megabyte they cover)";
+    else if (rom->checksums_match()) crc_note = "CRCs match the program's";
+    else crc_note = std::format("CRCs do not match the program's ({:08X} {:08X}); kept as they are", sums->first, sums->second);
+    l.values = {{"name", h.name}, {"game_code", h.game_code}, {"country", std::string(1, h.country)}, {"order", std::string(n64::order_text(rom->order))},
+                {"entry", Num{h.entry}}, {"cic", std::string(n64::cic_text(rom->cic))}, {"crc_note", crc_note}, {"z64", Num{rom->order == n64::ByteOrder::Z64}}};
+    return l;
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -298,8 +361,10 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"jaguar", load_jaguar},
     {"lynx", load_lynx_file},
     {"msx", load_msx},
+    {"n64", load_n64},
     {"nes", load_nes},
     {"pce", pce_code::load_pce_file},
+    {"ps1", load_ps1},
     {"sms", load_sms},
     {"snes", snes_code::load_snes_file},
     {"zx", load_zx},

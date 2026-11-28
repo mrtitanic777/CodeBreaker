@@ -6,7 +6,7 @@
 //     Bytes file = mips.build(source_text);        // the bytes written, in the order they were written
 //
 // It reads the part of GNU as's language (the assembler of the PlayStation homebrew toolchains: mipsel-none-elf-as, PSn00bSDK)
-// that source/ps1_writer writes, so the source's instructions also build with it:
+// that source/console_writer writes for the PlayStation and the Nintendo 64, so the source's instructions also build with it:
 //
 //     .word / .4byte / .long    words (in the byte order): numbers, labels, expressions
 //     .dword / .8byte / .quad   doublewords

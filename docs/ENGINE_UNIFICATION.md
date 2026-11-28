@@ -192,3 +192,4 @@ tests only what it changes.
   byte-identical on 72 homebrew programs. Next: the `vectored` shape (Genesis first).
 - 2026-11-28: item 7: the `vectored` shape (68000): Genesis and Jaguar, byte-identical on their 10 homebrew programs (32X and Sega CD
   among them) and the Genesis golden. Next: the MIPS pair (PS1 and N64, near-duplicate writers), then GBA, then `executable`.
+- 2026-11-28: item 7: PS1 and N64 on `vectored`'s MIPS processor, byte-identical on 137 homebrew programs. Next: GBA, Neo Geo, Virtual Boy.

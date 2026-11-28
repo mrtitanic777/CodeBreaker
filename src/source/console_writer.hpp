@@ -141,12 +141,14 @@ struct Segmented {
 struct VectorField {
     std::uint32_t at = 0, size = 0;   // the image offset of a field of the header, and its length
     std::string what;                 // its name, said beside it
-    std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label)
+    std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label);
+                                      // (MIPS) "ascii", "zeros" (`.space` or bytes), "word", "address" (a word, by its label), "bytes" (`.space`, `.ascii` or bytes),
+                                      // "byte" (a byte row), "items" (data rows) -- each but the first two with `what` (a template) as its comment
     std::string when;                 // a loader value that must be set for the field to stand ("" always)
 };
 struct Vectored {
-    std::string cpu;                  // "m68k"
-    std::string assembler;            // the L2 assembly's syntax ("asm68k")
+    std::string cpu;                  // "m68k"; "mips" (the R3000A), "r4300" (console_mips.cpp)
+    std::string assembler;            // the L2 assembly's syntax ("asm68k", "gas")
     std::string source = "asm";       // the source's extension
     std::string built;                // the rebuilt file's name, a template
     bool whole = false;               // the source is written in the neutral text and said in the dialect at the end (else line by line)
@@ -159,6 +161,14 @@ struct Vectored {
     std::vector<VectorField> fields;
     std::string vector_names;         // (a "vectors" piece) the loader's list of what each long of the table is
     unsigned vectors_plain = 0;       // ... the first longs of it that are numbers, never labels (the initial stack pointer)
+    // (MIPS)
+    std::vector<std::string> prologue;   // lines ahead of the names (`.set noreorder`)
+    bool big_endian = false;          // the words' byte order
+    std::uint32_t bare_region = 0;    // the segment whose view of a register is written with its bare name (KSEG1 or KUSEG); KSEG0 is `_K0`
+    std::string other_suffix;         // ... and the other views' suffix
+    std::uint32_t ram_size = 0;       // a KSEG0/KSEG1 address below this (physical) is a variable
+    std::vector<Range> variables;     // other physical ranges whose addresses are variables
+    std::string built_what = "image"; // what the rebuilt file is called in a note
 };
 
 // A platform's description (config/platforms/<name>.json).
@@ -231,6 +241,7 @@ struct Segments {
     std::size_t measured = 0;             // the bytes the result says the program is (the PRG, the file)
     std::vector<Range> code_ranges;       // (vectored) the address ranges code may stand in
     std::function<Bytes(const Bytes&)> rebuilt;   // (vectored) the file the assembled image makes ("" the image itself)
+    Bytes original;                       // (vectored) what the rebuilt file is compared with ("" the image)
 };
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.

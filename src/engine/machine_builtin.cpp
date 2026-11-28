@@ -22,7 +22,6 @@
 #include "formats/zx.hpp"
 #include "platforms/gba.hpp"
 #include "platforms/package.hpp"
-#include "platforms/ps1.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -102,7 +101,7 @@ void register_genesis_lane() {
 void register_ps1_lane() {
     register_lane({
         .name = "ps1",
-        .platform = platforms::ps1,
+        .platform = [] { return platforms::described("ps1"); },
         .probe = [](const std::filesystem::path& p) { return formats::psx::probe(p); },
         .detectors = {{.priority = 10, .detect = formats::detect::info_ps1}},
     });

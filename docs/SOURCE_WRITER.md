@@ -17,6 +17,7 @@ src/source/console_cart6502.cpp               the cart6502 shape (6502 cartridge
 src/source/console_segmented.cpp              the segmented shape (ca65 segments an ld65 configuration lays out in file order)
 src/source/console_pce.cpp, console_snes.cpp  the flow the segmented shape cannot do alone (a SegmentCode: bank mapping, register widths)
 src/source/console_vectored.cpp               the vectored shape (a 68000 image from its vectors or header, each piece at an `.org`)
+src/source/console_mips.cpp                   the vectored shape's MIPS processor (the R3000A and the R4300: delay slots, %hi/%lo pairs)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -30,7 +31,7 @@ one way a program sits in memory, shared by every platform that sits that way:
 | `banked` | fixed-size banks, the first N mapped at power-on, a header range that is data, vectors at fixed places | Game Boy, Master System / Game Gear / SG-1000 |
 | `cart6502` | a 6502 cartridge's banks, each seen in a window; its last bytes data; the chips' read and write names | Atari 2600, 5200, 7800 |
 | `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx, PC Engine, SNES |
-| `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar; next the MIPS pair (PS1, N64), GBA, Neo Geo, Virtual Boy |
+| `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar, PlayStation, Nintendo 64; next GBA, Neo Geo, Virtual Boy |
 | `executable` (later) | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections | PS2, PSP, PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
 
 The CPU is not the shape: a shape is written once over `image_writer`'s `CodeModel` / `Listing` and given the processor through its
@@ -80,7 +81,11 @@ The `vectored` shape adds: `cpu` (`m68k`), `immediate_floor` (a long immediate b
 `calls_start_functions`, `org_digits`, `blank_after_piece`, `neutral_rows`, the header `fields` (`{at, size, what, as: text|rows|long|pointer,
 when}`) and, for a `vectors` piece, the loader's list of what each long is (`vector_names`) and how many lead longs stay numbers. The loader
 gives the pieces (each with or without an `.org`), the code ranges, the entries by name, and, where the file is not the assembled image
-(a Jaguar COFF), how the image is put back into it (`rebuilt`).
+(a Jaguar COFF), how the image is put back into it (`rebuilt`). For MIPS (`cpu`: `mips`, `r4300`) the header `fields` say each field's
+kind (`ascii`, `zeros`, `word`, `address`, `bytes`, `byte`, `items`), and the description gives the word order (`endian`), the `prologue`,
+which view of a hardware register is bare (`bare_region`, `other_suffix`), the RAM and other ranges that are variables, and `built_what`;
+the loader may name the program (`file`, `stem`: a disc's boot file) and give what the rebuilt file is compared with (`original`: the
+N64's file order).
 
 ## What stays code
 
@@ -121,3 +126,5 @@ engine.
 - 2026-11-28: `vectored` shape (68000): the Genesis (the vector table, the header's fields; the 32X writes its 68000 side through
   `load_genesis`) and the Jaguar (a cartridge's boot signature and header, a COFF's sections put back into the file). Byte-identical on the
   Genesis, Jaguar, 32X and Sega CD homebrew programs and the Genesis golden.
+- 2026-11-28: the vectored shape's MIPS processor (console_mips.cpp): the PlayStation and the Nintendo 64, their two near-duplicate
+  writers one; byte-identical on all 58 PlayStation and 79 Nintendo 64 homebrew programs.

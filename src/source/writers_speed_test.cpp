@@ -15,7 +15,7 @@
 #include "source/gba_writer.hpp"
 #include "source/gekko_writer.hpp"
 #include "source/n3ds_writer.hpp"
-#include "source/n64_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/nds_writer.hpp"
 #include "source/ps3_writer.hpp"
 #include "source/psp_writer.hpp"
@@ -59,7 +59,7 @@ CB_TEST("source.writers_speed.files", [] {
         else if (ext == ".bin" && fs::to_text(file).find("vita") != std::string::npos) w = vita_writer::reconstruct(file, folder);
         else if (ext == ".nds") w = nds_writer::reconstruct(file, folder);
         else if (ext == ".gba") w = gba_writer::reconstruct(file, folder);
-        else if (ext == ".n64" || ext == ".z64") w = n64_writer::reconstruct(file, folder);
+        else if (ext == ".n64" || ext == ".z64") w = console_writer::reconstruct("n64", file, folder);
         else {
             std::cout << file.filename().string() << ": no writer for this extension\n";
             CB_CHECK(false);

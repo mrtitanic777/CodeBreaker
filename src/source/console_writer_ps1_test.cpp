@@ -2,7 +2,9 @@
 // own assembler); the writer is held to what it is for -- the source it writes, built again, is the executable it came from -- and to
 // the text it writes, a golden file that was read through for correctness (testdata/writers/ps1.golden.s).
 
-#include "source/ps1_writer.hpp"
+#include "formats/psx.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/dialect.hpp"
 #include "core/fs.hpp"
@@ -10,8 +12,20 @@
 #include "core/text.hpp"
 #include "source/risc_source.hpp"
 
-namespace cb::source::ps1_writer {
+namespace cb::source::console_writer::ps1_test {
 namespace {
+
+// The executable written to `folder` as `name` and its source written beside it.
+image_writer::Written write(const formats::psx::Exe& exe, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), exe.data);
+    return console_writer::reconstruct("ps1", folder / std::string(name), folder);
+}
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) { return console_writer::reconstruct("ps1", file, folder); }
+const image_writer::Names& hardware() {   // (config/knowledge/ps1/registers.json)
+    static const image_writer::Names table = knowledge::standard().hardware_names("ps1", describe("ps1").vectored.registers);
+    return table;
+}
 
 // The program: `entry` calls `print`, polls a hardware register, loops; `helper` is never called (it is found by its prologue after
 // print's return); the data is a string, a table of the three functions, a word that is no instruction, and a run of zeros.
@@ -85,8 +99,8 @@ void check_golden(std::string_view name, const std::string& actual) {
     CB_CHECK_EQ(actual, golden(name));
 }
 
-CB_TEST("source.ps1_writer.the_executable_comes_back_as_source_that_builds_the_same_file", [] {
-    fs::ScopedTempDir dir("cb_ps1");
+CB_TEST("source.console_writer.ps1.the_executable_comes_back_as_source_that_builds_the_same_file", [] {
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const Bytes image = executable();
     const formats::psx::Exe exe = formats::psx::parse(image);
     CB_CHECK_EQ(exe.header.t_size, static_cast<std::uint32_t>(image.size() - 0x800));
@@ -101,8 +115,8 @@ CB_TEST("source.ps1_writer.the_executable_comes_back_as_source_that_builds_the_s
     check_golden("ps1.golden.s", fs::read_text(r.source));
 });
 
-CB_TEST("source.ps1_writer.what_the_code_points_at_is_written_by_name", [] {
-    fs::ScopedTempDir dir("cb_ps1");
+CB_TEST("source.console_writer.ps1.what_the_code_points_at_is_written_by_name", [] {
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const image_writer::Written r = write(formats::psx::parse(executable()), "demo.exe", dir.path());
     const std::string source = fs::read_text(r.source);
     // functions found by a call, by the entry point, and by a prologue after a return (helper)
@@ -127,9 +141,9 @@ CB_TEST("source.ps1_writer.what_the_code_points_at_is_written_by_name", [] {
     CB_CHECK(source.find(".asciz \"Sony Computer Entertainment Inc. for North America area\"\n        .space 1916") != std::string::npos);
 });
 
-CB_TEST("source.ps1_writer.an_edited_source_is_not_the_original", [] {
+CB_TEST("source.console_writer.ps1.an_edited_source_is_not_the_original", [] {
     // the source built with one instruction changed is another program: the writer's own check says so
-    fs::ScopedTempDir dir("cb_ps1");
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const Bytes image = executable();
     const image_writer::Written r = write(formats::psx::parse(image), "demo.exe", dir.path());
     std::string source = fs::read_text(r.source);
@@ -140,10 +154,10 @@ CB_TEST("source.ps1_writer.an_edited_source_is_not_the_original", [] {
 });
 
 
-CB_TEST("source.ps1_writer.functions_nothing_calls_are_found_by_where_they_lie_and_by_pointers", [] {
+CB_TEST("source.console_writer.ps1.functions_nothing_calls_are_found_by_where_they_lie_and_by_pointers", [] {
     // `orphan` begins right after a function's end and reads as a function (no prologue); `handler` is only in a table; the words after them
     // are data and stay data
-    fs::ScopedTempDir dir("cb_ps1");
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const Bytes image = executable(R"(
 entry:  jal   a
         nop
@@ -172,8 +186,8 @@ handler: addiu $v0, $zero, 7
     CB_CHECK(source.find(".space 16") != std::string::npos);
 });
 
-CB_TEST("source.ps1_writer.a_header_with_other_bytes_is_written_as_bytes", [] {
-    fs::ScopedTempDir dir("cb_ps1");
+CB_TEST("source.console_writer.ps1.a_header_with_other_bytes_is_written_as_bytes", [] {
+    fs::ScopedTempDir dir("cb_ps1_cw");
     Bytes image = executable();
     image[0x90] = 0x7B;   // something in the zeros after the marker
     image[0x3A] = 0x01;   // and in the registers the BIOS saves
@@ -181,8 +195,8 @@ CB_TEST("source.ps1_writer.a_header_with_other_bytes_is_written_as_bytes", [] {
     CB_CHECK(r.linked && r.same);
 });
 
-CB_TEST("source.ps1_writer.a_program_with_no_code_is_all_data", [] {
-    fs::ScopedTempDir dir("cb_ps1");
+CB_TEST("source.console_writer.ps1.a_program_with_no_code_is_all_data", [] {
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const Bytes image = executable(".word 0xFFFFFFFF, 0x12345678\n.asciz \"abcd\"\n");
     const image_writer::Written r = write(formats::psx::parse(image), "plain.exe", dir.path());
     CB_CHECK(r.linked && r.same);
@@ -190,8 +204,8 @@ CB_TEST("source.ps1_writer.a_program_with_no_code_is_all_data", [] {
     CB_CHECK_EQ(r.code_bytes, std::size_t{0});
 });
 
-CB_TEST("source.ps1_writer.reconstruct_reads_a_file", [] {
-    fs::ScopedTempDir dir("cb_ps1");
+CB_TEST("source.console_writer.ps1.reconstruct_reads_a_file", [] {
+    fs::ScopedTempDir dir("cb_ps1_cw");
     const Bytes image = executable();
     fs::write_file(dir.path() / "SLUS_000.00", image);
     const image_writer::Written r = reconstruct(dir.path() / "SLUS_000.00", dir.path() / "out");
@@ -203,7 +217,7 @@ CB_TEST("source.ps1_writer.reconstruct_reads_a_file", [] {
     CB_CHECK_THROWS_AS(cb::FormatError, reconstruct(dir.path() / "notps.exe", dir.path() / "out2"));
 });
 
-CB_TEST("source.ps1_writer.hardware_names_are_the_documentations", [] {
+CB_TEST("source.console_writer.ps1.hardware_names_are_the_documentations", [] {
     CB_CHECK_EQ(hardware().at(0x1F801070), std::string("I_STAT"));
     CB_CHECK_EQ(hardware().at(0x1F8010A8), std::string("DMA2_CHCR"));
     CB_CHECK_EQ(hardware().at(0x1F801810), std::string("GPU_GP0"));
@@ -211,4 +225,4 @@ CB_TEST("source.ps1_writer.hardware_names_are_the_documentations", [] {
 });
 
 }  // namespace
-}  // namespace cb::source::ps1_writer
+}  // namespace cb::source::console_writer::ps1_test

@@ -2,7 +2,7 @@
 //
 //     engine::register_n64_lane();      // once, before a LaneKit is made (LaneKit::register_worker_kinds does)
 //
-// The lane is one verify/lanes/image_lane: a ROM (`.z64`, `.v64`, `.n64`) is written back by source/n64_writer and rebuilt; one that comes back
+// The lane is one verify/lanes/image_lane: a ROM (`.z64`, `.v64`, `.n64`) is written back by source/console_writer (config/platforms/n64.json) and rebuilt; one that comes back
 // identical is the original, an edited one has each function run beside the original's in CodeBreaker's own R4300i interpreter (emulate/r4300)
 // over the console's memory: 8 MB of RDRAM holding the program as the boot code leaves it, SP memory, the cartridge, the RCP's registers logged.
 // A function is run with the registers of the state (the argument registers and S0 sign-extended into their 64 bits) and a work area of RDRAM

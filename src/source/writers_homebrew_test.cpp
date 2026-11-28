@@ -7,10 +7,8 @@
 #include "source/console_writer.hpp"
 #include "source/gba_writer.hpp"
 #include "source/gekko_writer.hpp"
-#include "source/n64_writer.hpp"
 #include "source/n3ds_writer.hpp"
 #include "source/nds_writer.hpp"
-#include "source/ps1_writer.hpp"
 #include "source/ps2_writer.hpp"
 #include "source/psp_writer.hpp"
 #include "source/saturn_writer.hpp"
@@ -106,21 +104,21 @@ CB_TEST("source.writers.homebrew.jaguar", [] {
 });
 
 CB_TEST("source.writers.homebrew.nintendo_64", [] {
-    rebuild("n64/sblobber64/sblobber64.z64", 5, n64_writer::reconstruct);
-    rebuild("n64/peterlemon/CPUTest_CPU_DADD_CPUDADD.N64", 1, n64_writer::reconstruct);
-    rebuild("n64/peterlemon/HelloWorld_32BPP_HelloWorldRDP320x240_HelloWorldRDP32BPP320X240.N64", 1, n64_writer::reconstruct);
-    rebuild("n64/peterlemon/CP1_Fractal_32BPP_320X240_Julia_Double_Julia32BPP320X240.N64", 1, n64_writer::reconstruct);
+    rebuild("n64/sblobber64/sblobber64.z64", 5, console("n64"));
+    rebuild("n64/peterlemon/CPUTest_CPU_DADD_CPUDADD.N64", 1, console("n64"));
+    rebuild("n64/peterlemon/HelloWorld_32BPP_HelloWorldRDP320x240_HelloWorldRDP32BPP320X240.N64", 1, console("n64"));
+    rebuild("n64/peterlemon/CP1_Fractal_32BPP_320X240_Julia_Double_Julia32BPP320X240.N64", 1, console("n64"));
 });
 
 // (the PlayStation's: PS-X EXEs built with GCC and PSn00bSDK, and hand-written assembly with its data, each rebuilt from its source)
 CB_TEST("source.writers.homebrew.playstation", [] {
-    rebuild("ps1/ps1-tests/cdrom/getloc/getloc.exe", 50, ps1_writer::reconstruct);
-    rebuild("ps1/ps1-tests/gpu/triangle/triangle.exe", 30, ps1_writer::reconstruct);
-    rebuild("ps1/ps1-tests/gte/test-all/test-all.exe", 30, ps1_writer::reconstruct);
-    rebuild("ps1/ps1-tests/spu/toolbox/toolbox.exe", 50, ps1_writer::reconstruct);
-    rebuild("ps1/peterlemon/PRINTGPU.exe", 8, ps1_writer::reconstruct);
-    rebuild("ps1/peterlemon/VBLANK.exe", 4, ps1_writer::reconstruct);
-    rebuild("ps1/peterlemon/Cube.exe", 1, ps1_writer::reconstruct);
+    rebuild("ps1/ps1-tests/cdrom/getloc/getloc.exe", 50, console("ps1"));
+    rebuild("ps1/ps1-tests/gpu/triangle/triangle.exe", 30, console("ps1"));
+    rebuild("ps1/ps1-tests/gte/test-all/test-all.exe", 30, console("ps1"));
+    rebuild("ps1/ps1-tests/spu/toolbox/toolbox.exe", 50, console("ps1"));
+    rebuild("ps1/peterlemon/PRINTGPU.exe", 8, console("ps1"));
+    rebuild("ps1/peterlemon/VBLANK.exe", 4, console("ps1"));
+    rebuild("ps1/peterlemon/Cube.exe", 1, console("ps1"));
 });
 
 // (the Game Boy Advance's: hand-written ARM and Thumb tests, and devkitARM's C, each rebuilt from its source)

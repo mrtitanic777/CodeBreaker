@@ -122,6 +122,15 @@ Vectored vectored_of(const nlohmann::ordered_json& j) {
     }
     v.vector_names = text_of(j, "vector_names");
     v.vectors_plain = number_of(j, "vectors_plain", 0);
+    v.prologue = texts_of(j, "prologue");
+    v.big_endian = text_of(j, "endian") == "big";
+    v.bare_region = number_of(j, "bare_region", 0);
+    v.other_suffix = text_of(j, "other_suffix");
+    v.ram_size = number_of(j, "ram_size", 0);
+    if (const auto vars = j.find("variables"); vars != j.end()) {
+        for (const auto& r : *vars) v.variables.push_back({number_of(r.at(0)), number_of(r.at(1))});
+    }
+    if (j.contains("built_what")) v.built_what = text_of(j, "built_what");
     return v;
 }
 
@@ -301,14 +310,21 @@ std::string fill(std::string_view text, const Values& values) {
     return out;
 }
 
+std::vector<std::string> head_comment(const Description& d, const Values& values) {
+    std::vector<std::string> comment;   // (an empty template an empty line)
+    for (const std::string& line : head_lines(d, values)) comment.push_back(line.empty() ? std::string() : "; " + line);
+    return comment;
+}
+
 image_writer::Written write(const Description& description, const Loaded& program, std::string_view file_name, const std::filesystem::path& folder) {
     Values values = program.values;
-    values.insert_or_assign("file", std::string(file_name));
+    values.try_emplace("file", std::string(file_name));   // (a loader may name the program otherwise: a disc's boot file)
     values.insert_or_assign("size", static_cast<std::int64_t>(program.image.size()));
     values.insert_or_assign("kb", static_cast<std::int64_t>(program.image.size() / 1024));
     values.insert_or_assign("origin", static_cast<std::int64_t>(program.origin));
     const std::string stem = std::filesystem::path(file_name).stem().string();
-    values.insert_or_assign("stem", stem);
+    values.try_emplace("stem", stem);
+    if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);   // (its head names what flow found)
     const std::vector<std::string> head = head_lines(description, values);
     if (description.shape == "z80-block") return write_z80_block(description, program, head, stem, folder);
     std::vector<std::string> comment;   // (the shapes below write the head as comment lines, an empty template an empty line)

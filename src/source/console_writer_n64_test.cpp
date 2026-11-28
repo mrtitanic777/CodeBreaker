@@ -1,16 +1,15 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// Tests of the Nintendo 64 writer over a small ROM of its own (source/n64_test_rom.hpp). The writer is held to what it is for -- the source it writes,
+// Tests of the Nintendo 64 on the console writer (config/platforms/n64.json, the vectored shape's MIPS processor) over a small ROM of its own (source/n64_test_rom.hpp). The writer is held to what it is for -- the source it writes,
 // built again, is the ROM it came from, byte for byte, in whichever byte order the file had -- and to what the source says: the header field by
 // field, the boot code as data, functions found by flow and through a table, hardware registers by name, branch likely, doubleword and FPU
 // instructions, ERET ending a function.
-#include "source/n64_writer.hpp"
-
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 #include "source/n64_test_rom.hpp"
 
-namespace nw = cb::source::n64_writer;
 namespace nt = cb::source::n64_test;
 namespace n = cb::formats::n64;
 using std::string;
@@ -21,10 +20,20 @@ bool contains(const string& text, std::string_view part) { return text.find(part
 
 string source_of(const cb::source::image_writer::Written& r) { return cb::fs::read_text(r.source); }
 
+namespace nw {   // (the console writer's Nintendo 64)
+cb::source::image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) {
+    return cb::source::console_writer::reconstruct("n64", file, folder);
+}
+const cb::source::image_writer::Names& hardware() {   // (config/knowledge/n64/registers.json)
+    static const cb::source::image_writer::Names table = cb::knowledge::standard().hardware_names("n64", cb::source::console_writer::describe("n64").vectored.registers);
+    return table;
+}
+}  // namespace nw
+
 }  // namespace
 
-CB_TEST("source.n64_writer.the_source_builds_back_into_the_rom", [] {
-    cb::fs::ScopedTempDir dir("cb_n64_writer");
+CB_TEST("source.console_writer.n64.the_source_builds_back_into_the_rom", [] {
+    cb::fs::ScopedTempDir dir("cb_n64_cw");
     cb::fs::write_file(dir.path() / "game.z64", nt::test_rom());
     const cb::source::image_writer::Written r = nw::reconstruct(dir.path() / "game.z64", dir.path() / "out");
     CB_CHECK(r.notes.empty());
@@ -41,8 +50,8 @@ CB_TEST("source.n64_writer.the_source_builds_back_into_the_rom", [] {
     CB_CHECK(cb::fs::read_file(*r.built) == nt::test_rom());
 });
 
-CB_TEST("source.n64_writer.the_source_says_what_the_rom_holds", [] {
-    cb::fs::ScopedTempDir dir("cb_n64_writer");
+CB_TEST("source.console_writer.n64.the_source_says_what_the_rom_holds", [] {
+    cb::fs::ScopedTempDir dir("cb_n64_cw");
     cb::fs::write_file(dir.path() / "game.z64", nt::test_rom());
     const string text = source_of(nw::reconstruct(dir.path() / "game.z64", dir.path() / "out"));
     // the header, field by field
@@ -81,8 +90,8 @@ CB_TEST("source.n64_writer.the_source_says_what_the_rom_holds", [] {
     CB_CHECK(contains(text, "boot code unknown boot code"));
 });
 
-CB_TEST("source.n64_writer.a_v64_and_an_n64_file_rebuild_in_their_own_byte_order", [] {
-    cb::fs::ScopedTempDir dir("cb_n64_writer");
+CB_TEST("source.console_writer.n64.a_v64_and_an_n64_file_rebuild_in_their_own_byte_order", [] {
+    cb::fs::ScopedTempDir dir("cb_n64_cw");
     cb::Bytes z64_source;
     for (const n::ByteOrder order : {n::ByteOrder::V64, n::ByteOrder::N64}) {
         const string name = order == n::ByteOrder::V64 ? "game.v64" : "game.n64";
@@ -98,8 +107,8 @@ CB_TEST("source.n64_writer.a_v64_and_an_n64_file_rebuild_in_their_own_byte_order
     }
 });
 
-CB_TEST("source.n64_writer.what_is_past_the_first_megabyte_is_data_at_its_cartridge_address", [] {
-    cb::fs::ScopedTempDir dir("cb_n64_writer");
+CB_TEST("source.console_writer.n64.what_is_past_the_first_megabyte_is_data_at_its_cartridge_address", [] {
+    cb::fs::ScopedTempDir dir("cb_n64_cw");
     cb::fs::write_file(dir.path() / "big.z64", nt::test_rom(n::ByteOrder::Z64, 0x4000));
     const cb::source::image_writer::Written r = nw::reconstruct(dir.path() / "big.z64", dir.path() / "out");
     CB_CHECK(r.linked && r.same);
@@ -110,7 +119,7 @@ CB_TEST("source.n64_writer.what_is_past_the_first_megabyte_is_data_at_its_cartri
     CB_CHECK_EQ(r.image_bytes, std::size_t{0x101000 + 0x4000 + 4});
 });
 
-CB_TEST("source.n64_writer.the_hardware_table_names_the_consoles_registers", [] {
+CB_TEST("source.console_writer.n64.the_hardware_table_names_the_consoles_registers", [] {
     const auto& table = nw::hardware();
     CB_CHECK_EQ(table.at(0x0430000C), string("MI_INTR_MASK"));
     CB_CHECK_EQ(table.at(0x04400004), string("VI_ORIGIN"));
@@ -122,9 +131,9 @@ CB_TEST("source.n64_writer.the_hardware_table_names_the_consoles_registers", [] 
     CB_CHECK_EQ(table.at(0x04700000), string("RI_MODE"));
 });
 
-CB_TEST("source.n64_writer.an_edited_program_is_not_the_original", [] {
+CB_TEST("source.console_writer.n64.an_edited_program_is_not_the_original", [] {
     // one instruction changed in the ROM's own source: the writer still gives source that builds back into THAT rom, and it is not the original
-    cb::fs::ScopedTempDir dir("cb_n64_writer");
+    cb::fs::ScopedTempDir dir("cb_n64_cw");
     string changed = nt::program();
     changed.replace(changed.find("dsll32 $v0, $a0, 4"), 18, "dsll32 $v0, $a0, 5");
     cb::fs::write_file(dir.path() / "a.z64", nt::test_rom());

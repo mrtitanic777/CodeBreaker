@@ -22,6 +22,14 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
 image_writer::Written write_segmented(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                       std::string_view file_name, const std::filesystem::path& folder);
 
+// The head comment's lines, said already ("; " ahead of each, an empty template an empty line).
+std::vector<std::string> head_comment(const Description& d, const Values& values);
+
+// The `vectored` shape for a MIPS program (console_mips.cpp): `values` has `file` and `stem`; the head may name `functions`, `base`, `text_size`.
+namespace mips_code {
+image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder);
+}
+
 // The `vectored` shape (console_vectored.cpp).
 image_writer::Written write_vectored(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                      std::string_view file_name, const std::filesystem::path& folder);

@@ -2,7 +2,6 @@
 #include "platforms/gba.hpp"
 #include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
-#include "platforms/ps1.hpp"
 
 #include "core/testing.hpp"
 
@@ -94,7 +93,7 @@ CB_TEST("platforms.genesis.descriptor", [] {
 });
 
 CB_TEST("platforms.ps1.descriptor", [] {
-    const Platform p = ps1();
+    const Platform p = described("ps1");
     check_machine(p, Id::Machine, "ps1", "PlayStation", "mips", "PS-X EXE (.exe, .psx)");
     CB_CHECK_EQ(p.cpu.language, "MIPS:LE:32:default");
     CB_CHECK_EQ(*p.cpu.bits, 32u);
@@ -119,7 +118,7 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     registry.add(taking(described("sms"), ".sms"));
     registry.add(taking(described("gb"), ".gb"));
     registry.add(taking(described("genesis"), ".md"));
-    registry.add(taking(ps1(), ".psx"));
+    registry.add(taking(described("ps1"), ".psx"));
     registry.add(taking(gba(), ".gba"));
     CB_CHECK_EQ(registry.identify("g.nes")->name, "nes");   // (the registered machines are tried in the order they were added)
     CB_CHECK_EQ(registry.identify("g.sms")->name, "sms");

@@ -1,0 +1,52 @@
+{
+  "platform": "n64",
+  "title": "Nintendo 64",
+  "description": "A cartridge ROM (.z64, .v64 or .n64, written in the console's byte order and rebuilt in the file's): the header field by field (the CRCs kept and compared), the boot code (IPL3) as data, the program at its load address in GNU as's MIPS syntax (the R4300), and what is past its first megabyte as data at its cartridge address. The hardware registers by name, RDRAM and the other memories as var_ equates.",
+  "machine": {
+    "family": "mips",
+    "container": "cartridge ROM (.z64, .v64, .n64)",
+    "cpu": {"language": "MIPS:BE:64:default", "bits": 64, "endian": "big", "decoder": "mips",
+            "registers": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"], "stack": "SP"},
+    "results": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "vectored",
+  "dialect": "gas-mips",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Nintendo 64 ROM \"{name}\" ({game_code}{country}), {order}: entry 0x{entry:08X}, program at 0x{base:08X} ({text_size} bytes), {functions} functions",
+    "boot code {cic}; {crc_note}",
+    "this source is the ROM in the console's byte order (.z64){z64?|; the rebuilt file is made in the file's own order}",
+    ""
+  ],
+  "vectored": {
+    "cpu": "r4300",
+    "assembler": "gas",
+    "source": "s",
+    "built": "{stem}.built{order}",
+    "built_what": "ROM",
+    "whole": true,
+    "endian": "big",
+    "prologue": ["        .set noreorder", "        .set noat", ""],
+    "registers": "hardware",
+    "bare_region": "0xA0000000",
+    "other_suffix": "_PHYS",
+    "ram_size": "0x800000",
+    "variables": [["0x04000000", "0x04002000"], ["0x10000000", "0x1FC00000"], ["0x1FC007C0", "0x1FC00800"]],
+    "fields": [
+      {"at": 0, "size": 4, "as": "word", "what": "PI bus configuration"},
+      {"at": 4, "size": 4, "as": "word", "what": "clock rate"},
+      {"at": 8, "size": 4, "as": "address", "what": "entry point"},
+      {"at": "0x0C", "size": 4, "as": "word", "what": "release"},
+      {"at": "0x10", "size": 4, "as": "word", "what": "CRC1"},
+      {"at": "0x14", "size": 4, "as": "word", "what": "CRC2: {crc_note}"},
+      {"at": "0x18", "size": 8, "as": "bytes", "what": "reserved"},
+      {"at": "0x20", "size": 20, "as": "bytes", "what": "name"},
+      {"at": "0x34", "size": 7, "as": "bytes", "what": "reserved"},
+      {"at": "0x3B", "size": 1, "as": "byte", "what": "category"},
+      {"at": "0x3C", "size": 2, "as": "bytes", "what": "game code"},
+      {"at": "0x3E", "size": 2, "as": "byte", "what": "country, version"},
+      {"at": "0x40", "size": "0xFC0", "as": "items"}
+    ]
+  }
+}

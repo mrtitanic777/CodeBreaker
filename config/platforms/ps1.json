@@ -1,0 +1,49 @@
+{
+  "platform": "ps1",
+  "title": "PlayStation",
+  "description": "A PS-X EXE (or the program a disc boots): the 2048-byte header field by field, then the program at its load address in GNU as's MIPS syntax (the R3000A), .set noreorder with each delay slot on a line of its own; flow from the entry point and what the code calls or points at. The hardware registers by name, other addresses outside the program as var_ equates.",
+  "machine": {
+    "family": "mips",
+    "container": "PS-X EXE (.exe, .psx)",
+    "cpu": {"language": "MIPS:LE:32:default", "bits": 32, "endian": "little", "decoder": "mips",
+            "registers": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO"], "stack": "SP"},
+    "results": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "vectored",
+  "dialect": "gas-mips",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "PlayStation executable: entry 0x{pc0:08X}, program at 0x{base:08X} ({text_size} bytes), {functions} functions",
+    ""
+  ],
+  "vectored": {
+    "cpu": "mips",
+    "assembler": "gas",
+    "source": "s",
+    "built": "{stem}.built.exe",
+    "built_what": "executable",
+    "prologue": ["        .set noreorder", "        .set noat", ""],
+    "registers": "hardware",
+    "bare_region": 0,
+    "other_suffix": "_K1",
+    "ram_size": "0x200000",
+    "variables": [["0x1F800000", "0x1F800400"]],
+    "fields": [
+      {"at": 0, "size": 8, "as": "ascii"},
+      {"at": 8, "size": 8, "as": "zeros"},
+      {"at": "0x10", "size": 4, "as": "address", "what": "pc0: where it starts"},
+      {"at": "0x14", "size": 4, "as": "word", "what": "gp0: the initial $gp"},
+      {"at": "0x18", "size": 4, "as": "word", "what": "t_addr: where the program is loaded"},
+      {"at": "0x1C", "size": 4, "as": "word", "what": "t_size: its length"},
+      {"at": "0x20", "size": 4, "as": "word", "what": "data address"},
+      {"at": "0x24", "size": 4, "as": "word", "what": "data size"},
+      {"at": "0x28", "size": 4, "as": "word", "what": "bss address"},
+      {"at": "0x2C", "size": 4, "as": "word", "what": "bss size"},
+      {"at": "0x30", "size": 4, "as": "word", "what": "stack base"},
+      {"at": "0x34", "size": 4, "as": "word", "what": "stack offset"},
+      {"at": "0x38", "size": "0x14", "as": "zeros"},
+      {"at": "0x4C", "size": "0x7B4", "as": "items"}
+    ]
+  }
+}
