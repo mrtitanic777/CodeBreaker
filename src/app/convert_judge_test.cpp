@@ -41,8 +41,8 @@ Planner cj_planner(Route route) {
 }
 
 // A judge that tells the steps and answers with what it is given.
-Judge cj_judge(source::pipeline::Judging answer, std::size_t judged = 4) {
-    return [answer, judged](const stdfs::path&, const source::pipeline::JudgeSteps& steps) {
+Judge cj_judge(engine::pipeline::Judging answer, std::size_t judged = 4) {
+    return [answer, judged](const stdfs::path&, const engine::pipeline::JudgeSteps& steps) {
         steps.progress(Step::Preparing, 0, 0);
         steps.progress(Step::Building, 0, judged);
         steps.progress(Step::Judging, 0, judged);
@@ -54,16 +54,16 @@ Judge cj_judge(source::pipeline::Judging answer, std::size_t judged = 4) {
     };
 }
 
-source::pipeline::JudgedFunction cj_fn(std::string key, std::string name, Class cls) {
-    source::pipeline::JudgedFunction f;
+engine::pipeline::JudgedFunction cj_fn(std::string key, std::string name, Class cls) {
+    engine::pipeline::JudgedFunction f;
     f.key = std::move(key);
     f.name = std::move(name);
     f.classification.cls = cls;
     return f;
 }
 
-source::pipeline::Judging cj_answer() {
-    source::pipeline::Judging j;
+engine::pipeline::Judging cj_answer() {
+    engine::pipeline::Judging j;
     j.judged = true;
     j.lane = "win64";
     j.outcome.functions = 4;
@@ -142,7 +142,7 @@ CB_TEST("app.convert_judge.every_function_of_the_c_takes_its_class_and_the_count
 
 CB_TEST("app.convert_judge.a_program_no_judge_can_run_is_done_and_says_why", [] {
     CjFixture f;
-    source::pipeline::Judging none;
+    engine::pipeline::Judging none;
     none.why_not = "The tools of the win64 judge are not set up on this computer (Settings, Advanced).";
     const Outcome done = convert(f.request(), cj_planner(judged(cj_route(), cj_judge(none, 0))), f.listener(), f.cancel);
     CB_CHECK(done.state == State::Done);
@@ -153,7 +153,7 @@ CB_TEST("app.convert_judge.a_program_no_judge_can_run_is_done_and_says_why", [] 
 
 CB_TEST("app.convert_judge.a_judge_that_fails_leaves_the_conversion_done_and_unjudged", [] {
     CjFixture f;
-    const Judge failing = [](const stdfs::path&, const source::pipeline::JudgeSteps&) -> source::pipeline::Judging {
+    const Judge failing = [](const stdfs::path&, const engine::pipeline::JudgeSteps&) -> engine::pipeline::Judging {
         throw std::runtime_error("the linker gave up");
     };
     const Outcome done = convert(f.request(), cj_planner(judged(cj_route(), failing)), f.listener(), f.cancel);
@@ -168,7 +168,7 @@ CB_TEST("app.convert_judge.a_cancel_while_judging_stops_the_judge_and_leaves_not
         if (p.state == State::Checking && p.done == 2) f.cancel = true;
     };
     std::size_t asked_after = 0;
-    const Judge judge = [&asked_after](const stdfs::path&, const source::pipeline::JudgeSteps& steps) -> source::pipeline::Judging {
+    const Judge judge = [&asked_after](const stdfs::path&, const engine::pipeline::JudgeSteps& steps) -> engine::pipeline::Judging {
         for (std::size_t i = 1; i <= 10; ++i) {
             if (steps.stop()) throw verify::reconstruct::Stopped();
             steps.progress(Step::Judging, i, 10);

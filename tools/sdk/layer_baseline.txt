@@ -1,8 +1,4 @@
 # Upward includes still in the tree (app.layers test, docs/SDK_DESIGN.md rule 3). This list only shrinks.
-source/commands.cpp -> engine/lane_kit.hpp
-source/pipeline_module.cpp -> engine/lane_registry.hpp
-source/pipeline_module.cpp -> engine/machine_lanes.hpp
-source/pipeline_world.hpp -> engine/lane_kit.hpp
 store/versions_ledger.hpp -> compare/versions.hpp
 verify/lanes/powerpc.cpp -> engine/pcode_cpu_ppc.hpp
 verify/regress.cpp -> engine/lane_kit.hpp

@@ -1,4 +1,4 @@
-// source/pipeline_period.hpp -- the text passes `repair <32-bit module>` gives a period compiler (internal to source/pipeline_*.cpp; tested in
+// engine/pipeline_period.hpp -- the text passes `repair <32-bit module>` gives a period compiler (internal to source/pipeline_*.cpp; tested in
 // pipeline_period_test.cpp).
 //
 //     const RepairSource given = repair_period_source(header, order, texts, imports, relocation_targets);
@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 struct RepairSource {
     std::string header;
@@ -46,4 +46,4 @@ std::string period_registers(const std::string& header, std::map<std::string, st
 // (/Oy-) or when the function needs it; `match` compiles such a function with /Oy-.
 bool builds_frame(std::span<const std::uint8_t> code);
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

@@ -3,10 +3,10 @@
 #include <memory>
 
 #include "core/parallel.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "verify/teeth.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 
@@ -91,4 +91,4 @@ cli::Command teeth(const Environment& environment) {
     });
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

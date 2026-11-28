@@ -1,4 +1,4 @@
-// source/pipeline_match16.hpp -- `match` and `score16` for a 16-bit Windows module: the production assembly of verify/authored/match16
+// engine/pipeline_match16.hpp -- `match` and `score16` for a 16-bit Windows module: the production assembly of verify/authored/match16
 // (internal to source/pipeline_*.cpp).
 //
 // What match16::run is given -- the toolchain (Microsoft C 6.0a on the DOS executive, or Visual C++ 1.52c's C 8.00c, which runs on Windows itself), the
@@ -16,11 +16,11 @@
 #include <vector>
 
 #include "core/cli.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "symbols/libraries/package.hpp"
 #include "verify/authored/match16.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 struct Match16Options {
     std::optional<std::string> flags;      // every segment is built with these switches (by the first compiler)
@@ -53,4 +53,4 @@ std::map<std::string, std::string> identify_run_time_library(std::vector<symbols
 // `match <16-bit module> ...`: runs it and prints the result.
 int match16_command(World& world, const std::filesystem::path& module, const cli::Args& args);
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

@@ -61,9 +61,9 @@
 #include "java/tools.hpp"
 #include "recompile/command.hpp"
 #include "recompile/xenon_tools.hpp"
-#include "source/commands.hpp"
+#include "engine/source_commands.hpp"
 #include "source/dos_writer.hpp"
-#include "source/pipeline.hpp"
+#include "engine/pipeline.hpp"
 #include "source/le_writer.hpp"
 #include "source/ne_writer.hpp"
 #include "source/pe_writer.hpp"
@@ -411,9 +411,9 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // reach ...: how far CodeBreaker gets with every program of the corpora
     table.set(app::reach_command::command(app::reach_command::Environment{config, corpus}));
 
-    // vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge: the source lanes' commands (source::commands::Production
+    // vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge: the source lanes' commands (engine::source_commands::Production
     // finds its tools when a command runs)
-    const auto production = std::make_shared<source::commands::Production>(config, corpus);
+    const auto production = std::make_shared<engine::source_commands::Production>(config, corpus);
     table.set("vxd", [production](std::span<const std::string> args) -> int { return production->vxd()(args); });
     table.set("ne-asm", [production](std::span<const std::string> args) -> int { return production->ne_asm()(args); });
     table.set("driver-source", [production](std::span<const std::string> args) -> int { return production->driver_source()(args); });
@@ -437,7 +437,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // decompile, build, place: the pipeline commands that are native now (module, scoreboard, measure, teeth, sweep wait for the
     // lane kit's worker processes and its other lanes; match, repair, score16 for their native compile/compare path)
-    for (cli::Command& c : source::pipeline::commands(source::pipeline::Environment{config, corpus}))
+    for (cli::Command& c : engine::pipeline::commands(engine::pipeline::Environment{config, corpus}))
         table.set(std::move(c));
 
     // crypto <tool> ...: the Xbox 360 crypto and flash tools (keys from the xbox360_* settings)

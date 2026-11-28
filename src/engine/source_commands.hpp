@@ -1,4 +1,4 @@
-// source/commands.hpp -- the source writers' commands, assembled from the settings and the corpus.
+// engine/source_commands.hpp -- the source writers' commands, assembled from the settings and the corpus.
 //
 //     commands::Production production(config::Config::load(checkout), corpus);
 //     table.set("vxd", production.vxd());                    // vxd <tool> ...
@@ -28,7 +28,7 @@
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
 
-namespace cb::source::commands {
+namespace cb::engine::source_commands {
 
 // A command that parses its own command line: the words after its name in, its exit code out.
 using Runner = std::function<int(std::span<const std::string> args)>;
@@ -62,4 +62,4 @@ private:
     std::shared_ptr<Impl> impl_;
 };
 
-}  // namespace cb::source::commands
+}  // namespace cb::engine::source_commands

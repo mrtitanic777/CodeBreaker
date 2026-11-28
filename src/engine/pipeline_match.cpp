@@ -34,15 +34,15 @@
 #include "formats/pe.hpp"
 #include "formats/pe_functions.hpp"
 #include "platforms/decoder.hpp"
-#include "source/pipeline_match16.hpp"
-#include "source/pipeline_period.hpp"
-#include "source/pipeline_ppc.hpp"
+#include "engine/pipeline_match16.hpp"
+#include "engine/pipeline_period.hpp"
+#include "engine/pipeline_ppc.hpp"
 #include "source/match_bytes.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "symbols/libraries/coff.hpp"
 #include "verify/lanes/win32.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 
@@ -167,7 +167,7 @@ struct MatchVerdict {
     double share = 0.0;      // of the bytes outside the masked places, the share that are the original's
     std::size_t size = 0;    // the compiled function's, padding aside
     std::size_t original = 0;
-    std::optional<MatchBytes> bytes;   // kept when asked for: a miss's two sides
+    std::optional<source::MatchBytes> bytes;   // kept when asked for: a miss's two sides
     std::string flags;                 // the switches it was compiled with (the run's, and /Oy- where the original keeps a frame)
 };
 
@@ -284,7 +284,7 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
             v = match_compare(*mine, original->second);
             if (keep_bytes && (v.match == store::ByteMatch::SameSize || v.match == store::ByteMatch::Different)) {
                 MatchCode trimmed = match_trimmed(*mine);
-                v.bytes = MatchBytes{std::move(trimmed.bytes), std::move(trimmed.mask), original->second.bytes, original->second.mask};
+                v.bytes = source::MatchBytes{std::move(trimmed.bytes), std::move(trimmed.mask), original->second.bytes, original->second.mask};
             }
         } else {
             v.match = store::ByteMatch::NoCompile;
@@ -322,7 +322,7 @@ int match_command(World& world, const cli::Args& args) {
         std::size_t size = 0, original = 0;
         std::string flags;
         std::size_t rank = 0;
-        std::optional<MatchBytes> bytes;
+        std::optional<source::MatchBytes> bytes;
     };
     std::vector<std::string> order;   // the functions, in the module's order
     std::map<std::string, Best> best;
@@ -365,7 +365,7 @@ int match_command(World& world, const cli::Args& args) {
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
     }
     if (const auto bytes_file = args.value("bytes")) {
-        std::map<std::string, MatchBytes> kept;
+        std::map<std::string, source::MatchBytes> kept;
         for (auto& [name, b] : best)
             if (b.bytes) kept.emplace(name, std::move(*b.bytes));
         fs::write_text(fs::from_text(*bytes_file), match_bytes_json(kept));
@@ -816,4 +816,4 @@ cli::Command match(const Environment& environment) {
     return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) { return match_command(world, args); });
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

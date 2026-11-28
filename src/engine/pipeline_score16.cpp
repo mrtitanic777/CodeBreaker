@@ -5,10 +5,10 @@
 #include "toolchain/watcom.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
-#include "source/pipeline_match16.hpp"
+#include "engine/pipeline_match16.hpp"
 #include "verify/gate16/scoreboard16.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace {
 
@@ -69,4 +69,4 @@ cli::Command score16(const Environment& environment) {
     return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) { return s16_command(world, args); });
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

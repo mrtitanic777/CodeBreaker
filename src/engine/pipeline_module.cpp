@@ -27,12 +27,12 @@
 #include "formats/xex.hpp"
 #include "source/classes_writer.hpp"
 #include "source/module_writer.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "source/placement.hpp"
 #include "source/readable.hpp"
 #include "naming/workbench.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 namespace mw = source::module_writer;
@@ -183,11 +183,11 @@ struct ModuleRun {
     }
 
     // The readable pass needs the SDK's headers: read when a module with C to read first asks, once for the run.
-    std::shared_ptr<readable::Sdk> sdk() {
+    std::shared_ptr<source::readable::Sdk> sdk() {
         if (!sdk_) {
             const symbols::prototypes::HeaderFolders folders = symbols::prototypes::HeaderFolders::standard(
                 toolchain::watcom::OpenWatcom::from_settings(world.config().text("openwatcom")).root(), world.corpus().reference());
-            sdk_ = std::make_shared<readable::Sdk>(readable::Sdk::read(folders, world.kit().knowledge().prototypes()));
+            sdk_ = std::make_shared<source::readable::Sdk>(source::readable::Sdk::read(folders, world.kit().knowledge().prototypes()));
         }
         return sdk_;
     }
@@ -259,7 +259,7 @@ struct ModuleRun {
             } catch (const Error&) {   // a module the analyses cannot read gets no strings, no note on its globals, no classes
             }
         }
-            readable::StringAt string_at = [image](std::uint32_t address) -> std::optional<std::string> {
+            source::readable::StringAt string_at = [image](std::uint32_t address) -> std::optional<std::string> {
             if (!image) return std::nullopt;
             try {
                 if (const auto found = analyze::strings::string_at(*image, static_cast<analyze::Va>(address))) return found->text;
@@ -282,15 +282,15 @@ struct ModuleRun {
             }
             try {
                 auto pe = std::make_shared<formats::pe::Image>(formats::pe::Image::open(path));
-                auto thunks = std::make_shared<classes_writer::ImportThunks>(*pe);
+                auto thunks = std::make_shared<source::classes_writer::ImportThunks>(*pe);
                 p.import_behind = [pe, thunks, bench](core16::Va address) { return thunks->behind(address, bench->ordinals()); };
             } catch (const Error&) {
             }
         }
 
         // the readable pass over the module as the store holds it
-        const std::shared_ptr<readable::Sdk> shared_sdk = sdk();
-        p.readable = [shared_sdk, string_at](const translate::l2::Made& stored) { return readable::make_pass(*shared_sdk, stored, string_at); };
+        const std::shared_ptr<source::readable::Sdk> shared_sdk = sdk();
+        p.readable = [shared_sdk, string_at](const translate::l2::Made& stored) { return source::readable::make_pass(*shared_sdk, stored, string_at); };
 
         if (build_whole) {
             const build::module::ModuleBuilder builder(world.kit().module_services());
@@ -314,7 +314,7 @@ struct ModuleRun {
 
     stdfs::path out_dir;
 
-    std::shared_ptr<readable::Sdk> sdk_;
+    std::shared_ptr<source::readable::Sdk> sdk_;
     std::shared_ptr<naming::Workbench> bench_;
     std::vector<std::shared_ptr<void>> keep_;
 };
@@ -360,7 +360,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
         out = *out_dir;
     } else if (in_corpus(corpus, *path)) {
         const stdfs::path table_file = world.config().checkout_root() / "config" / "source" / "placement.json";
-        const placement::Placement where(corpus.design_dir().parent_path(), placement::load_table(table_file, corpus.current()));
+        const source::placement::Placement where(corpus.design_dir().parent_path(), source::placement::load_table(table_file, corpus.current()));
         out = where.folder(name, *path, corpus.lane(*path));
     } else {
         out = world.config().state(stdfs::path("source") / stem);
@@ -479,4 +479,4 @@ cli::Command scoreboard(const Environment& environment) {
     });
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

@@ -24,7 +24,7 @@
 #include "core/text.hpp"
 #include "formats/ne.hpp"
 #include "platforms/decoder.hpp"
-#include "source/pipeline_match16.hpp"
+#include "engine/pipeline_match16.hpp"
 #include "symbols/libraries/omf.hpp"
 #include "symbols/libraries/package.hpp"
 #include "symbols/wine16.hpp"
@@ -33,7 +33,7 @@
 #include "source/match_bytes.hpp"
 #include "store/verdicts.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 
@@ -445,18 +445,18 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
     }
     if (const auto bytes_file = args.value("bytes")) {
-        std::map<std::string, MatchBytes> kept;
+        std::map<std::string, source::MatchBytes> kept;
         for (const am16::Function& f : run.functions) {
             const auto verdict = run.result.verdicts.find(f.name);
             const auto code = run.result.code.find(f.name);
             if (verdict == run.result.verdicts.end() || code == run.result.code.end() || !code->second) continue;
             if (verdict->second.match != store::ByteMatch::SameSize && verdict->second.match != store::ByteMatch::Different) continue;
             const am16::Masked built = m16p_trim(*code->second);
-            kept.emplace(f.name, MatchBytes{built.code, built.mask, f.original.code, f.original.mask});
+            kept.emplace(f.name, source::MatchBytes{built.code, built.mask, f.original.code, f.original.mask});
         }
-        fs::write_text(fs::from_text(*bytes_file), match_bytes_json(kept));
+        fs::write_text(fs::from_text(*bytes_file), source::match_bytes_json(kept));
     }
     return 0;
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

@@ -13,8 +13,8 @@ namespace cb::app::convert {
 namespace stdfs = std::filesystem;
 
 Judge standard_judge() {
-    return [](const stdfs::path& input, const source::pipeline::JudgeSteps& steps) {
-        return source::pipeline::judge(source::pipeline::Environment{.config = config::current(), .corpus = nullptr, .workers = engine::hosting_workers()}, input,
+    return [](const stdfs::path& input, const engine::pipeline::JudgeSteps& steps) {
+        return engine::pipeline::judge(engine::pipeline::Environment{.config = config::current(), .corpus = nullptr, .workers = engine::hosting_workers()}, input,
                                        steps);
     };
 }
@@ -33,7 +33,7 @@ void judge_stage(Reporter& r, const stdfs::path& input, const stdfs::path& work,
     // The judge tells from its threads: the reporter is told one thing at a time, and a cancel it reports is kept (the judge must not be thrown through).
     std::mutex telling;
     bool cancelled = false;
-    source::pipeline::JudgeSteps steps;
+    engine::pipeline::JudgeSteps steps;
     steps.progress = [&](verify::reconstruct::Step step, std::size_t done, std::size_t total) {
         const std::lock_guard hold(telling);
         if (cancelled) return;
@@ -55,7 +55,7 @@ void judge_stage(Reporter& r, const stdfs::path& input, const stdfs::path& work,
         }
         return cancelled;
     };
-    source::pipeline::Judging judging;
+    engine::pipeline::Judging judging;
     try {
         judging = judge(input, steps);
     } catch (const verify::reconstruct::Stopped&) {
@@ -74,7 +74,7 @@ void judge_stage(Reporter& r, const stdfs::path& input, const stdfs::path& work,
     }
     std::vector<fnsrc::Judged> classes;
     classes.reserve(judging.functions.size());
-    for (const source::pipeline::JudgedFunction& f : judging.functions) classes.push_back({f.key, f.name, f.classification.cls});
+    for (const engine::pipeline::JudgedFunction& f : judging.functions) classes.push_back({f.key, f.name, f.classification.cls});
     r.functions(fnsrc::with_judged(fnsrc::scan_folder(work), classes));
     const std::string counts = fnsrc::judged_counts(judging.outcome.scores, static_cast<std::int64_t>(judging.outcome.functions), judging.lane);
     r.note(counts);

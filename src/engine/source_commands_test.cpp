@@ -2,7 +2,7 @@
 // Tests of cb/source/commands: that every tool of the `vxd` and `ne-asm` commands is wired, that a command made from
 // the settings does nothing until it runs, and the commands that need no tool of the machine. The commands run on real inputs in the
 // report of the change (cb_source_commands).
-#include "source/commands.hpp"
+#include "engine/source_commands.hpp"
 
 #include <algorithm>
 
@@ -14,7 +14,7 @@
 #include "source/ne_asm/run.hpp"
 #include "source/vxd/run.hpp"
 
-namespace cm = cb::source::commands;
+namespace cm = cb::engine::source_commands;
 
 namespace {
 
@@ -40,7 +40,7 @@ struct CmWorld {
 
 }  // namespace
 
-CB_TEST("source.commands.every_tool_of_the_vxd_command_is_wired", [] {
+CB_TEST("engine.source_commands.every_tool_of_the_vxd_command_is_wired", [] {
     const CmWorld world;
     const std::vector<std::string> wired = cm_names(world.production->vxd_tools());
     std::vector<std::string> listed;
@@ -52,7 +52,7 @@ CB_TEST("source.commands.every_tool_of_the_vxd_command_is_wired", [] {
     CB_CHECK_EQ(wired.size(), std::size_t{11});
 });
 
-CB_TEST("source.commands.every_tool_of_the_ne_asm_command_is_wired", [] {
+CB_TEST("engine.source_commands.every_tool_of_the_ne_asm_command_is_wired", [] {
     const CmWorld world;
     const std::vector<std::string> wired = cm_names(world.production->ne_asm_tools());
     std::vector<std::string> listed;
@@ -63,7 +63,7 @@ CB_TEST("source.commands.every_tool_of_the_ne_asm_command_is_wired", [] {
         CB_CHECK(std::find(wired.begin(), wired.end(), tool) != wired.end());
 });
 
-CB_TEST("source.commands.a_command_names_its_tools_when_none_is_given", [] {
+CB_TEST("engine.source_commands.a_command_names_its_tools_when_none_is_given", [] {
     const CmWorld world;
     {
         cb::testing::CapturedStd cap;
@@ -79,14 +79,14 @@ CB_TEST("source.commands.a_command_names_its_tools_when_none_is_given", [] {
     }
 });
 
-CB_TEST("source.commands.the_commands_that_take_what_they_need_when_they_run", [] {
+CB_TEST("engine.source_commands.the_commands_that_take_what_they_need_when_they_run", [] {
     const CmWorld world;
     // none of these makes a tool, the DDK's tables or the lane kit until it runs
     const cb::cli::Command build = world.production->dos_build();
     CB_CHECK_EQ(build.name, "dos-build");
     CB_CHECK(!build.params.empty());
-    const cb::source::commands::Runner source = world.production->driver_source();
-    const cb::source::commands::Runner program = world.production->dos_source();
+    const cb::engine::source_commands::Runner source = world.production->driver_source();
+    const cb::engine::source_commands::Runner program = world.production->dos_source();
     CB_CHECK(static_cast<bool>(source));
     CB_CHECK(static_cast<bool>(program));
     // a tool that needs nothing of the machine: the finalizer's usage, with no arguments

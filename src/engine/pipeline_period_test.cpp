@@ -1,15 +1,15 @@
 // Tests of the text passes `repair <32-bit module>` gives a period compiler (pipeline_period.hpp) and of the run-time library `match <16-bit module>`
 // names (pipeline_match16.hpp). They cover period source, a run-time library routine named outside
 // the linker's bytes, and the header a moved-field function needs.
-#include "source/pipeline_period.hpp"
+#include "engine/pipeline_period.hpp"
 
 #include <string>
 #include <vector>
 
 #include "core/testing.hpp"
-#include "source/pipeline_match16.hpp"
+#include "engine/pipeline_match16.hpp"
 
-namespace sp = cb::source::pipeline;
+namespace sp = cb::engine::pipeline;
 using cb::Bytes;
 
 namespace {
@@ -18,7 +18,7 @@ bool has(const std::string& text, const std::string& part) { return text.find(pa
 
 }  // namespace
 
-CB_TEST("source.pipeline_period.a_period_source_has_the_declarations_an_author_had", [] {
+CB_TEST("engine.pipeline_period.a_period_source_has_the_declarations_an_author_had", [] {
     const std::string header =
         "typedef int int4;\nint __stdcall HeapFree();\n#define iRam00401000 (*(int4 *)0x401000)\n#define iRam00900000 (*(int4 *)0x900000)\n"
         "int4 f(int4 a1);\nint4 __cdecl g(void);";
@@ -40,7 +40,7 @@ CB_TEST("source.pipeline_period.a_period_source_has_the_declarations_an_author_h
     CB_CHECK(!has(near, "HeapFree") && has(near, "typedef int int4;") && has(near, "g(void);"));
 });
 
-CB_TEST("source.pipeline_period.a_function_whose_result_is_used_keeps_its_type", [] {
+CB_TEST("engine.pipeline_period.a_function_whose_result_is_used_keeps_its_type", [] {
     // `g`'s result is taken by `f`, so what was in EAX is a result and the function is not made `void`
     const std::string header = "typedef int int4;\nint4 f(void);\nint4 __cdecl g(void);";
     const std::unordered_map<std::string, std::string> texts = {
@@ -50,7 +50,7 @@ CB_TEST("source.pipeline_period.a_function_whose_result_is_used_keeps_its_type",
     CB_CHECK(has(made.header, "int4 __cdecl g(void);") && !has(made.header, "void __cdecl g"));
 });
 
-CB_TEST("source.pipeline_period.the_needed_header_keeps_a_structure_only_when_the_function_names_it", [] {
+CB_TEST("engine.pipeline_period.the_needed_header_keeps_a_structure_only_when_the_function_names_it", [] {
     const std::string header =
         "typedef int int4;\ntypedef struct struct_1 {\n  int4 f_0;\n  uint1 _gap_4[4];\n  int4 f_8;\n  uint1 _gap_c[4];\n  code *f_10;\n} struct_1;";
     const std::string f = "int4 f(int4 a1,int4 a2)\n{\n  ((struct_1 *)a1)->f_8 = ((struct_1 *)a1)->f_0 + a2;\n}";
@@ -61,7 +61,7 @@ CB_TEST("source.pipeline_period.the_needed_header_keeps_a_structure_only_when_th
     CB_CHECK(!has(none, "struct_1") && !has(none, "f_8") && has(none, "typedef int int4;"));
 });
 
-CB_TEST("source.pipeline_period.a_library_routine_is_named_outside_the_linkers_bytes", [] {
+CB_TEST("engine.pipeline_period.a_library_routine_is_named_outside_the_linkers_bytes", [] {
     // A function that is a library routine byte for byte, outside the places the linker filled in (the routine's fix-ups, the original's
     // relocations), is the library's -- __aFlmul in SUWIN.
     cb::symbols::libraries::Function routine;
@@ -92,7 +92,7 @@ CB_TEST("source.pipeline_period.a_library_routine_is_named_outside_the_linkers_b
     CB_CHECK_EQ(sp::identify_run_time_library({routine, longer}, functions).at("f"), std::string("MDLLCEW.LIB:__longer"));
 });
 
-CB_TEST("source.pipeline_period.a_method_takes_its_object_in_ecx_as_microsofts_compiler_is_told", [] {
+CB_TEST("engine.pipeline_period.a_method_takes_its_object_in_ecx_as_microsofts_compiler_is_told", [] {
     const std::string header =
         "typedef int int4;\n"
         "int4 only(s_self *self);\n#pragma aux only \"_*\" parm routine [ecx] value [eax] modify [eax ecx edx];\n"
@@ -119,13 +119,13 @@ CB_TEST("source.pipeline_period.a_method_takes_its_object_in_ecx_as_microsofts_c
     CB_CHECK(!has(made, "#pragma aux") && has(made, "int4 plain(int4 a1);"));
 });
 
-CB_TEST("source.pipeline_period.a_function_ends_where_the_next_begins", [] {
+CB_TEST("engine.pipeline_period.a_function_ends_where_the_next_begins", [] {
     // the span of 0x10 ran past 0x18, a function only the module's list knows; 0x30's own end stays
     const auto spans = sp::match_clipped_spans({{0x10, 0x40}, {0x30, 0x38}, {0x50, 0x60}}, {0x10, 0x18, 0x50});
     CB_CHECK(spans.at(0x10) == 0x18 && spans.at(0x30) == 0x38 && spans.at(0x50) == 0x60);
 });
 
-CB_TEST("source.pipeline_period.a_frame_is_push_ebp_mov_ebp_esp", [] {
+CB_TEST("engine.pipeline_period.a_frame_is_push_ebp_mov_ebp_esp", [] {
     CB_CHECK(sp::builds_frame(std::vector<std::uint8_t>{0x55, 0x8B, 0xEC, 0x83}));
     CB_CHECK(sp::builds_frame(std::vector<std::uint8_t>{0x55, 0x89, 0xE5}));
     CB_CHECK(!sp::builds_frame(std::vector<std::uint8_t>{0x56, 0x8B, 0xF1}));

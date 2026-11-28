@@ -3,7 +3,7 @@
 // Every reconstructed function is compiled on its own by the Xbox 360 compiler, its words are read from the object, and each is compared with the
 // original's at the bits the object says the linker fills in (the original's own calls out of the function are masked too). `repair` gives the same
 // compiler and comparison to the search of verify/authored/repair.
-#include "source/pipeline_ppc.hpp"
+#include "engine/pipeline_ppc.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -27,7 +27,7 @@
 #include "verify/lanes/powerpc.hpp"
 #include "store/verdicts.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 namespace rp = verify::authored::repair;
@@ -445,4 +445,4 @@ int repair_truth_command(World& world, const std::vector<std::string>& words) {
     return 0;
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

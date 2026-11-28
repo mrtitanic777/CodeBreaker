@@ -4,7 +4,7 @@
 // The recorded answers on the same inputs are in the goldens of the tests below (lz32.dll: `codebreaker decompile lz32.dll` writes the
 // file whose size and first lines are checked; `place` names the folders). CB_PIPELINE_PROOF="<command words, ';' between>" runs one command
 // and prints its output and how long it took.
-#include "source/pipeline.hpp"
+#include "engine/pipeline.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -12,7 +12,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "java/production.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "verify/gate16/scoreboard16.hpp"
 
 namespace stdfs = std::filesystem;
@@ -24,7 +24,7 @@ struct Surroundings {
     fs::ScopedTempDir state{"pipeline-state"};
     fs::ScopedEnv state_env{"CB_STATE", fs::to_text(state.path())};
     config::Config config = config::Config::load(config::current().main_checkout());
-    cli::Cli cli{"codebreaker", source::pipeline::commands({.config = config, .corpus = nullptr})};
+    cli::Cli cli{"codebreaker", engine::pipeline::commands({.config = config, .corpus = nullptr})};
     // Whether the corpus of the target product is on this machine.
     bool has_corpus() const {
         const std::optional<stdfs::path> corpus = config.path("corpus");
@@ -34,14 +34,14 @@ struct Surroundings {
 
 }  // namespace
 
-CB_TEST("source.pipeline.every_command_is_declared", [] {
+CB_TEST("engine.pipeline.every_command_is_declared", [] {
     Surroundings w;
     const std::vector<std::string> wanted = {"decompile", "module", "scoreboard", "build", "measure", "teeth", "sweep", "match", "score16", "repair", "place"};
     for (const std::string& name : wanted) CB_CHECK(w.cli.find({name}) != nullptr);
     CB_CHECK_EQ(w.cli.commands().size(), wanted.size());
 });
 
-CB_TEST("source.pipeline.place_names_the_folder_of_a_module", [] {
+CB_TEST("engine.pipeline.place_names_the_folder_of_a_module", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     testing::CapturedStd cap;
@@ -51,7 +51,7 @@ CB_TEST("source.pipeline.place_names_the_folder_of_a_module", [] {
     CB_CHECK(cap.out().find("2 modules: ") != std::string::npos);
 });
 
-CB_TEST("source.pipeline.decompile_writes_a_modules_functions_as_c", [] {
+CB_TEST("engine.pipeline.decompile_writes_a_modules_functions_as_c", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     fs::ScopedTempDir out("pipeline-decompile");
@@ -100,26 +100,26 @@ bool module_matches_golden(Surroundings& w, const std::string& name, const std::
 
 }  // namespace
 
-CB_TEST("source.pipeline.module_writes_the_recorded_source_for_a_32_bit_module", [] {
+CB_TEST("engine.pipeline.module_writes_the_recorded_source_for_a_32_bit_module", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     (void)module_matches_golden(w, "lz32.dll", {"lz32.c", "lz32.h"});
 });
 
-CB_TEST("source.pipeline.module_writes_the_recorded_source_for_a_16_bit_module", [] {
+CB_TEST("engine.pipeline.module_writes_the_recorded_source_for_a_16_bit_module", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     (void)module_matches_golden(w, "lzexpand.dll", {"lzexpand.h"});
 });
 
 // The ratio of two byte runs as difflib gives it (the values are difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()).
-CB_TEST("source.pipeline.sequence_ratio_is_difflibs", [] {
+CB_TEST("engine.pipeline.sequence_ratio_is_difflibs", [] {
     const auto bytes = [](std::initializer_list<int> v) {
         Bytes out;
         for (const int b : v) out.push_back(static_cast<std::uint8_t>(b));
         return out;
     };
-    const auto ratio = [](const Bytes& a, const Bytes& b) { return source::pipeline::sequence_ratio(a, b); };
+    const auto ratio = [](const Bytes& a, const Bytes& b) { return engine::pipeline::sequence_ratio(a, b); };
     CB_CHECK_EQ(ratio(bytes({'a', 'b', 'c', 'd', 'e'}), bytes({'a', 'b', 'X', 'd', 'e'})), 0.8);
     CB_CHECK_EQ(ratio(bytes({0x55, 0x8b, 0xec, 0x83, 0xec, 0x10, 0x53, 0x56, 0x57, 0xc3}), bytes({0x55, 0x8b, 0xec, 0x53, 0x56, 0x57, 0xc3})), 0.8235294117647058);
     CB_CHECK_EQ(ratio(bytes({'a', 'a', 'a', 'a'}), bytes({'a', 'a'})), 0.6666666666666666);
@@ -127,7 +127,7 @@ CB_TEST("source.pipeline.sequence_ratio_is_difflibs", [] {
     CB_CHECK_EQ(ratio(bytes({}), bytes({})), 1.0);
     CB_CHECK_EQ(ratio(bytes({'x', 'y', 'z'}), bytes({})), 0.0);
 });
-CB_TEST("source.pipeline.repair_with_no_module_says_its_usage", [] {
+CB_TEST("engine.pipeline.repair_with_no_module_says_its_usage", [] {
     Surroundings w;
     testing::CapturedStd cap;
     CB_CHECK_EQ(w.cli.run({"repair"}), kExitUsage);
@@ -137,7 +137,7 @@ CB_TEST("source.pipeline.repair_with_no_module_says_its_usage", [] {
 // The recorded answer (`repair lz32.dll`, the 32-bit period compiler set up; about 20 s, so only when asked for):
 // "lz32.dll: 39 functions repaired toward the original's bytes: 1 identical, 7 same size, 31 different", the switches /O1 /Gz, and `sub_001000 different
 // distance 40/87 via [/Oy-]` as the first function it moved.
-CB_TEST("source.pipeline.repair_lz32", [] {
+CB_TEST("engine.pipeline.repair_lz32", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::string period = w.config.text("period_compiler");
@@ -149,7 +149,7 @@ CB_TEST("source.pipeline.repair_lz32", [] {
     CB_CHECK(cap.out().find("lz32.dll: 39 functions repaired toward the original's bytes: 1 identical, 7 same size, 31 different") != std::string::npos);
 });
 
-CB_TEST("source.pipeline.score16_with_no_module_says_its_usage", [] {
+CB_TEST("engine.pipeline.score16_with_no_module_says_its_usage", [] {
     Surroundings w;
     testing::CapturedStd cap;
     CB_CHECK_EQ(w.cli.run({"score16"}), kExitUsage);
@@ -159,7 +159,7 @@ CB_TEST("source.pipeline.score16_with_no_module_says_its_usage", [] {
 
 // `score16 --show` reads a saved board and prints the function's C and the three compilers' instructions side by side (the recorded output for
 // the same board: the C, a header line, one line per instruction).
-CB_TEST("source.pipeline.score16_shows_a_function_of_a_saved_board", [] {
+CB_TEST("engine.pipeline.score16_shows_a_function_of_a_saved_board", [] {
     Surroundings w;
     verify::gate16::scoreboard16::Row row;
     row.segment = 1;
@@ -182,7 +182,7 @@ CB_TEST("source.pipeline.score16_shows_a_function_of_a_saved_board", [] {
 });
 
 // A compiler that is neither of the two is not set up -- said before anything is decompiled (the module is read for its lane only).
-CB_TEST("source.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [] {
+CB_TEST("engine.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     testing::CapturedStd cap;
@@ -199,7 +199,7 @@ CB_TEST("source.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [
 
 // The recorded answer (`codebreaker match lzexpand.dll --first 8`, Visual C++ 1.52c running on Windows itself, 2026-11-12; about 10 s,
 // so only when asked for): two segments' switches found, and the first eight functions all different, the nearest 55 of 112 bytes off.
-CB_TEST("source.pipeline.match_lzexpand", [] {
+CB_TEST("engine.pipeline.match_lzexpand", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::optional<stdfs::path> msvc152 = w.config.path("msvc152");
@@ -216,7 +216,7 @@ CB_TEST("source.pipeline.match_lzexpand", [] {
 
 // repair --truth names the period compilers a machine has; the 32-bit compiler of 1994 and Microsoft C have no units of their own (their profile
 // gives none), so nothing is tried and the line says so; a compiler that is not set up is refused with the list of those that are.
-CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
+CB_TEST("engine.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
     Surroundings w;
     const std::string period = w.config.text("period_compiler");
     std::error_code ec;
@@ -231,7 +231,7 @@ CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
 
 // The recorded answer on natalsu.exe, the PowerPC image of the formats tests (`codebreaker match natalsu.exe`, the Xbox 360 compiler set up,
 // 2026-11-13; about a minute, so only when asked for): 87 functions, 8 identical, 8 same size, 67 different, 4 that do not compile.
-CB_TEST("source.pipeline.match_of_a_powerpc_image", [] {
+CB_TEST("engine.pipeline.match_of_a_powerpc_image", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::optional<stdfs::path> tools = w.config.path("powerpc_tools");
@@ -247,7 +247,7 @@ CB_TEST("source.pipeline.match_of_a_powerpc_image", [] {
 
 // The recorded output for the Java fixture (`codebreaker module <fixture> --out DIR`, g++ and a JDK set up, 2026-11-13, 18 s;
 // the files are the same bytes, line ends aside): nine classes, one verified by running it beside the JVM, two weakly, six compiled and not run.
-CB_TEST("source.pipeline.module_of_a_java_program", [] {
+CB_TEST("engine.pipeline.module_of_a_java_program", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const stdfs::path folder = testing::data_path("java/testdata/tools_fixtures");
@@ -265,7 +265,7 @@ CB_TEST("source.pipeline.module_of_a_java_program", [] {
     CB_CHECK(fs::read_text(out.path() / "STATUS.md").starts_with("# java -- C++03 transpiled from Java\n\n9 classes: "));
 });
 
-CB_TEST("source.pipeline.proof", [] {
+CB_TEST("engine.pipeline.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_PIPELINE_PROOF");
     if (!proof || proof->empty()) return;
     Surroundings w;

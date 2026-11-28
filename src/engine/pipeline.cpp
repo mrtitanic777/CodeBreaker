@@ -1,4 +1,4 @@
-#include "source/pipeline.hpp"
+#include "engine/pipeline.hpp"
 
 #include <algorithm>
 #include <format>
@@ -11,12 +11,12 @@
 #include "decompile/decompiler.hpp"
 #include "formats/dos.hpp"
 #include "jobs/workers.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "source/placement.hpp"
 #include "verify/measure.hpp"
 #include "verify/sweep.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 namespace stdfs = std::filesystem;
 
@@ -83,9 +83,9 @@ cli::Command place(const Environment& environment) {
     return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) {
         base::Corpus& corpus = world.corpus();
         const stdfs::path table_file = world.config().checkout_root() / "config" / "source" / "placement.json";
-        const placement::Placement where(corpus.design_dir().parent_path(), placement::load_table(table_file, corpus.current()));
+        const source::placement::Placement where(corpus.design_dir().parent_path(), source::placement::load_table(table_file, corpus.current()));
         const std::vector<std::string> words = args.values("args");
-        return placement::place_command(where, corpus, words);
+        return source::placement::place_command(where, corpus, words);
     });
 }
 
@@ -231,4 +231,4 @@ std::vector<cli::Command> commands(const Environment& environment) {
             sweep(environment),     match(environment),  score16(environment),    repair(environment), place(environment)};
 }
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

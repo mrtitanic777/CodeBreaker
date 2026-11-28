@@ -1,7 +1,7 @@
-// source/pipeline.hpp -- the commands of the reconstruction pipeline, complete: each is made from the settings and the corpus alone.
+// engine/pipeline.hpp -- the commands of the reconstruction pipeline, complete: each is made from the settings and the corpus alone.
 //
-//     source::pipeline::Environment environment{.config = config::Config::load(checkout), .corpus = corpus};
-//     cli::Cli cli("codebreaker", source::pipeline::commands(environment));
+//     engine::pipeline::Environment environment{.config = config::Config::load(checkout), .corpus = corpus};
+//     cli::Cli cli("codebreaker", engine::pipeline::commands(environment));
 //     cli.run({"decompile", "lz32.dll"});
 //
 //     decompile <module> [--out FILE]               any module as C (decompile/decompiler)
@@ -33,7 +33,7 @@
 #include "verify/reconstruct.hpp"
 #include "store/verdicts.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 struct Environment {
     config::Config config;
@@ -91,4 +91,4 @@ struct Judging {
 // Judge `program` (a path, or a corpus name). Throws what the lane throws, and reconstruct::Stopped when `steps.stop` said to stop.
 Judging judge(const Environment& environment, const std::filesystem::path& program, const JudgeSteps& steps = {});
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

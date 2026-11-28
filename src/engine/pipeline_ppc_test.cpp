@@ -1,7 +1,7 @@
 // Tests of `match` on an Xbox 360 image (source/pipeline_ppc): the object reader, its bit-level masks, the comparison, and the original's code up to its
 // padding. Four checks: small functions compiled with the Xbox 360 compiler the settings name (powerpc_tools),
 // which a machine without one skips.
-#include "source/pipeline_ppc.hpp"
+#include "engine/pipeline_ppc.hpp"
 
 #include "base/config.hpp"
 #include "core/fs.hpp"
@@ -9,7 +9,7 @@
 
 namespace stdfs = std::filesystem;
 using namespace cb;
-namespace ppcm = cb::source::pipeline;
+namespace ppcm = cb::engine::pipeline;
 
 namespace {
 
@@ -97,7 +97,7 @@ Bytes ppct_image() {
 
 }  // namespace
 
-CB_TEST("source.pipeline_ppc.one_function_whole", [] {
+CB_TEST("engine.pipeline_ppc.one_function_whole", [] {
     fs::ScopedTempDir work("ppc-match");
     const auto built = ppct_built(work);
     if (!built) return;
@@ -109,7 +109,7 @@ CB_TEST("source.pipeline_ppc.one_function_whole", [] {
     CB_CHECK(n > 10);   // a label inside the function must not cut it
 });
 
-CB_TEST("source.pipeline_ppc.masks_are_fields", [] {
+CB_TEST("engine.pipeline_ppc.masks_are_fields", [] {
     fs::ScopedTempDir work("ppc-match");
     const auto built = ppct_built(work);
     if (!built) return;
@@ -132,7 +132,7 @@ CB_TEST("source.pipeline_ppc.masks_are_fields", [] {
     CB_CHECK(highs > 0);
 });
 
-CB_TEST("source.pipeline_ppc.distance_masks_places_and_counts_registers", [] {
+CB_TEST("engine.pipeline_ppc.distance_masks_places_and_counts_registers", [] {
     fs::ScopedTempDir work("ppc-match");
     const auto built = ppct_built(work);
     if (!built) return;
@@ -156,7 +156,7 @@ CB_TEST("source.pipeline_ppc.distance_masks_places_and_counts_registers", [] {
     CB_CHECK(ppcm::ppc_compare(*built, shorter).match == ByteMatch::Different);
 });
 
-CB_TEST("source.pipeline_ppc.the_original_stops_at_padding", [] {
+CB_TEST("engine.pipeline_ppc.the_original_stops_at_padding", [] {
     const formats::powerpc_image::Image image = formats::powerpc_image::Image::parse(ppct_image());
     const auto codes = ppcm::ppc_original_code(image, {0x82003000});
     CB_CHECK(codes.contains(0x82003000));

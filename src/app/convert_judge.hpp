@@ -17,14 +17,14 @@
 #include <functional>
 
 #include "app/convert.hpp"
-#include "source/pipeline.hpp"
+#include "engine/pipeline.hpp"
 
 namespace cb::app::convert {
 
-// Judges one program, telling the steps: source::pipeline::judge in the settings of this program (standard_judge), or a stand-in in tests.
-using Judge = std::function<source::pipeline::Judging(const std::filesystem::path& input, const source::pipeline::JudgeSteps& steps)>;
+// Judges one program, telling the steps: engine::pipeline::judge in the settings of this program (standard_judge), or a stand-in in tests.
+using Judge = std::function<engine::pipeline::Judging(const std::filesystem::path& input, const engine::pipeline::JudgeSteps& steps)>;
 
-// source::pipeline::judge over config::current(), with the lane kit's worker processes when this program hosts them.
+// engine::pipeline::judge over config::current(), with the lane kit's worker processes when this program hosts them.
 Judge standard_judge();
 
 // The words under the progress bar for a step of the judge: "Making the C ready to build", "Building 300 functions",

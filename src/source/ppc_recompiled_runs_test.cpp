@@ -23,7 +23,7 @@
 #include "decompile/vmx128.hpp"
 #include "recompile/disassemble.hpp"
 #include "recompile/powerpc.hpp"
-#include "source/pipeline_ppc.hpp"
+#include "engine/pipeline_ppc.hpp"
 
 namespace rcp = cb::recompile::powerpc;
 namespace stdfs = std::filesystem;
@@ -80,7 +80,7 @@ cb::recompile::disassemble::Disassembler& rr_dis() {
 
 // One C function compiled with the Xbox 360 compiler and recompiled at `va`: its C++ (every instruction translated, or the case fails).
 std::string rr_leaf(const RrTools& tools, const cb::fs::ScopedTempDir& work, std::string_view csrc, std::string_view name, std::uint32_t va) {
-    const auto built = cb::source::pipeline::ppc_compile_function(tools.cl, "", csrc, name, "/O2", work.path());
+    const auto built = cb::engine::pipeline::ppc_compile_function(tools.cl, "", csrc, name, "/O2", work.path());
     CB_CHECK(built.has_value());
     if (!built) return {};
     const rcp::Recompiled r = rcp::recompile_function(rr_dis(), built->bytes, va, static_cast<std::uint32_t>(built->bytes.size()));

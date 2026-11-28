@@ -1,4 +1,4 @@
-// source/pipeline_ppc.hpp -- `match` and `repair` for an Xbox 360 image, and `repair --truth` (internal to source/pipeline_*.cpp).
+// engine/pipeline_ppc.hpp -- `match` and `repair` for an Xbox 360 image, and `repair --truth` (internal to source/pipeline_*.cpp).
 //
 // The Xbox 360 compiler (settings: powerpc_tools) makes an object whose relocation records say which instruction words hold what the linker fills in --
 // the 24-bit distance of a `bl`, the 14 bits of a conditional branch, a 16-bit half of an address -- so a function's compiled code is compared with the
@@ -15,10 +15,10 @@
 
 #include "core/cli.hpp"
 #include "formats/powerpc_image.hpp"
-#include "source/pipeline_world.hpp"
+#include "engine/pipeline_world.hpp"
 #include "verify/authored/repair.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 // Whether a module is an Xbox 360 image: an .xex, or a PE file whose machine is PowerPC.
 bool is_powerpc_module(World& world, const std::filesystem::path& path, const std::string& given);
@@ -48,4 +48,4 @@ std::map<std::uint64_t, verify::authored::repair::Code> ppc_original_code(const 
 // How far a compiled function is from the original's, in words, outside the masked bits.
 verify::authored::search16::ByteVerdict ppc_compare(const verify::authored::repair::Code& built, const verify::authored::repair::Code& original);
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline

@@ -1,6 +1,6 @@
-// source/commands.cpp -- the source writers' commands, assembled from the settings and the corpus (see commands.hpp).
+// engine/source_commands.cpp -- the source writers' commands, assembled from the settings and the corpus (see commands.hpp).
 // cb-unity: alone
-#include "source/commands.hpp"
+#include "engine/source_commands.hpp"
 
 #include <algorithm>
 #include <format>
@@ -51,7 +51,7 @@
 #include "symbols/driver_services.hpp"
 #include "verify/lanes/driver.hpp"
 
-namespace cb::source::commands {
+namespace cb::engine::source_commands {
 
 namespace stdfs = std::filesystem;
 
@@ -66,7 +66,7 @@ bool commands_is_dir(const stdfs::path& p) {
 
 // The period ML.EXE (a Phar Lap TNT program) under DOS, in as few sessions as it can: the texts are grouped so that each session stays under
 // `budget` characters and `max_files` files (a text over the budget runs alone); the cold start of the emulator is what a batch saves.
-vxd::masm::PeriodAssembler commands_period_assembler(const toolchain::DosRunner& runner, stdfs::path ml_folder, stdfs::path extender, stdfs::path stage) {
+source::vxd::masm::PeriodAssembler commands_period_assembler(const toolchain::DosRunner& runner, stdfs::path ml_folder, stdfs::path extender, stdfs::path stage) {
     return [&runner, ml_folder = std::move(ml_folder), extender = std::move(extender), stage = std::move(stage)](std::span<const std::string> texts) {
         constexpr std::size_t kBudget = 300000, kMaxFiles = 32;
         fs::make_dirs(stage);
@@ -74,7 +74,7 @@ vxd::masm::PeriodAssembler commands_period_assembler(const toolchain::DosRunner&
         for (const auto& [from, name] : {std::pair<stdfs::path, const char*>{ml_folder / "ML.EXE", "ML.EXE"}, {ml_folder / "ML.ERR", "ML.ERR"},
                                          {extender, "DOSXNT.EXE"}})
             if (!stdfs::exists(stage / name, ec) && stdfs::exists(from, ec)) stdfs::copy_file(from, stage / name, ec);
-        std::vector<vxd::masm::Assembled> results(texts.size());
+        std::vector<source::vxd::masm::Assembled> results(texts.size());
         std::vector<std::size_t> order(texts.size());
         for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
         std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return texts[a].size() < texts[b].size(); });
@@ -176,36 +176,36 @@ struct Production::Impl {
 
     // ---- the VxD tools ----
     struct Vxd {
-        vxd::DdkFolders ddk;
-        vxd::DdkNames names;
-        vxd::masm::Toolchain tools;
-        vxd::link::Environment standard_link;
-        vxd::link::Environment linker_260;
-        vxd::idiom::Environment idiom;
-        vxd::tree::Environment tree;
-        vxd::masm::Environment masm;
-        vxd::Environment disassembly;
-        vxd::corpus::Environment corpus;
-        vxd::owbuild::Environment owbuild;
-        vxd::owbuild::CommandEnvironment owbuild_command;
-        vxd::loadable_corpus::Environment loadable_corpus;
-        vxd::boot::Environment boot;
+        source::vxd::DdkFolders ddk;
+        source::vxd::DdkNames names;
+        source::vxd::masm::Toolchain tools;
+        source::vxd::link::Environment standard_link;
+        source::vxd::link::Environment linker_260;
+        source::vxd::idiom::Environment idiom;
+        source::vxd::tree::Environment tree;
+        source::vxd::masm::Environment masm;
+        source::vxd::Environment disassembly;
+        source::vxd::corpus::Environment corpus;
+        source::vxd::owbuild::Environment owbuild;
+        source::vxd::owbuild::CommandEnvironment owbuild_command;
+        source::vxd::loadable_corpus::Environment loadable_corpus;
+        source::vxd::boot::Environment boot;
 
         Vxd(Impl& impl, Dos& dos)
-            : ddk(vxd::DdkFolders::standard(*impl.corpus, impl.config.main_checkout().parent_path())),
-              names(vxd::DdkNames::standard(ddk, impl.design_dir())),
-              tools(vxd::masm::Toolchain::standard(ddk, impl.tools_root(),
+            : ddk(source::vxd::DdkFolders::standard(*impl.corpus, impl.config.main_checkout().parent_path())),
+              names(source::vxd::DdkNames::standard(ddk, impl.design_dir())),
+              tools(source::vxd::masm::Toolchain::standard(ddk, impl.tools_root(),
                                                    commands_period_assembler(dos.runner, impl.ddk_root() / "MASM611C",
                                                                              impl.tools_root() / "toolchains" / "microsoft" / "compilers" / "msvc-1.52c" / "BIN" / "DOSXNT.EXE",
                                                                              impl.config.state("vxdtc") / "tnt"))),
-              standard_link{names, tools, vxd::link::standard_link(impl.config.path("period_compiler").value_or(stdfs::path()) / "LINK.EXE")},
-              linker_260{names, tools, vxd::link::link_260(impl.ddk_root() / "MSVC20", impl.config.state("cb_link260") / "stage", 0x1000)},
+              standard_link{names, tools, source::vxd::link::standard_link(impl.config.path("period_compiler").value_or(stdfs::path()) / "LINK.EXE")},
+              linker_260{names, tools, source::vxd::link::link_260(impl.ddk_root() / "MSVC20", impl.config.state("cb_link260") / "stage", 0x1000)},
               idiom{*impl.corpus, names, tools, impl.config.state(stdfs::path("vxd") / "idiom")},
               tree{names, impl.config.state(stdfs::path("vxd") / "tree")},
               masm{names, tools},
               disassembly{*impl.corpus, names, impl.config.state(stdfs::path("vxd") / "listing")},
               corpus{names, tools, *impl.corpus, impl.config.state(stdfs::path("vxd") / "byte_exact.json")},
-              owbuild{standard_link, vxd::owbuild::tools_from_settings(impl.config.checkout_root(), impl.config.text("openwatcom"))},
+              owbuild{standard_link, source::vxd::owbuild::tools_from_settings(impl.config.checkout_root(), impl.config.text("openwatcom"))},
               owbuild_command{owbuild, *impl.corpus, impl.config.state("vxd_ow")},
               loadable_corpus{linker_260, *impl.corpus, impl.config.state(stdfs::path("vxd") / "loadable.json")},
               boot{names, *impl.corpus, impl.config.state("vxdboot"), impl.config.path("qemu").value_or(stdfs::path(R"(C:\Program Files\qemu\qemu-system-i386.exe)")),
@@ -224,20 +224,20 @@ struct Production::Impl {
     struct NeAsm {
         build::masm::Assembler masm4;
         toolchain::msvc152::Tools msvc;
-        ne_asm::idiom::Environment idiom;
-        ne_asm::sweep::Environment sweep;
-        ne_asm::recon::Environment recon;
-        ne_asm::segdiff::Environment segdiff;
+        source::ne_asm::idiom::Environment idiom;
+        source::ne_asm::sweep::Environment sweep;
+        source::ne_asm::recon::Environment recon;
+        source::ne_asm::segdiff::Environment segdiff;
         naming::debug_build::Environment debug_names;
         naming::debug_build_estimate::Environment debug_estimate;
 
         static build::masm::Context masm_context(Impl& impl, Dos& dos) {
             return build::masm::Context{build::masm::Tools::from_config(impl.config), dos.executive, nullptr};
         }
-        static ne_asm::idiom::Assemblers assemblers(Impl& impl, Dos& dos) {
-            ne_asm::idiom::Assemblers a;
-            a.nasm = ne_asm::idiom::nasm_assembler();
-            a.ml = ne_asm::idiom::ml_assembler(dos.runner, {impl.ddk_root() / "MASM611C", impl.tools_root() / "toolchains" / "microsoft" / "compilers" / "msvc-1.52c" / "BIN" / "DOSXNT.EXE",
+        static source::ne_asm::idiom::Assemblers assemblers(Impl& impl, Dos& dos) {
+            source::ne_asm::idiom::Assemblers a;
+            a.nasm = source::ne_asm::idiom::nasm_assembler();
+            a.ml = source::ne_asm::idiom::ml_assembler(dos.runner, {impl.ddk_root() / "MASM611C", impl.tools_root() / "toolchains" / "microsoft" / "compilers" / "msvc-1.52c" / "BIN" / "DOSXNT.EXE",
                                                             impl.ddk_root() / "INC16", impl.config.state("vxdtc") / "ml"});
             return a;
         }
@@ -249,7 +249,7 @@ struct Production::Impl {
               recon{*impl.corpus,
                     [this](std::string_view source) {
                         const build::masm::Product product = masm4.assemble(source);
-                        return ne_asm::recon::Assembled{product.obj, product.lst.value_or(""), product.log.value_or("")};
+                        return source::ne_asm::recon::Assembled{product.obj, product.lst.value_or(""), product.log.value_or("")};
                     }},
               segdiff{*impl.corpus,
                       [this, &dos](std::string_view c_source, std::string_view flags) -> Bytes {
@@ -293,14 +293,14 @@ struct Production::Impl {
 
     // dos-source: the program written and built; the driver of a driver+vxd file by the driver writer, the Windows module of a DOS+Windows file by the
     // module builder.
-    dos_writer::Options dos_options() {
-        dos_writer::Options options = dos_writer::options_for(open_watcom(), probes());
+    source::dos_writer::Options dos_options() {
+        source::dos_writer::Options options = source::dos_writer::options_for(open_watcom(), probes());
         const std::shared_ptr<const symbols::driver_services::Table> table = service_names();
-        driver_writer::Options driver = driver_writer::options_for(open_watcom(), probes(), [table](std::uint32_t device, std::uint32_t service) { return table->label(device, service); });
-        options.write_vxd = driver_writer::vxd_writer(std::move(driver));
+        source::driver_writer::Options driver = source::driver_writer::options_for(open_watcom(), probes(), [table](std::uint32_t device, std::uint32_t service) { return table->label(device, service); });
+        options.write_vxd = source::driver_writer::vxd_writer(std::move(driver));
         std::shared_ptr<engine::LaneKit> k = kit();
         options.build_windows = [k](const stdfs::path& program, const stdfs::path& outdir) {
-            dos_writer::WindowsBuild w;
+            source::dos_writer::WindowsBuild w;
             try {
                 const build::module::ModuleBuilder builder(k->module_services());
                 build::module::BuildOptions build_options;
@@ -334,22 +334,22 @@ Production::~Production() = default;
 base::commands::ToolTable Production::vxd_tools() const {
     const std::shared_ptr<Impl> i = impl_;
     base::commands::ToolTable tools;
-    tools["idiom"] = [i](std::span<const std::string> a) { return vxd::idiom::main(i->vxd_world().idiom, a); };
-    tools["tree"] = [i](std::span<const std::string> a) { return vxd::tree::main(i->vxd_world().tree, a); };
-    tools["masm"] = [i](std::span<const std::string> a) { return vxd::masm::main(i->vxd_world().masm, a); };
-    tools["link"] = [i](std::span<const std::string> a) { return vxd::link::main(i->vxd_world().standard_link, a); };
-    tools["from-source"] = [i](std::span<const std::string> a) { return vxd::from_source::main(i->vxd_world().linker_260, a); };
-    tools["owbuild"] = [i](std::span<const std::string> a) { return vxd::owbuild::main(i->vxd_world().owbuild_command, a); };
-    tools["finalize"] = [](std::span<const std::string> a) { return vxd::coalesce::main(a); };
-    tools["disassembly"] = [i](std::span<const std::string> a) { return vxd::main(i->vxd_world().disassembly, a); };
-    tools["corpus"] = [i](std::span<const std::string> a) { return vxd::corpus::main(i->vxd_world().corpus, a); };
-    tools["loadable-corpus"] = [i](std::span<const std::string> a) { return vxd::loadable_corpus::main(i->vxd_world().loadable_corpus, a); };
-    tools["boot"] = [i](std::span<const std::string> a) { return vxd::boot::main(i->vxd_world().boot, a); };
+    tools["idiom"] = [i](std::span<const std::string> a) { return source::vxd::idiom::main(i->vxd_world().idiom, a); };
+    tools["tree"] = [i](std::span<const std::string> a) { return source::vxd::tree::main(i->vxd_world().tree, a); };
+    tools["masm"] = [i](std::span<const std::string> a) { return source::vxd::masm::main(i->vxd_world().masm, a); };
+    tools["link"] = [i](std::span<const std::string> a) { return source::vxd::link::main(i->vxd_world().standard_link, a); };
+    tools["from-source"] = [i](std::span<const std::string> a) { return source::vxd::from_source::main(i->vxd_world().linker_260, a); };
+    tools["owbuild"] = [i](std::span<const std::string> a) { return source::vxd::owbuild::main(i->vxd_world().owbuild_command, a); };
+    tools["finalize"] = [](std::span<const std::string> a) { return source::vxd::coalesce::main(a); };
+    tools["disassembly"] = [i](std::span<const std::string> a) { return source::vxd::main(i->vxd_world().disassembly, a); };
+    tools["corpus"] = [i](std::span<const std::string> a) { return source::vxd::corpus::main(i->vxd_world().corpus, a); };
+    tools["loadable-corpus"] = [i](std::span<const std::string> a) { return source::vxd::loadable_corpus::main(i->vxd_world().loadable_corpus, a); };
+    tools["boot"] = [i](std::span<const std::string> a) { return source::vxd::boot::main(i->vxd_world().boot, a); };
     return tools;
 }
 
 Runner Production::vxd() const {
-    return [tools = vxd_tools()](std::span<const std::string> args) { return vxd::run(args, tools); };
+    return [tools = vxd_tools()](std::span<const std::string> args) { return source::vxd::run(args, tools); };
 }
 
 // ---- ne-asm -----------------------------------------------------------------------------------------------------------------------
@@ -357,14 +357,14 @@ Runner Production::vxd() const {
 base::commands::ToolTable Production::ne_asm_tools() const {
     const std::shared_ptr<Impl> i = impl_;
     base::commands::ToolTable tools;
-    tools["idiom"] = [i](std::span<const std::string> a) { return ne_asm::idiom::main(i->ne_asm_world().idiom, a); };
-    tools["sweep"] = [i](std::span<const std::string> a) { return ne_asm::sweep::main(i->ne_asm_world().sweep, a); };
-    tools["recon"] = [i](std::span<const std::string> a) { return ne_asm::recon::main(i->ne_asm_world().recon, a); };
-    tools["segdiff"] = [i](std::span<const std::string> a) { return ne_asm::segdiff::main(i->ne_asm_world().segdiff, a); };
-    tools["reachability"] = [i](std::span<const std::string> a) { return ne_asm::reachability::main(*i->corpus, a); };
-    tools["datacode"] = [i](std::span<const std::string> a) { return ne_asm::datacode::main(*i->corpus, a); };
-    tools["segment"] = [](std::span<const std::string> a) { return ne_asm::segment::main(a); };
-    tools["fixups"] = [](std::span<const std::string> a) { return ne_asm::fixups::main(a); };
+    tools["idiom"] = [i](std::span<const std::string> a) { return source::ne_asm::idiom::main(i->ne_asm_world().idiom, a); };
+    tools["sweep"] = [i](std::span<const std::string> a) { return source::ne_asm::sweep::main(i->ne_asm_world().sweep, a); };
+    tools["recon"] = [i](std::span<const std::string> a) { return source::ne_asm::recon::main(i->ne_asm_world().recon, a); };
+    tools["segdiff"] = [i](std::span<const std::string> a) { return source::ne_asm::segdiff::main(i->ne_asm_world().segdiff, a); };
+    tools["reachability"] = [i](std::span<const std::string> a) { return source::ne_asm::reachability::main(*i->corpus, a); };
+    tools["datacode"] = [i](std::span<const std::string> a) { return source::ne_asm::datacode::main(*i->corpus, a); };
+    tools["segment"] = [](std::span<const std::string> a) { return source::ne_asm::segment::main(a); };
+    tools["fixups"] = [](std::span<const std::string> a) { return source::ne_asm::fixups::main(a); };
     tools["debug-names"] = [i](std::span<const std::string> a) { return naming::debug_build::main(i->ne_asm_world().debug_names, a); };
     tools["debug-names-estimate"] = [i](std::span<const std::string> a) { return naming::debug_build_estimate::main(i->ne_asm_world().debug_estimate, a); };
     tools["msvc152"] = [i](std::span<const std::string> a) -> int {
@@ -394,7 +394,7 @@ base::commands::ToolTable Production::ne_asm_tools() const {
 }
 
 Runner Production::ne_asm() const {
-    return [tools = ne_asm_tools()](std::span<const std::string> args) { return ne_asm::run::main(tools, args); };
+    return [tools = ne_asm_tools()](std::span<const std::string> args) { return source::ne_asm::run::main(tools, args); };
 }
 
 // ---- the writers of a driver and a real-mode program --------------------------------------------------------------------------------
@@ -403,28 +403,28 @@ Runner Production::driver_source() const {
     const std::shared_ptr<Impl> i = impl_;
     return [i](std::span<const std::string> args) {
         const std::shared_ptr<const symbols::driver_services::Table> table = i->service_names();
-        driver_writer::Environment env;
-        env.options = driver_writer::options_for(i->open_watcom(), i->probes(),
+        source::driver_writer::Environment env;
+        env.options = source::driver_writer::options_for(i->open_watcom(), i->probes(),
                                                  [table](std::uint32_t device, std::uint32_t service) { return table->label(device, service); });
         env.state = i->state();
         env.retail = i->retail();
-        return driver_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
+        return source::driver_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
     };
 }
 
 Runner Production::dos_source() const {
     const std::shared_ptr<Impl> i = impl_;
     return [i](std::span<const std::string> args) {
-        dos_writer::Environment env;
+        source::dos_writer::Environment env;
         env.options = i->dos_options();
         env.state = i->state();
         env.retail = i->retail();
-        return dos_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
+        return source::dos_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
     };
 }
 
 cli::Command Production::dos_build() const {
-    return dos_build::command(dos_writer::options_for(impl_->open_watcom(), impl_->probes()));
+    return source::dos_build::command(source::dos_writer::options_for(impl_->open_watcom(), impl_->probes()));
 }
 
 cli::Command Production::boot_floppy() const {
@@ -446,4 +446,4 @@ cli::Command Production::driver_judge() const {
     return command;
 }
 
-}  // namespace cb::source::commands
+}  // namespace cb::engine::source_commands

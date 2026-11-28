@@ -1,4 +1,4 @@
-// source/commands_main.cpp -- the source writers' commands as a program of their own: the proof harness of source/commands.hpp.
+// engine/source_commands_main.cpp -- the source writers' commands as a program of their own: the proof harness of source/commands.hpp.
 //
 //     cb_source_commands vxd <tool> ...             cb_source_commands ne-asm <tool> ...
 //     cb_source_commands driver-source <driver> ... cb_source_commands dos-source <program> ...
@@ -16,7 +16,7 @@
 #include "core/error.hpp"
 #include "core/log.hpp"
 #include "formats/detect.hpp"
-#include "source/commands.hpp"
+#include "engine/source_commands.hpp"
 
 namespace {
 
@@ -42,7 +42,7 @@ int run(const std::vector<std::string>& args) {
         return cb::kExitUsage;
     }
     const cb::config::Config config = cb::config::current();
-    const cb::source::commands::Production production(config, corpus_of(config));
+    const cb::engine::source_commands::Production production(config, corpus_of(config));
     const std::string& name = args.front();
     const std::vector<std::string> rest(args.begin() + 1, args.end());
     if (name == "vxd") return production.vxd()(rest);

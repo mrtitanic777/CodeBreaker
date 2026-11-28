@@ -536,8 +536,8 @@ cb_apply_flags(cb_serve)
 target_link_libraries(cb_serve PRIVATE cb_ui cb_core)
 cb_copy_prebuilt_dlls(cb_serve)
 # The source writers' commands (vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge) as a program of their own: the proof harness of
-# source/commands.hpp (the application registers the same commands).
-add_executable(cb_source_commands EXCLUDE_FROM_ALL source/commands_main.cpp)
+# engine/source_commands.hpp (the application registers the same commands).
+add_executable(cb_source_commands EXCLUDE_FROM_ALL engine/source_commands_main.cpp)
 cb_apply_flags(cb_source_commands)
 target_link_libraries(cb_source_commands PRIVATE cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_source_commands)
@@ -580,8 +580,8 @@ target_link_libraries(cb_toolrun PRIVATE cb_formats cb_recompile cb_base cb_core
 cb_copy_prebuilt_dlls(cb_toolrun)
 
 # pipeline: the reconstruction commands (decompile, module, build, measure, teeth, sweep, match, score16, repair, place) with the surroundings the application
-# will give them, to compare each with the Python on real inputs (source/pipeline_main.cpp). Not built by default.
-add_executable(cb_pipeline EXCLUDE_FROM_ALL source/pipeline_main.cpp)
+# will give them, to compare each with the Python on real inputs (engine/pipeline_main.cpp). Not built by default.
+add_executable(cb_pipeline EXCLUDE_FROM_ALL engine/pipeline_main.cpp)
 cb_apply_flags(cb_pipeline)
 target_link_libraries(cb_pipeline PRIVATE cb_source cb_engine cb_core)
 cb_copy_prebuilt_dlls(cb_pipeline)

@@ -1,4 +1,4 @@
-// source/pipeline_world.hpp -- the surroundings one pipeline command runs in (internal to source/pipeline_*.cpp).
+// engine/pipeline_world.hpp -- the surroundings one pipeline command runs in (internal to source/pipeline_*.cpp).
 //
 // A World is made when a command starts: the lane kit over the settings and the corpus. What a command needs beyond it -- the function store of the
 // state folder, the lanes and the reconstructor over them -- is made when first asked for, so a command that only reads (decompile, place) opens
@@ -14,10 +14,10 @@
 #include "store/converted.hpp"
 #include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
-#include "source/pipeline.hpp"
+#include "engine/pipeline.hpp"
 #include "verify/reconstruct.hpp"
 
-namespace cb::source::pipeline {
+namespace cb::engine::pipeline {
 
 class World {
 public:
@@ -65,4 +65,4 @@ cli::Command in_world(cli::Command declared, const Environment& environment, Run
 // The ratio difflib's SequenceMatcher gives two runs of bytes (autojunk off): twice the bytes in the matching blocks over the bytes of both.
 double sequence_ratio(ByteView a, ByteView b);
 
-}  // namespace cb::source::pipeline
+}  // namespace cb::engine::pipeline
