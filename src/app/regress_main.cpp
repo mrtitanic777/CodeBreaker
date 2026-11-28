@@ -8,13 +8,13 @@
 #include "core/cli.hpp"
 #include "core/log.hpp"
 #include "engine/lane_kit.hpp"
-#include "verify/regress.hpp"
+#include "app/regress.hpp"
 
 int main(int argc, char** argv) {
     using namespace cb;
     if (const int worker = engine::host_main_hook(argc, argv); worker >= 0) return worker;
     const config::Config config = config::Config::load(config::current().main_checkout());
-    cli::Cli program("cb_regress", {verify::regress::command(config)});
+    cli::Cli program("cb_regress", {app::regress::command(config)});
     std::vector<std::string> args = {"regress"};
     args.insert(args.end(), argv + 1, argv + argc);
     try {

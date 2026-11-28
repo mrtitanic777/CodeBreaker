@@ -1,4 +1,4 @@
-#include "verify/regress.hpp"
+#include "app/regress.hpp"
 
 #include <algorithm>
 #include <format>
@@ -22,7 +22,7 @@
 #include "core/text.hpp"
 #include "engine/lane_kit.hpp"
 
-namespace cb::verify::regress {
+namespace cb::app::regress {
 
 namespace stdfs = std::filesystem;
 using Clock = std::chrono::steady_clock;
@@ -567,4 +567,4 @@ cli::Command command(const config::Config& config) {
     return c;
 }
 
-}  // namespace cb::verify::regress
+}  // namespace cb::app::regress

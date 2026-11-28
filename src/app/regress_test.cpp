@@ -1,7 +1,7 @@
 // Tests of the milestone regression's logic (verify/regress): its rules -- the machines, the disk, the verdict -- with a builder and a
 // machine that are made up. The real run (QEMU, the Setup CD, the builders) is `codebreaker regress all15`, which this machine's
 // tests do not start.
-#include "verify/regress.hpp"
+#include "app/regress.hpp"
 
 #include <atomic>
 #include <thread>
@@ -12,7 +12,7 @@
 
 using namespace cb;
 using namespace cb::verify;
-using namespace cb::verify::regress;
+using namespace cb::app::regress;
 
 namespace {
 
@@ -86,7 +86,7 @@ bool has(const std::string& text, std::string_view part) { return text.find(part
 
 }  // namespace
 
-CB_TEST("verify.regress.all15_builds_the_fifteen_and_boots_twice", [] {
+CB_TEST("app.regress.all15_builds_the_fifteen_and_boots_twice", [] {
     RegressFake f;
     const Report r = run(Tier::All15, f.services(), {});
     CB_CHECK(r.pass);
@@ -101,7 +101,7 @@ CB_TEST("verify.regress.all15_builds_the_fifteen_and_boots_twice", [] {
     CB_CHECK(rsfs::is_empty(f.dir.path() / "work"));
 });
 
-CB_TEST("verify.regress.one_failed_boot_fails_the_run", [] {
+CB_TEST("app.regress.one_failed_boot_fails_the_run", [] {
     RegressFake f;
     f.boot_verdict = setup16::Verdict::FailHang;
     const Report r = run(Tier::All15, f.services(), {});
@@ -110,7 +110,7 @@ CB_TEST("verify.regress.one_failed_boot_fails_the_run", [] {
     CB_CHECK(has(r.text(), "FAIL(hang)"));
 });
 
-CB_TEST("verify.regress.a_module_that_does_not_link_is_not_booted", [] {
+CB_TEST("app.regress.a_module_that_does_not_link_is_not_booted", [] {
     RegressFake f;
     f.fail_to_link = "USER.EXE";
     const Report r = run(Tier::All15, f.services(), {});
@@ -120,7 +120,7 @@ CB_TEST("verify.regress.a_module_that_does_not_link_is_not_booted", [] {
     CB_CHECK(has(r.text(), "nothing was booted"));
 });
 
-CB_TEST("verify.regress.setup_adds_the_setup_programs_built_as_assembly", [] {
+CB_TEST("app.regress.setup_adds_the_setup_programs_built_as_assembly", [] {
     RegressFake f;
     const Report r = run(Tier::Setup, f.services(), {.runs = 1});
     CB_CHECK(r.pass);
@@ -131,7 +131,7 @@ CB_TEST("verify.regress.setup_adds_the_setup_programs_built_as_assembly", [] {
     CB_CHECK_EQ(f.built_names.back(), "SETUP.EXE");
 });
 
-CB_TEST("verify.regress.the_machines_are_at_most_three", [] {
+CB_TEST("app.regress.the_machines_are_at_most_three", [] {
     RegressFake f;
     CB_CHECK_THROWS_AS(UsageError, run(Tier::All15, f.services(), {.vms = 4}));
     CB_CHECK_THROWS_AS(UsageError, run(Tier::All15, f.services(), {.vms = 0}));
@@ -141,7 +141,7 @@ CB_TEST("verify.regress.the_machines_are_at_most_three", [] {
     CB_CHECK(f.most_at_once.load() <= 3);
 });
 
-CB_TEST("verify.regress.nothing_starts_on_a_full_disk_or_without_the_tools", [] {
+CB_TEST("app.regress.nothing_starts_on_a_full_disk_or_without_the_tools", [] {
     RegressFake f;
     f.free = 12;
     const Report r = run(Tier::All15, f.services(), {});
@@ -158,7 +158,7 @@ CB_TEST("verify.regress.nothing_starts_on_a_full_disk_or_without_the_tools", [] 
     CB_CHECK(f.built_names.empty());
 });
 
-CB_TEST("verify.regress.only_rebuilds_the_named_modules_and_says_it_is_not_the_regression", [] {
+CB_TEST("app.regress.only_rebuilds_the_named_modules_and_says_it_is_not_the_regression", [] {
     RegressFake f;
     const Report r = run(Tier::All15, f.services(), {.runs = 1, .only = {"user.exe"}});
     CB_CHECK_EQ(f.built_names.size(), std::size_t{1});
@@ -167,7 +167,7 @@ CB_TEST("verify.regress.only_rebuilds_the_named_modules_and_says_it_is_not_the_r
     CB_CHECK_THROWS_AS(UsageError, run(Tier::All15, f.services(), {.only = {"SUWIN.EXE"}}));   // (a Setup program is not of all15)
 });
 
-CB_TEST("verify.regress.keep_built_keeps_the_images", [] {
+CB_TEST("app.regress.keep_built_keeps_the_images", [] {
     RegressFake f;
     const rsfs::path keep = f.dir.path() / "kept";
     const Report r = run(Tier::All15, f.services(), {.runs = 1, .keep_built = keep});
@@ -176,7 +176,7 @@ CB_TEST("verify.regress.keep_built_keeps_the_images", [] {
     CB_CHECK(rsfs::exists(keep / "WIN87EM.DLL"));
 });
 
-CB_TEST("verify.regress.slow_cases_pass_on_exit_and_output_and_skip_what_is_not_there", [] {
+CB_TEST("app.regress.slow_cases_pass_on_exit_and_output_and_skip_what_is_not_there", [] {
     RegressFake f;
     const rsfs::path cases = f.dir.path() / "slow.json";
     fs::write_text(cases, R"({"cases":[
@@ -207,7 +207,7 @@ CB_TEST("verify.regress.slow_cases_pass_on_exit_and_output_and_skip_what_is_not_
     CB_CHECK(!none.pass);
 });
 
-CB_TEST("verify.regress.tier_names", [] {
+CB_TEST("app.regress.tier_names", [] {
     CB_CHECK(tier_named("ALL15") == Tier::All15);
     CB_CHECK(tier_named("setup") == Tier::Setup);
     CB_CHECK(!tier_named("all"));
@@ -215,7 +215,7 @@ CB_TEST("verify.regress.tier_names", [] {
     CB_CHECK_EQ(setup_names().size(), std::size_t{7});
 });
 
-CB_TEST("verify.regress.install_builds_all_twenty_two_and_installs_once", [] {
+CB_TEST("app.regress.install_builds_all_twenty_two_and_installs_once", [] {
     RegressFake f;
     const Report r = run(Tier::Install, f.services(), {});
     CB_CHECK(r.pass);
@@ -230,7 +230,7 @@ CB_TEST("verify.regress.install_builds_all_twenty_two_and_installs_once", [] {
     CB_CHECK(rsfs::is_empty(f.dir.path() / "work"));
 });
 
-CB_TEST("verify.regress.a_failed_install_fails_the_run_and_says_where", [] {
+CB_TEST("app.regress.a_failed_install_fails_the_run_and_says_where", [] {
     RegressFake f;
     f.install_verdict = install16::Verdict::FailFix;
     const Report r = run(Tier::Install, f.services(), {});
@@ -241,12 +241,12 @@ CB_TEST("verify.regress.a_failed_install_fails_the_run_and_says_where", [] {
     CB_CHECK_EQ(two.boots.size(), std::size_t{2});
 });
 
-CB_TEST("verify.regress.the_install_tier_has_its_name", [] {
+CB_TEST("app.regress.the_install_tier_has_its_name", [] {
     CB_CHECK(tier_named("install").has_value());
     CB_CHECK_EQ(std::string(word(Tier::Install)), "install");
 });
 
-CB_TEST("verify.regress.a_run_waits_for_the_build_lock_another_run_holds", [] {
+CB_TEST("app.regress.a_run_waits_for_the_build_lock_another_run_holds", [] {
     RegressFake f;
     Services s = f.services();
     auto other = file_lock::try_acquire(s.lock_dir / "build.lock", "pid 5150");   // (another regress run is building)
@@ -266,7 +266,7 @@ CB_TEST("verify.regress.a_run_waits_for_the_build_lock_another_run_holds", [] {
     CB_CHECK_EQ(f.built_names.size(), std::size_t{1});
 });
 
-CB_TEST("verify.regress.a_lock_left_by_a_killed_run_does_not_hold_the_next", [] {
+CB_TEST("app.regress.a_lock_left_by_a_killed_run_does_not_hold_the_next", [] {
     RegressFake f;
     Services s = f.services();
     fs::write_text(s.lock_dir / "build.lock", "pid 99999999");   // (the file of a run that died: no lock on it)
@@ -275,7 +275,7 @@ CB_TEST("verify.regress.a_lock_left_by_a_killed_run_does_not_hold_the_next", [] 
     CB_CHECK(r.pass);
 });
 
-CB_TEST("verify.regress.the_locks_are_let_go_before_the_boots_and_at_the_end", [] {
+CB_TEST("app.regress.the_locks_are_let_go_before_the_boots_and_at_the_end", [] {
     RegressFake f;
     Services s = f.services();
     bool build_free_during_boot = false;
@@ -292,7 +292,7 @@ CB_TEST("verify.regress.the_locks_are_let_go_before_the_boots_and_at_the_end", [
     CB_CHECK(file_lock::try_acquire(s.lock_dir / "boot-regress-all15-1.lock").has_value());
 });
 
-CB_TEST("verify.regress.each_module_reports_its_own_build_error", [] {
+CB_TEST("app.regress.each_module_reports_its_own_build_error", [] {
     RegressFake f;
     Services s = f.services();
     s.build = [](const std::vector<std::string>& names, const rsfs::path&, const rsfs::path&, bool) {
@@ -314,7 +314,7 @@ CB_TEST("verify.regress.each_module_reports_its_own_build_error", [] {
 
 // ---- reuse: identical inputs to a passing run are a pass without a machine ---------------------------------------------------
 
-CB_TEST("verify.regress.reuse_skips_the_boots_of_identical_inputs_and_only_after_a_pass", [] {
+CB_TEST("app.regress.reuse_skips_the_boots_of_identical_inputs_and_only_after_a_pass", [] {
     RegressFake f;
     std::string key = "aaaa";
     Services s = f.services();

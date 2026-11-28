@@ -21,7 +21,7 @@
 #include "base/cache_command.hpp"
 #include "app/corpus_executables.hpp"
 #include "base/tidy_state_command.hpp"
-#include "verify/regress.hpp"
+#include "app/regress.hpp"
 #include "app/state_commands.hpp"
 #include "translate/judge_c_java_command.hpp"
 #include "translate/judge_cs_cpp_command.hpp"
@@ -478,7 +478,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // cache, tidy-state: the result cache (native and older state files) and the state folder's clean-up
     table.set(base::cache::command(base::cache::CommandEnvironment{base::cache::settings_of(config), {}}));
     table.set(base::tidy_state::command(base::tidy_state::environment_of(config)));
-    table.set(verify::regress::command(config));
+    table.set(app::regress::command(config));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));

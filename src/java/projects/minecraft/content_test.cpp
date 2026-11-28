@@ -16,7 +16,7 @@ stdfs::path java_tree() { return testing::data_path("java/projects/minecraft/tes
 
 using Names = std::vector<std::string>;
 
-bool has(const std::string& s, std::string_view part) { return s.find(part) != std::string::npos; }
+bool manifest_has(const std::string& s, std::string_view part) { return s.find(part) != std::string::npos; }
 
 CB_TEST("java.minecraft.content.category_of", [] {
     CB_CHECK_EQ(category_of("/lang/en_US.lang"), "Language files");
@@ -98,17 +98,17 @@ CB_TEST("java.minecraft.content.render_small", [] {
     const std::string md = render_content_md(a, "Alpha 1.2");
     // the title and the counts line
     CB_CHECK(md.starts_with("# Content.md \xE2\x80\x94 asset manifest for Alpha 1.2\n\nEverything the converted game loads"));
-    CB_CHECK(has(md, "Counts: 2 resource files, 2 sound events, 1 step-sound families."));
+    CB_CHECK(manifest_has(md, "Counts: 2 resource files, 2 sound events, 1 step-sound families."));
     // categories in name order; paths use backslashes under Content; more than four users are cut with an ellipsis
-    CB_CHECK(has(md, "### GUI textures\n\n| Content path | Referenced by |\n|---|---|\n"
+    CB_CHECK(manifest_has(md, "### GUI textures\n\n| Content path | Referenced by |\n|---|---|\n"
                          "| `Content\\gui\\gui.png` | A, B, C, D \xE2\x80\xA6 |\n"));
-    CB_CHECK(has(md, "### Language files\n\n| Content path | Referenced by |\n|---|---|\n| `Content\\lang\\en.lang` | A |\n"));
+    CB_CHECK(manifest_has(md, "### Language files\n\n| Content path | Referenced by |\n|---|---|\n| `Content\\lang\\en.lang` | A |\n"));
     CB_CHECK(md.find("### GUI textures") < md.find("### Language files"));
     // sound events: folders from the dots, three users shown at most
-    CB_CHECK(has(md, "| `random.click` | `Content\\sound\\random\\click.ogg` | A, B, C \xE2\x80\xA6 |\n"));
-    CB_CHECK(has(md, "| `step.stone` | `Content\\sound\\step\\stone.ogg` | A |\n"));
+    CB_CHECK(manifest_has(md, "| `random.click` | `Content\\sound\\random\\click.ogg` | A, B, C \xE2\x80\xA6 |\n"));
+    CB_CHECK(manifest_has(md, "| `step.stone` | `Content\\sound\\step\\stone.ogg` | A |\n"));
     // step families
-    CB_CHECK(has(md, "| Family | Events | Blocks |\n|---|---|---|\n| `stone` | `step.stone`, `dig.stone` | Block |\n"));
+    CB_CHECK(manifest_has(md, "| Family | Events | Blocks |\n|---|---|---|\n| `stone` | `step.stone`, `dig.stone` | Block |\n"));
     CB_CHECK(md.ends_with("`Content\\music\\` (or an XACT streaming bank) and the title/menu loop.\n\n"));
 });
 
@@ -116,10 +116,10 @@ CB_TEST("java.minecraft.content.render_without_step_sounds", [] {
     Assets a;
     a.resources = {{"/x/y.png", {"A"}}};
     const std::string md = render_content_md(a);
-    CB_CHECK(has(md, "asset manifest for this build"));
-    CB_CHECK(!has(md, "## Block step / dig sound families"));       // the section is left out when there is none
-    CB_CHECK(has(md, "### Other resources"));
-    CB_CHECK(has(md, "## Sound events"));                            // ...but the sound table is always there
+    CB_CHECK(manifest_has(md, "asset manifest for this build"));
+    CB_CHECK(!manifest_has(md, "## Block step / dig sound families"));       // the section is left out when there is none
+    CB_CHECK(manifest_has(md, "### Other resources"));
+    CB_CHECK(manifest_has(md, "## Sound events"));                            // ...but the sound table is always there
 });
 
 CB_TEST("java.minecraft.content.write_manifest_golden", [] {

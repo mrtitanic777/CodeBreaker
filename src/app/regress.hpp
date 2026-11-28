@@ -1,4 +1,4 @@
-// verify/regress.hpp -- Logan's milestone regression, run for real: `codebreaker regress <all15|setup|slow>`.
+// app/regress.hpp -- Logan's milestone regression, run for real: `codebreaker regress <all15|setup|slow>`.
 //
 // What the quick gate does not cover, and what is run before a milestone:
 //
@@ -44,7 +44,7 @@
 #include "verify/gate16/install16.hpp"
 #include "verify/gate16/setup16.hpp"
 
-namespace cb::verify::regress {
+namespace cb::app::regress {
 
 namespace setup16 = cb::verify::gate16::setup16;
 namespace install16 = cb::verify::gate16::install16;
@@ -165,4 +165,4 @@ Services production_services(const config::Config& config);
 // `regress <all15|setup|slow>`.
 cli::Command command(const config::Config& config);
 
-}  // namespace cb::verify::regress
+}  // namespace cb::app::regress
