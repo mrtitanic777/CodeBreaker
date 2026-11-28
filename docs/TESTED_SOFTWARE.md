@@ -526,7 +526,7 @@ turn 13 of notepad's weak functions into verified ones, and on both programs the
 
 ### As C++, its classes from the run-time type information (2026-11-26)
 
-A C++ program comes back as C++: `symbols/cpp_classes_x64` reads Visual C++'s x64 RTTI (complete object locators, type descriptors,
+A C++ program comes back as C++: `symbols/cpp_classes` reads Visual C++'s x64 RTTI (complete object locators, type descriptors,
 hierarchy descriptors, base class arrays) and the virtual function tables after them, and `decompile/cpp_text_x64` declares each of
 the program's own classes (not the C++ library's, WRL's, WIL's, ATL's or a template instance's) with its virtual functions in table
 order, its data members where its methods read them through `this`, and writes as members the functions of its own table and its

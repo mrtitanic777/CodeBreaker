@@ -5,7 +5,7 @@
 
 #include "core/testing.hpp"
 
-namespace cx = cb::symbols::cpp_classes_x64;
+namespace cx = cb::symbols::cpp_classes::x64;
 namespace ct = cb::decompile::cpp_text_x64;
 
 namespace {

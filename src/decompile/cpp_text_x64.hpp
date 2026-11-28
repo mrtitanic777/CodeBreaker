@@ -1,5 +1,5 @@
 // decompile/cpp_text_x64.hpp -- an x64 C++ program's decompiled functions as the classes they were written in: the classes its
-// run-time type information names (symbols/cpp_classes_x64), declared with their virtual functions in table order so the layout
+// run-time type information names (symbols/cpp_classes), declared with their virtual functions in table order so the layout
 // is the original's, their data members where the methods' field accesses through `this` show them, and each function the
 // evidence makes a method written as that class's member.
 //
@@ -34,14 +34,14 @@
 
 #include "core/ordered_map.hpp"
 #include "core16_types.hpp"
-#include "symbols/cpp_classes_x64.hpp"
+#include "symbols/cpp_classes.hpp"
 
 namespace cb::decompile::cpp_text_x64 {
 
 using Va = std::int64_t;
 
 struct Input {
-    const symbols::cpp_classes_x64::Classes* classes = nullptr;
+    const symbols::cpp_classes::x64::Classes* classes = nullptr;
     const std::map<Va, std::string>* names = nullptr;           // every function the module names, by address (its own and the library's)
     const std::map<Va, std::string>* by_va = nullptr;           // the functions there is C for, by address
     const OrderedMap<std::string, std::string>* texts = nullptr; // their C, by name

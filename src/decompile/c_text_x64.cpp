@@ -18,7 +18,7 @@
 #include "decompile/c_text_internal.hpp"
 #include "decompile/cpp_text_x64.hpp"
 #include "formats/pe.hpp"
-#include "symbols/cpp_classes_x64.hpp"
+#include "symbols/cpp_classes.hpp"
 
 namespace cb::decompile::c_text {
 
@@ -1433,7 +1433,7 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
     }
     // A C++ program (run-time type information names its classes): the functions the evidence makes methods are written as the
     // classes' members, compiled as C++; the rest stay C.
-    const symbols::cpp_classes_x64::Classes classes = symbols::cpp_classes_x64::find_classes(image);
+    const symbols::cpp_classes::x64::Classes classes = symbols::cpp_classes::x64::find_classes(image);
     cpp_text_x64::Recovered cpp;
     if (!classes.classes.empty()) cpp = cpp_text_x64::recover({&classes, &got.described, &got.by_va, &out, structs});
     const bool cplusplus = !cpp.methods.empty();

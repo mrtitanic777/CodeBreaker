@@ -27,7 +27,7 @@
 #include "formats/pe_functions.hpp"
 #include "decompile/cpp_text_x64.hpp"
 #include "symbols/c_library.hpp"
-#include "symbols/cpp_classes_x64.hpp"
+#include "symbols/cpp_classes.hpp"
 #include "symbols/dos_interrupts.hpp"
 #include "translate/l2.hpp"
 
@@ -49,7 +49,7 @@ std::vector<Va> lanes_x64_functions(const formats::pe::Image& image) {
     std::set<Va> out;
     const Va base = static_cast<Va>(image.header().image_base);
     for (const std::uint32_t rva : image.x64_function_starts()) out.insert(base + rva);
-    for (const std::uint64_t va : symbols::cpp_classes_x64::find_classes(image).slot_functions) out.insert(static_cast<Va>(va));
+    for (const std::uint64_t va : symbols::cpp_classes::x64::find_classes(image).slot_functions) out.insert(static_cast<Va>(va));
     return {out.begin(), out.end()};
 }
 
@@ -705,7 +705,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         total = starts.size();
         library = identified.size();
         // a C++ program: its classes declared, its methods written as their members, the whole a .cpp file
-        const symbols::cpp_classes_x64::Classes classes = symbols::cpp_classes_x64::find_classes(image);
+        const symbols::cpp_classes::x64::Classes classes = symbols::cpp_classes::x64::find_classes(image);
         if (!classes.classes.empty()) {
             std::vector<core16::StructNote> structs;
             for (const auto& [n, notes] : r.notes) structs.insert(structs.end(), notes.structs.begin(), notes.structs.end());

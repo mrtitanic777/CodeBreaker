@@ -15,7 +15,7 @@ namespace cb::decompile::cpp_text_x64 {
 
 namespace {
 
-namespace cx = symbols::cpp_classes_x64;
+namespace cx = symbols::cpp_classes::x64;
 
 bool cx_word(char c) { return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 
