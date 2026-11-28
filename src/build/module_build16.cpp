@@ -12,6 +12,7 @@
 
 #include "base/cache.hpp"
 #include "build/module_internal.hpp"
+#include "build/source_form.hpp"
 #include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 #include <nlohmann/json.hpp>
@@ -678,6 +679,63 @@ private:
 
 }  // namespace
 
+namespace {
+
+// The module's source form (build/source_form.hpp), from what this build linked: <folder>/source. The names it writes are the symbol tables'
+// for an import called by number and for a function the decompiler left as sub_<seg>_<off>.
+void write_source_form(Ctx16& c, const std::map<std::string, asm16::Import>& imports, const std::string& base) {
+    Built& b = c.b;
+    source_form::Input in;
+    in.build_folder = c.folder;
+    in.module = b.name;
+    const std::string linked = fs::read_text(c.folder / "m.lnk");
+    for (std::string_view line : text::lines(linked)) in.link_lines.emplace_back(line);
+    in.made = [&c](const stdfs::path& object) { return c.builder().made(object); };
+    std::map<std::string, std::size_t> per_stem;
+    for (const auto& [name, stem] : c.stems) ++per_stem[stem];
+    for (const auto& [name, stem] : c.stems)
+        if (!stem.starts_with("asm/") && per_stem[stem] == 1) in.stem_function[stem] = name;
+    if (c.services.readable_names) {
+        const ReadableNames known = c.services.readable_names(c.path);
+        in.parameters = known.parameters;
+        for (const auto& [symbol, imported] : imports) {
+            const auto* ordinal = std::get_if<std::uint16_t>(&imported.which);
+            if (ordinal == nullptr) continue;
+            const auto name = known.imports.find({text::upper(imported.module), *ordinal});
+            if (name != known.imports.end()) in.names[symbol] = name->second;
+        }
+        for (const auto& [va, name] : c.by_va) {
+            const auto place = c.m.where.find(static_cast<core16::Va>(va));
+            if (!name.starts_with("sub_") || place == c.m.where.end()) continue;
+            const auto recovered = known.functions.find(std::format("{}:{:04x}", place->second.seg, place->second.off));
+            if (recovered != known.functions.end()) in.names[name] = recovered->second;
+        }
+    }
+    if (b.resources && b.resources->rc && b.resources->link_res) {
+        in.rc = b.resources->rc;
+        in.res = b.resources->link_res;
+        std::error_code ec;
+        if (stdfs::is_directory(c.folder / "res", ec))
+            for (const auto& e : stdfs::recursive_directory_iterator(c.folder / "res", ec))
+                if (e.is_regular_file()) in.resource_files.push_back(stdfs::relative(e.path(), c.folder));
+    }
+    for (const std::string& line : in.link_lines)
+        if (line.starts_with("option stub=")) in.carried.emplace_back(line.substr(12));
+    in.documents = {base + ".def", base + "_public.h"};
+    const source_form::SourceForm form = source_form::write(in);
+    b.source_form = form.folder;
+    b.source_missing = form.missing;
+    b.source_named_parameters = form.named_parameters;
+    b.source_renamed_imports = 0;
+    b.source_renamed_functions = 0;
+    for (const auto& [from, to] : form.renamed) {
+        if (imports.contains(from)) ++b.source_renamed_imports;
+        else ++b.source_renamed_functions;
+    }
+}
+
+}  // namespace
+
 std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& original, const ct::Module16& m, const stdfs::path& folder) const {
     const Services& s = services_;
     const toolchain::watcom::OpenWatcom& ow = s.open_watcom;
@@ -817,6 +875,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         const ToolRun r = run_tool(c.wasm, {"-q", "interrupts.asm"}, folder, env, std::chrono::minutes(10));
         const std::string why = c.extra("interrupt_registers", text::replace_all(routines.c, "#include \"m.h\"\n", ""));
         if (r.code == 0 && why.empty()) {
+            c.builder().note_made(folder / "interrupts.obj", {fs::to_text(c.wasm.stem()), {"-q"}, "interrupts.asm", routines.assembly, folder});
             lines.push_back("file interrupts.obj");
             lines.push_back("file interrupt_registers.obj");
         } else {
@@ -957,8 +1016,12 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         src.push_back("end");
         src.push_back("");
         fs::write_text(folder / "constants.asm", text::join(src, "\n"));
-        if (run_tool(c.wasm, {"-q", "constants.asm"}, folder, env, std::chrono::minutes(10)).code == 0) lines.push_back("file constants.obj");
-        else constants.clear();
+        if (run_tool(c.wasm, {"-q", "constants.asm"}, folder, env, std::chrono::minutes(10)).code == 0) {
+            c.builder().note_made(folder / "constants.obj", {fs::to_text(c.wasm.stem()), {"-q"}, "constants.asm", text::join(src, "\n"), folder});
+            lines.push_back("file constants.obj");
+        } else {
+            constants.clear();
+        }
     }
     const definitions::SymbolAt symbol_at = [&](const definitions::Export& e) -> std::optional<std::string> {
         if (constants.contains(e.ordinal)) return const_symbol(e);
@@ -1086,6 +1149,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         const auto declared = m.declarations.find(fn->second);
         return declared == m.declarations.end() ? std::nullopt : std::optional<std::string>(declared->second);
     }));
+    if (image) write_source_form(c, imports, base);
     // the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
     {
         std::map<std::int64_t, std::int64_t> lengths;

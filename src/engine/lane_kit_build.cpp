@@ -11,6 +11,7 @@
 #include "formats/ne.hpp"
 #include "formats/pe.hpp"
 #include "formats/pe_functions.hpp"
+#include "naming/workbench.hpp"
 #include "source/assembly.hpp"
 #include "verify/lanes/win16.hpp"
 #include "verify/lanes/win32.hpp"
@@ -300,6 +301,29 @@ build::module::Services LaneKit::module_services() {
         text += lifters != nullptr ? " lifter " + base::cache::tool_id(lifters->config().exe) : " no lifter";
         (void)kb;
         return base::cache::key({text});
+    };
+    // the names of the module's placeholders, as `names <module>` lists them: an export's, a body's named once, a symbol file's, a runtime
+    // library's, the same body's in another module (never one only proposed); an import by number by its exporting module's name
+    s.readable_names = [&corpus, &config, &kb](const stdfs::path& file) {
+        build::module::ReadableNames out;
+        try {
+            naming::Workbench bench(symbols::Environment{&corpus, &config});
+            const symbols::names::ModuleNames named = bench.namer().of_module(file);
+            for (const symbols::names::FunctionName& f : named.functions)
+            {
+                if (f.source != "(none)" && !f.name.starts_with("sub_") && text::is_identifier(f.name)) out.functions[text::lower(f.key)] = f.name;
+                if (f.source != "export") continue;
+                if (const symbols::prototypes::Prototype* p = kb.prototype("win16", f.name)) {
+                    std::vector<std::pair<std::string, std::string>> params;
+                    for (const symbols::prototypes::Parameter& a : p->parameters) params.emplace_back(a.type, a.name);
+                    out.parameters[f.name] = std::move(params);
+                }
+            }
+            for (const symbols::names::ImportName& i : named.imports)
+                if (i.ordinal && text::is_identifier(i.name)) out.imports[{text::upper(i.module), *i.ordinal}] = i.name;
+        } catch (const Error&) {   // (no symbol tables: the build's own names stay)
+        }
+        return out;
     };
     s.build_apart = [this](const std::string& module, const std::optional<stdfs::path>& outdir, bool call) { return build_apart(module, outdir, call); };
     s.project_build_folder = [&config](const stdfs::path& file) {

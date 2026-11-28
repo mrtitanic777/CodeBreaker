@@ -176,6 +176,12 @@ struct Built {
     std::shared_ptr<Arena> l2_arena;                   // owns `l2`
     translate::ir::Node* l2 = nullptr;                 // the module as one L2 tree
     std::optional<std::string> carried_report;         // a build made in another process: its report as that process wrote it
+    // 16-bit: the module's source form (build/source_form.hpp): where, the names it gives the build's placeholders, objects whose
+    // making was not noted, and what checking it found ("" = wmake links the same image; nullopt = not checked)
+    std::optional<std::filesystem::path> source_form;
+    std::size_t source_renamed_imports = 0, source_renamed_functions = 0, source_named_parameters = 0;
+    std::vector<std::string> source_missing;
+    std::optional<std::string> source_check;
 
     Built() = default;
     // `kind_of` is the corpus's lane name of the original.
@@ -249,6 +255,15 @@ struct GateResult {
     std::string why;
 };
 
+// What the symbol tables name of a 16-bit module: an import by number by its exporting module's name ({MODULE, ordinal}: name, as
+// the headers spell it), and a function by the name recovered for it ({"seg:off" as the function store writes it: name}).
+struct ReadableNames {
+    std::map<std::pair<std::string, std::uint32_t>, std::string> imports;
+    std::map<std::string, std::string> functions;
+    // an exported function's parameters as the SDK headers declare it ({the export's name: (type, name) in the header's order})
+    std::map<std::string, std::vector<std::pair<std::string, std::string>>> parameters;
+};
+
 struct Services {
     // ---- the tools
     functions::FunctionBuilder* builder = nullptr;       // compiles, and keeps what compiles made
@@ -276,6 +291,9 @@ struct Services {
     // The link lines (import statements) an object file of a 32-bit module needs for the imports its code calls.
     std::function<std::vector<std::string>(ByteView object, const std::filesystem::path& module, const std::set<std::string>& used)>
         import_lines32;
+
+    // The names a person reads for a 16-bit module's placeholders (none given: the source form keeps the build's).
+    std::function<ReadableNames(const std::filesystem::path& module)> readable_names;
 
     // ---- the checks
     // An exported function of a module loaded in the emulator, called with zero arguments.
@@ -313,6 +331,7 @@ struct BuildOptions {
     // unless `gate` says so (it is how a build is repeated).
     std::optional<OrderedMap<std::string, std::string>> gated;
     bool gate = false;
+    bool check_source = false;                          // 16-bit: make the source form with wmake in a copy and compare the image
 };
 
 // The builder. It holds no state of its own beyond the services: two builds may run at once.

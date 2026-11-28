@@ -7,6 +7,7 @@
 
 #include "base/cache.hpp"
 #include "build/module_internal.hpp"
+#include "build/source_form.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "core/parallel.hpp"
@@ -124,6 +125,12 @@ Built ModuleBuilder::build(std::string_view module, const BuildOptions& options)
             }
         }
     }
+    if (options.check_source && b.source_form) {   // (the image as the link wrote it: m.dll, before the whole file is made)
+        source_form::SourceForm form;
+        form.folder = *b.source_form;
+        say(log, std::format("{}: making its source form with wmake", b.name));
+        b.source_check = source_form::check(form, s.open_watcom, folder / "source_check", folder / "m.dll");
+    }
     check(b);
     if (options.outdir) {
         stdfs::create_directories(*options.outdir, ec);
@@ -205,6 +212,7 @@ cli::Command ModuleBuilder::command() const {
         {cli::Positional{"module", "a corpus name or a file", true, true},
          cli::Option{"--out", "", "where the build goes (default: the module's project folder, build)", cli::Arg::Value, "DIR"},
          cli::Option{"--no-run", "", "do not call the built module's exports in the emulator", cli::Arg::Flag},
+         cli::Option{"--check-source", "", "make the module's source form with OpenWatcom's wmake, alone, and compare the image", cli::Arg::Flag},
          cli::Option{"--engine", "", "accepted, as the old command line had it; the direct path is the one taken", cli::Arg::Flag},
          cli::Option{"--no-engine", "", "accepted, as the old command line had it; the direct path is the one taken", cli::Arg::Flag}},
         [this](const cli::Args& args) {
@@ -236,6 +244,7 @@ cli::Command ModuleBuilder::command() const {
                 BuildOptions options;
                 options.call = call;
                 options.outdir = where_of[name];
+                options.check_source = args.flag("check-source");
                 const Built b = done != made.end() ? done->second : build(name, options);
                 cb::out("{}\n", b.report());
                 if (s.record_build && originals.contains(name)) {

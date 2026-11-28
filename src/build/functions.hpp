@@ -116,6 +116,17 @@ public:
     virtual void put(std::string_view kind, std::string_view key, ByteView value) = 0;
 };
 
+// How one object of a build was made: the tool ("wcc", "wasm" -- the program's file stem), the options it was given, the
+// source file (relative to the folder the tool ran in) and that file's text as it was when the object was made, and the folder
+// the tool ran in.
+struct MadeObject {
+    std::string tool;
+    std::vector<std::string> flags;
+    std::string source;
+    std::string text;
+    std::filesystem::path cwd;
+};
+
 // What compiling one function came to.
 struct CompileOutcome {
     std::string why;      // empty on success, else the compiler's first error (with the line it is about)
@@ -359,7 +370,15 @@ public:
     // the original) in the last build of a folder; nullopt for a folder not built.
     std::optional<std::map<std::string, std::string>> object_digests(const std::filesystem::path& outdir) const;
 
+    // ---- how each object was made (for the recipe of a module's source form) ----
+    // The last time an object was made, it was made by `made` (compile() notes its own; the assembler and the build note the
+    // rest). Kept by the object's path for as long as the builder lives.
+    void note_made(const std::filesystem::path& object, MadeObject made);
+    std::optional<MadeObject> made(const std::filesystem::path& object) const;
+
 private:
+    void note_compiled(const Compiler& cc, std::span<const std::string> flags, const std::filesystem::path& outdir, std::string_view stem,
+                       std::string_view text);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
