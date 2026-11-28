@@ -1,0 +1,32 @@
+# xur.fmt -- a XUR scene (formats/xbox/xur), the compiled form of an Xbox 360 XUI scene, big-endian: a 20-byte header
+# (magic "XUIB", version, flags, tool version, file size, section count) and the section table (tag, offset from the
+# start of the file, length); and the STRN section's strings (Strings: a run of UTF-16BE strings, each its length in
+# units first). Whether a section lies in the file is the reader's.
+
+format xur
+endian be
+
+struct File {
+    magic        : u32 == 0x58554942     # "XUIB"
+    version      : u32
+    flags        : u32
+    tool_version : u16
+    file_size    : u32
+    count        : u16
+    sections     : Section[count]
+}
+
+struct Section {
+    tag    : u32
+    offset : u32
+    length : u32
+}
+
+struct Strings {
+    strings : String16[while $remaining >= 2]
+}
+
+struct String16 {
+    units : u16
+    text  : bytes(units * 2)
+}

@@ -8,9 +8,12 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/log.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/xbox/utf16.hpp"
 
 namespace cb::formats::xbox::xur {
+
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -35,22 +38,19 @@ std::string tag_text(std::uint32_t tag) {
     return text::from_latin1(four);
 }
 
+// The layout is xur.fmt's; whether a section lies in the file is this reader's.
 Scene Scene::parse(ByteView file) {
-    io::ByteReader r(file, kXurReader);
-    if (r.u32_be() != kMagic) throw FormatError(kXurReader, 0, "not a XUR (bad magic)");
+    eng::ReadOptions options;
+    options.keep_source = false;   // only read from
+    const eng::Tree tree = eng::builtin().read("xur", file, options);
+    const eng::Node& h = tree.root;
     Scene s;
-    s.version = r.u32_be();
-    s.flags = r.u32_be();
-    s.tool_version = r.u16_be();
-    s.file_size = r.u32_be();
-    const std::uint16_t count = r.u16_be();
-    for (std::uint16_t i = 0; i < count; ++i) {
-        Section sec;
-        sec.tag = r.u32_be();
-        sec.offset = r.u32_be();
-        sec.length = r.u32_be();
-        s.sections.push_back(sec);
-    }
+    s.version = static_cast<std::uint32_t>(h.u("version"));
+    s.flags = static_cast<std::uint32_t>(h.u("flags"));
+    s.tool_version = static_cast<std::uint16_t>(h.u("tool_version"));
+    s.file_size = static_cast<std::uint32_t>(h.u("file_size"));
+    for (const eng::Node& n : h.get("sections").children)
+        s.sections.push_back({static_cast<std::uint32_t>(n.u("tag")), static_cast<std::uint32_t>(n.u("offset")), static_cast<std::uint32_t>(n.u("length"))});
     s.file_.assign(file.begin(), file.end());
     return s;
 }
@@ -66,11 +66,11 @@ std::vector<std::string> Scene::strings() const {
     std::vector<std::string> out;
     const std::optional<ByteView> blob = section_data(kStrn);
     if (!blob) return out;
-    io::ByteReader r(*blob, "xur strings");
-    while (r.remaining() >= 2) {
-        const std::uint16_t units = r.u16_be();
-        out.push_back(from_utf16be(r.bytes(std::uint64_t{units} * 2)));
-    }
+    eng::ReadOptions options;
+    options.root = "Strings";
+    options.keep_source = false;
+    const eng::Tree tree = eng::builtin().read("xur", *blob, options);
+    for (const eng::Node& n : tree.root.get("strings").children) out.push_back(from_utf16be(blob->subspan(n.get("text").offset, n.get("text").size)));
     return out;
 }
 
