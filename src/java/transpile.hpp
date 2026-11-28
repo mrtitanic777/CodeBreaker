@@ -96,8 +96,9 @@ struct Options {
     // The target platform key ("xbox360", "pc_opengl", "pc_windows", "ps3" ...); empty for none. A console platform with no SDK
     // located is REFUSED (console::sdk::SdkNotFoundError): the converter ships no SDK headers.
     std::string platform;
-    // The PC's graphics API: "opengl" (the game's own OpenGL through SDL), "d3d9", "d3d10", "d3d11" or "d3d12" (the GL layer the
-    // Xbox 360 uses, on that Direct3D in the SDL window). Only the PC reads it.
+    // The PC's graphics API: "opengl" (the game's own OpenGL through SDL), "d3d7", "d3d8", "d3d9", "d3d10", "d3d11" or "d3d12" (the
+    // GL layer the Xbox 360 uses, on that Direct3D in the SDL window; 7 and 8 on their fixed-function pipelines, in a 32-bit
+    // program). Only the PC reads it.
     std::string graphics = "opengl";
     // The class names to treat as C++ value types; none: the target profile's.
     std::optional<typemap::NameSet> value_types;

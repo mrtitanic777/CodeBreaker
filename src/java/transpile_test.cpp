@@ -141,6 +141,8 @@ CB_TEST("java.transpile.standards", [] {
 
 CB_TEST("java.transpile.graphics_api_names", [] {
     CB_CHECK_EQ(trn::graphics_api_name("opengl"), "OpenGL");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d7"), "Direct3D 7");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d8"), "Direct3D 8");
     CB_CHECK_EQ(trn::graphics_api_name("d3d9"), "Direct3D 9");
     CB_CHECK_EQ(trn::graphics_api_name("d3d10"), "Direct3D 10");
     CB_CHECK_EQ(trn::graphics_api_name("d3d11"), "Direct3D 11");

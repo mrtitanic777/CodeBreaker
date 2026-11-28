@@ -48,6 +48,20 @@ CB_TEST("java.cmake.template", [] {
     const std::string twelve = java::cmake::cmakelists_text("Game", "d3d12");
     CB_CHECK(twelve.find("target_link_libraries(Game PRIVATE d3d12 dxgi)") != std::string::npos);
     CB_CHECK(twelve.find("OpenGL") == std::string::npos && twelve.find("PRIVATE d3d11") == std::string::npos);
+
+    // Direct3D 7 and 8: a 32-bit program (a 64-bit compiler is refused, the program large-address-aware); 7 links DirectDraw, 8
+    // nothing (d3d8.dll is loaded at run time)
+    const std::string seven = java::cmake::cmakelists_text("Game", "d3d7");
+    const std::string eight = java::cmake::cmakelists_text("Game", "d3d8");
+    for (const std::string& old : {seven, eight}) {
+        CB_CHECK(old.find("if(CMAKE_SIZEOF_VOID_P EQUAL 8)") != std::string::npos && old.find("is 32-bit only") != std::string::npos);
+        CB_CHECK(old.find("/LARGEADDRESSAWARE") != std::string::npos && old.find("--large-address-aware") != std::string::npos);
+        CB_CHECK(old.find("-msse2 -mfpmath=sse") != std::string::npos);   // (Java's float maths, not the x87's)
+        CB_CHECK(old.find("-fno-ipa-icf") != std::string::npos);          // (GCC folded a static method into a thiscall member)
+        CB_CHECK(old.find("OpenGL") == std::string::npos && old.find("dxgi") == std::string::npos);
+    }
+    CB_CHECK(seven.find("target_link_libraries(Game PRIVATE ddraw dxguid)") != std::string::npos);
+    CB_CHECK(eight.find("PRIVATE d3d8") == std::string::npos && eight.find("PRIVATE ddraw") == std::string::npos);
 });
 
 }  // namespace

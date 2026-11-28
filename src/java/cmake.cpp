@@ -55,6 +55,36 @@ constexpr std::string_view kOpenGl = R"CMK(find_package(OpenGL REQUIRED)
 target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
 )CMK";
 
+// Direct3D 7 and 8 are 32-bit only (Windows has no 64-bit runtime for either: d3dim700.dll and d3d8.dll are in SysWOW64), so the
+// program is a 32-bit one: large-address-aware (4 GB of address space on a 64-bit Windows, not 2), and its floating point on SSE2
+// as a 64-bit program's is. GCC's 32-bit default is the x87's 80-bit registers, which round Java's float and double sums
+// differently from the JVM's. And GCC's identical-code folding is off: on 32-bit Windows a static method and a member function
+// with the same body take their object differently (on the stack; in ECX, thiscall), and GCC 16 folded one into the other
+// anyway -- Beta 1.8's BlockRail.isPoweredBlockRail(rail) ran getIsPowered() on whatever ECX held and the world crashed as it
+// generated its first mineshaft. (A 64-bit program has one convention: nothing to confuse.)
+constexpr std::string_view kProgram32 = R"CMK(if(MSVC)
+  target_link_options({name} PRIVATE /LARGEADDRESSAWARE)   # (Visual C++'s 32-bit floating point is SSE2 already)
+else()
+  target_compile_options({name} PRIVATE -msse2 -mfpmath=sse)
+  target_link_options({name} PRIVATE -Wl,--large-address-aware)
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options({name} PRIVATE -fno-ipa-icf)
+endif()
+)CMK";
+
+constexpr std::string_view kD3d7 = R"CMK(if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "Direct3D 7 is 32-bit only (Windows has no 64-bit Direct3D 7): configure with a 32-bit compiler (MinGW-w64 i686, or -A Win32 for Visual Studio)")
+endif()
+target_link_libraries({name} PRIVATE ddraw dxguid)   # Direct3D 7 (DirectDraw 7's surfaces and Direct3D 7's device)
+)CMK";
+
+constexpr std::string_view kD3d8 = R"CMK(if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "Direct3D 8 is 32-bit only (Windows has no 64-bit Direct3D 8): configure with a 32-bit compiler (MinGW-w64 i686, or -A Win32 for Visual Studio)")
+endif()
+# Direct3D 8: d3d8.dll is loaded at run time (Direct3D8.h declares the interface: no SDK header or import library is needed)
+)CMK";
+
 constexpr std::string_view kD3d9 = R"CMK(target_link_libraries({name} PRIVATE d3d9)   # Direct3D 9 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
 )CMK";
 
@@ -70,8 +100,15 @@ constexpr std::string_view kD3d12 = R"CMK(target_link_libraries({name} PRIVATE d
 }  // namespace
 
 std::string cmakelists_text(std::string_view name, std::string_view graphics) {
-    const std::string_view link = graphics == "d3d9" ? kD3d9 : graphics == "d3d10" ? kD3d10 : graphics == "d3d11" ? kD3d11 : graphics == "d3d12" ? kD3d12 : kOpenGl;
-    const std::string text = text::replace_all(kTemplate, "{graphics}", link);
+    const std::string_view link = graphics == "d3d7"    ? kD3d7
+                                  : graphics == "d3d8"  ? kD3d8
+                                  : graphics == "d3d9"  ? kD3d9
+                                  : graphics == "d3d10" ? kD3d10
+                                  : graphics == "d3d11" ? kD3d11
+                                  : graphics == "d3d12" ? kD3d12
+                                                        : kOpenGl;
+    const bool program32 = graphics == "d3d7" || graphics == "d3d8";
+    const std::string text = text::replace_all(kTemplate, "{graphics}", program32 ? std::string(link) + std::string(kProgram32) : std::string(link));
     return text::replace_all(text, "{name}", name);
 }
 

@@ -92,7 +92,8 @@ const std::vector<Platform>& table() {
          false, true,
          "access violation (segfault) on Windows -- OS catches it but the process still crashes",
          {{
-             {"D3D9/D3D10/D3D11/D3D12", "d3d9.lib, d3d10.lib, d3d11.lib or d3d12.lib", "IDirect3DDevice9, ID3D10Device, ID3D11Device or ID3D12Device, DXGI, HLSL shaders"},   // rendering
+             {"D3D7/D3D8/D3D9/D3D10/D3D11/D3D12", "ddraw.lib, d3d8.dll, d3d9.lib, d3d10.lib, d3d11.lib or d3d12.lib",
+              "IDirect3DDevice7, IDirect3DDevice8, IDirect3DDevice9, ID3D10Device, ID3D11Device or ID3D12Device, DXGI, fixed function or HLSL shaders"},   // rendering
              {"XAudio2", "xaudio2.lib", "IXAudio2, IXAudio2SourceVoice, X3DAudio"},   // audio
              {"XInput", "xinput.lib", "XInputGetState, XINPUT_STATE, Raw Input (keyboard/mouse)"},   // input
              {"Win32", "kernel32.lib", "CreateFile, ReadFile, WriteFile, SHGetFolderPath"},   // io

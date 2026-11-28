@@ -743,6 +743,31 @@ std::optional<stdfs::path> port_mingw_prefix(const stdfs::path& build_dir) {
     return prefix;
 }
 
+// A 32-bit MinGW-w64 (i686) with SDL2, for a project that must be a 32-bit program (Direct3D 7 and 8 are 32-bit only): a prefix
+// on PATH, else msys2's own mingw32. Its g++ says what it builds for (-dumpmachine: i686-w64-mingw32). nullopt: none here.
+std::optional<stdfs::path> port_mingw32_prefix() {
+    std::vector<stdfs::path> candidates;
+    const std::string path = fs::get_env("PATH").value_or("");
+    for (std::string_view dir : text::split(path, ';')) {
+        const stdfs::path bin = fs::from_text(std::string(text::trim(dir)));
+        if (text::lower(fs::to_text(bin.filename())) == "bin") candidates.push_back(bin.parent_path());
+    }
+    for (const char* root : {"C:\\msys64\\mingw32", "C:\\msys2\\mingw32", "D:\\msys64\\mingw32"}) candidates.push_back(fs::from_text(root));
+    std::error_code ec;
+    for (const stdfs::path& prefix : candidates) {
+        const stdfs::path bin = prefix / "bin";
+        if (!stdfs::is_regular_file(bin / "g++.exe", ec) || !stdfs::is_regular_file(bin / "mingw32-make.exe", ec) ||
+            !stdfs::is_directory(prefix / "lib" / "cmake" / "SDL2", ec))
+            continue;
+        try {
+            const process::ProcessResult r = process::run({.argv = {fs::to_text(bin / "g++.exe"), "-dumpmachine"}});
+            if (r.ok() && text::trim(as_text(r.out)).starts_with("i686")) return prefix;
+        } catch (const std::exception&) {
+        }
+    }
+    return std::nullopt;
+}
+
 int port_tool(const ContextP& ctx, const cli::Args& a) {
     const std::optional<port::Platform> platform = port::parse_platform(a.value_or("platform", "pc"));
     if (!platform) {
@@ -971,12 +996,14 @@ namespace {
 // The DLLs of `bin` the program needs, followed through their own imports (SDL2.dll, libstdc++-6.dll, libvorbisfile-3.dll -> libvorbis-0.dll ...),
 // copied beside it so it starts outside the MinGW shell. A DLL Windows has in System32 is never copied (msys2 ships its own opengl32.dll, Mesa's
 // software renderer). The names copied, in order.
-std::vector<std::string> pc_copy_runtime(const stdfs::path& exe, const stdfs::path& bin) {
+std::vector<std::string> pc_copy_runtime(const stdfs::path& exe, const stdfs::path& bin, bool program32 = false) {
     std::vector<std::string> copied;
     std::set<std::string> seen;
     std::vector<stdfs::path> todo = {exe};
     std::error_code ec;
-    const stdfs::path system = fs::from_text(fs::get_env("SystemRoot").value_or("C:\\Windows")) / "System32";
+    // (a 32-bit program's system DLLs are SysWOW64's on a 64-bit Windows)
+    const stdfs::path windows = fs::from_text(fs::get_env("SystemRoot").value_or("C:\\Windows"));
+    const stdfs::path system = program32 && stdfs::is_directory(windows / "SysWOW64", ec) ? windows / "SysWOW64" : windows / "System32";
     while (!todo.empty()) {
         const stdfs::path file = todo.back();
         todo.pop_back();
@@ -1076,12 +1103,37 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::func
     };
     const stdfs::path build_dir = project / "build";
     std::optional<stdfs::path> mingw_bin;
-    Ran r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(build_dir)}});
+    // A project that must be a 32-bit program (Direct3D 7 or 8: its CMakeLists refuses a 64-bit compiler) is built with a 32-bit
+    // MinGW-w64 and its SDL2 when this computer has one, else with Visual Studio's Win32 platform.
+    std::error_code lists_ec;
+    const bool program32 = stdfs::is_regular_file(project / "CMakeLists.txt", lists_ec) &&
+                           fs::read_text(project / "CMakeLists.txt").find("is 32-bit only") != std::string::npos;
+    const std::optional<stdfs::path> mingw32 = program32 ? port_mingw32_prefix() : std::nullopt;
+    Ran r;
     stdfs::path built_dir = build_dir;
     process::ProcessSpec build{.argv = {jt_cmake(), "--build", jt_native(build_dir), "--config", "Release"}};
+    if (mingw32) {
+        const stdfs::path bin = *mingw32 / "bin";
+        mingw_bin = bin;
+        line_out(std::format("a 32-bit program: building with the 32-bit MinGW-w64 ({})", jt_native(*mingw32)));
+        built_dir = project / "build-mingw32";
+        const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
+        r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
+                          "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
+                          "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_PREFIX_PATH=" + jt_native(*mingw32),
+                          "-DCMAKE_BUILD_TYPE=Release"},
+                 .env = env});
+        build = {.argv = {jt_cmake(), "--build", jt_native(built_dir), "--parallel"}, .env = env};
+    } else if (program32) {
+        line_out("a 32-bit program and no 32-bit MinGW-w64 with SDL2 here (msys2: pacman -S mingw-w64-i686-toolchain mingw-w64-i686-SDL2 "
+                 "mingw-w64-i686-libvorbis): trying Visual Studio's Win32 platform");
+        r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(build_dir), "-A", "Win32"}});
+    } else {
+        r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(build_dir)}});
+    }
     // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
     // libraries are not that compiler's (MSVC stops at MinGW's winnt.h). The build is then made with that prefix's own gcc and make.
-    if (r.exit_code == 0) {
+    if (r.exit_code == 0 && !program32) {   // (a 64-bit MinGW cannot build a 32-bit program)
         if (const std::optional<stdfs::path> mingw = port_mingw_prefix(build_dir)) {
             const stdfs::path bin = *mingw / "bin";
             mingw_bin = bin;
@@ -1114,7 +1166,7 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::func
             if (!out.exe.empty()) break;
         }
         if (!out.exe.empty() && mingw_bin) {
-            const std::vector<std::string> dlls = pc_copy_runtime(out.exe, *mingw_bin);
+            const std::vector<std::string> dlls = pc_copy_runtime(out.exe, *mingw_bin, program32);
             const std::string line = std::format("{} runtime DLL(s) copied beside {}: {}", dlls.size(), jt_native(out.exe.filename()), text::join(dlls, ", "));
             line_out(line);
         }

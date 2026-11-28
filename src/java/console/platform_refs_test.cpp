@@ -507,6 +507,43 @@ CB_TEST("java.platform_refs.the_pc_direct3d10_and_12_layers_are_the_shared_rende
     }
 });
 
+// Direct3D 7 and 8: the same GL layer on their fixed-function pipelines, the plan for both in GpuFixed.h; Direct3D 8's interface
+// is the layer's own declaration (no SDK has d3d8.h for Visual C++), loaded from d3d8.dll at run time.
+CB_TEST("java.platform_refs.the_pc_direct3d7_and_8_layers_are_the_shared_renderer_on_the_fixed_function_pipeline", [] {
+    const stdfs::path pc = testing::data_path("../config/java/platform/pc/reference");
+    struct Api { const char* dir; const char* backend; const char* device; const char* create; const char* label; };
+    const Api apis[] = {{"d3d7", "GpuD3D7.cpp", "IDirect3DDevice7", "DirectDrawCreateEx", "PC (SDL2 + Direct3D 7)"},
+                        {"d3d8", "GpuD3D8.cpp", "IDirect3DDevice8", "d3d8::create()", "PC (SDL2 + Direct3D 8)"}};
+    for (const Api& api : apis) {
+        pr::EmitOptions options;
+        options.platform = pr::Platform::PcOpenGl;
+        options.main_class = "Minecraft";
+        options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders", "GpuFixed"}},
+                          {testing::data_path(std::string("../config/java/platform/pc/") + api.dir + "/reference"), {}}};
+        options.label = api.label;
+        fs::ScopedTempDir out(std::string("cb-refs-pc") + api.dir);
+        pr::emit_references(out.path(), pc, options);
+        const std::string backend = fs::read_text(out.path() / api.backend);
+        CB_CHECK(refs_has(fs::read_text(out.path() / "GL11.h"), std::string(api.label) + " platform layer"));
+        CB_CHECK(refs_has(backend, api.device) && refs_has(backend, "fixed::plan(p, rs, c, b, g_w, g_h);"));   // the shared plan
+        CB_CHECK(!refs_has(backend, "kGlVertexStage") && !refs_has(backend, "D3DCompile"));                    // no shaders at all
+        CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), api.create));
+        CB_CHECK(stdfs::exists(out.path() / "Gpu.h") && stdfs::exists(out.path() / "GpuFixed.h"));
+        for (const char* other : {"GpuD3D7.cpp", "GpuD3D8.cpp", "GpuD3D9.cpp", "GpuD3D10.cpp", "GpuD3D11.cpp", "GpuD3D12.cpp"})
+            CB_CHECK(std::string(other) == api.backend || !stdfs::exists(out.path() / other));
+        for (const char* f : {"GL11.cpp", "GLU.cpp", "Display.cpp", "GL11.h"})
+            CB_CHECK(!refs_has(fs::read_text(out.path() / f), "<GL/gl.h>") && !refs_has(fs::read_text(out.path() / f), "d3d9.h"));
+        const std::string display = fs::read_text(out.path() / "Display.cpp");
+        CB_CHECK(refs_has(display, "std::atexit(release_at_exit);") && refs_has(display, "std::exit(3);") && refs_has(display, "FPU"));
+    }
+    CB_CHECK(stdfs::exists(testing::data_path("../config/java/platform/pc/d3d8/reference/Direct3D8.reference.h")));
+    // the plan: GL's eye space mirrored into Direct3D's camera space (fog is the camera-space z), the viewport and scissor box as
+    // one viewport, glCallList's colour as a factor stage, glTexGen through the camera-space position
+    const std::string plan = fs::read_text(refs_real_reference() / "GpuFixed.reference.h");
+    CB_CHECK(refs_has(plan, "p.world = mul(mv, s);") && refs_has(plan, "p.proj = mul(mul(s, inv), wvp);"));
+    CB_CHECK(refs_has(plan, "inline bool fitViewport(") && refs_has(plan, "kTaFactor") && refs_has(plan, "kCoordEyePosition"));
+});
+
 // The PC's sound closes its device before the statics go: SDL's audio thread mixed from freed sources as the program ended.
 CB_TEST("java.platform_refs.the_pc_audio_device_closes_before_exit", [] {
     const std::string audio = fs::read_text(testing::data_path("../config/java/platform/pc/reference/Audio.reference.cpp"));

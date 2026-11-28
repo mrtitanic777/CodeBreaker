@@ -166,6 +166,7 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
         const std::string api = graphics_api_name(options_.graphics);
         std::set<std::string> shared = {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"};
         if (options_.graphics == "d3d9") shared.insert("GpuD3D9");
+        if (options_.graphics == "d3d7" || options_.graphics == "d3d8") shared.insert("GpuFixed");   // (their fixed-function plan)
         emit_options.layers.push_back({data.path({"platform", "reference"}), shared});
         emit_options.layers.push_back({data.path({"platform", "pc", options_.graphics, "reference"}), {}});
         emit_options.label = std::format("PC (SDL2 + {})", api);
