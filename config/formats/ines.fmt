@@ -7,6 +7,7 @@ endian le
 
 struct File {
     header  : Header
+    assert (header.has_trainer ? 512 : 0) + header.prg_size <= $remaining : "the PRG is cut short"   # (a trimmed CHR is read as far as it goes)
     trainer : bytes(512) if header.has_trainer
     prg     : bytes(header.prg_size)
     chr     : bytes(min(header.chr_size, $remaining))     # a trimmed dump keeps what CHR it has
