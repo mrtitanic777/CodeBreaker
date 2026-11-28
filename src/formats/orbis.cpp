@@ -9,13 +9,10 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
-#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::orbis {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -30,6 +27,11 @@ constexpr std::int64_t kDtNeeded = 1, kDtPltRelSz = 2, kDtHash = 4, kDtStrTab = 
                        kDtJmpRel = 0x17, kDtInitArray = 0x19, kDtInitArraySz = 0x1b, kDtGnuHash = 0x6ffffef5;
 constexpr std::int64_t kSceImportModule = 0x6100000F, kSceImportLib = 0x61000015, kSceJmpRel = 0x61000029, kScePltRelSz = 0x6100002d, kSceRela = 0x6100002f,
                        kSceRelaSz = 0x61000031, kSceStrTab = 0x61000035, kSceStrSz = 0x61000037, kSceSymTab = 0x61000039, kSceSymTabSz = 0x6100003f;
+
+template <class T>
+T at(ByteView d, std::uint64_t off) {
+    return get<T>(d, off, kReader);
+}
 
 std::string c_string(ByteView d, std::uint64_t off, std::size_t limit = 512) {
     std::string out;
@@ -53,56 +55,35 @@ int base64_value(char c) {
     return -1;
 }
 
-// A read of `data` through orbis.fmt from the struct `root`.
-eng::Tree orbis_tree(ByteView data, std::string_view root, std::map<std::string, std::int64_t> vars = {}, bool sections = false) {
-    eng::ReadOptions options;
-    options.root = std::string(root);
-    options.vars = std::move(vars);
-    if (sections) options.parts.insert("sections");
-    options.keep_source = false;   // only read from
-    return eng::builtin().read("orbis", data, options);
-}
-
-// A field the description reads with `try`: its value when it was in the file.
-std::optional<std::uint64_t> orbis_field(const eng::Node& n, std::string_view field) {
-    const eng::Node* f = n.child(field);
-    if (!f || f->kind != eng::Kind::Int) return std::nullopt;
-    return f->value;
-}
-
-// The program headers of an Elf64 tree (`d` is what it was read from: an entry not wholly in it is the file cut short).
-std::vector<Segment> read_segments(const eng::Node& elf, ByteView d) {
-    const eng::Node& header = elf.get("header");
-    const std::uint64_t phoff = header.u("phoff"), entsize = header.u("phentsize"), count = header.u("phnum");
+std::vector<Segment> read_segments(ByteView d) {
+    const std::uint64_t phoff = at<std::uint64_t>(d, 32);
+    const std::uint16_t entsize = at<std::uint16_t>(d, 54), count = at<std::uint16_t>(d, 56);
     if (count > kMaxSegments) throw FormatError(kReader, 56, "too many program headers");
     if (count != 0 && entsize < 56) throw FormatError(kReader, 54, "a program header entry is smaller than an Elf64_Phdr");
     std::vector<Segment> out;
-    const std::vector<eng::Node>& table = elf.get("segments").children;
-    for (std::uint64_t k = 0; k < count; ++k) {
-        const eng::Node* e = table[k].child("entry");
-        const std::uint64_t o = phoff + k * entsize;
-        if (!e) throw TruncatedError(kReader, o, 56, o < d.size() ? d.size() - o : 0);
+    for (std::uint16_t k = 0; k < count; ++k) {
+        const std::uint64_t o = phoff + static_cast<std::uint64_t>(k) * entsize;
         Segment s;
-        s.type = static_cast<std::uint32_t>(e->u("type"));
-        s.flags = static_cast<std::uint32_t>(e->u("flags"));
-        s.offset = e->u("offset");
-        s.address = e->u("vaddr");
-        s.file_size = e->u("filesz");
-        s.memory_size = e->u("memsz");
-        s.align = e->u("align");
+        s.type = at<std::uint32_t>(d, o);
+        s.flags = at<std::uint32_t>(d, o + 4);
+        s.offset = at<std::uint64_t>(d, o + 8);
+        s.address = at<std::uint64_t>(d, o + 16);
+        s.file_size = at<std::uint64_t>(d, o + 32);
+        s.memory_size = at<std::uint64_t>(d, o + 40);
+        s.align = at<std::uint64_t>(d, o + 48);
         out.push_back(s);
     }
     return out;
 }
 
-// A symbol table entry; its name is the string at strings + its name offset, when that is before string_end.
-Symbol make_symbol(ByteView d, const eng::Node& e, std::uint64_t strings, std::uint64_t string_end) {
+Symbol read_symbol(ByteView d, std::uint64_t table, std::uint64_t index, std::uint64_t strings, std::uint64_t string_end) {
+    const std::uint64_t o = table + index * 24;
     Symbol s;
-    const std::uint64_t name = e.u("name_offset");
-    s.info = static_cast<std::uint8_t>(e.u("info"));
-    s.section = static_cast<std::uint16_t>(e.u("section"));
-    s.value = e.u("value");
-    s.size = e.u("size");
+    const std::uint32_t name = at<std::uint32_t>(d, o);
+    s.info = at<std::uint8_t>(d, o + 4);
+    s.section = at<std::uint16_t>(d, o + 6);
+    s.value = at<std::uint64_t>(d, o + 8);
+    s.size = at<std::uint64_t>(d, o + 16);
     if (strings + name < string_end) s.name = c_string(d, strings + name);
     return s;
 }
@@ -112,27 +93,21 @@ void add_function(Program& p, std::set<std::uint64_t>& seen, const Symbol& s) {
     p.functions.push_back(s);
 }
 
-// The static symbol tables of a plain ELF, when its section headers are in the file.
+// The static symbol table of a plain ELF, when its section headers are in the file.
 void read_static_functions(Program& p, std::set<std::uint64_t>& seen) {
     const ByteView d = p.file;
-    const eng::Tree tree = orbis_tree(d, "Elf64", {}, true);
-    const eng::Node& header = tree.root.get("header");
-    const std::uint64_t count = header.u("shnum");
-    if (header.u("shoff") == 0 || header.u("shentsize") < 64 || count == 0 || count > 4096) return;
-    const std::vector<eng::Node>& sections = tree.root.get("sections").children;
-    for (std::uint64_t k = 0; k < count; ++k) {
-        const eng::Node& sh = sections[k].get("entry");
-        const auto type = orbis_field(sh, "type"), link = orbis_field(sh, "link");
-        const auto off = orbis_field(sh, "offset"), size = orbis_field(sh, "size");
-        if (!type || *type != 2 || !off || !size || !link || *link >= count) continue;   // SHT_SYMTAB
-        const eng::Node& strings_sh = sections[*link].get("entry");
-        const auto strings = orbis_field(strings_sh, "offset"), string_size = orbis_field(strings_sh, "size");
+    const auto shoff = try_get<std::uint64_t>(d, 40);
+    const auto entsize = try_get<std::uint16_t>(d, 58), count = try_get<std::uint16_t>(d, 60);
+    if (!shoff || !entsize || !count || *shoff == 0 || *entsize < 64 || *count == 0 || *count > 4096) return;
+    for (std::uint16_t k = 0; k < *count; ++k) {
+        const std::uint64_t o = *shoff + static_cast<std::uint64_t>(k) * *entsize;
+        const auto type = try_get<std::uint32_t>(d, o + 4), link = try_get<std::uint32_t>(d, o + 40);
+        const auto off = try_get<std::uint64_t>(d, o + 24), size = try_get<std::uint64_t>(d, o + 32);
+        if (!type || *type != 2 || !off || !size || !link || *link >= *count) continue;   // SHT_SYMTAB
+        const std::uint64_t lo = *shoff + static_cast<std::uint64_t>(*link) * *entsize;
+        const auto strings = try_get<std::uint64_t>(d, lo + 24), string_size = try_get<std::uint64_t>(d, lo + 32);
         if (!strings || !string_size || *off > d.size() || *size > d.size() - *off || *strings > d.size() || *string_size > d.size() - *strings) continue;
-        const std::uint64_t entries = std::min<std::uint64_t>(*size / 24, kMaxSymbols);
-        if (entries < 2) continue;
-        const eng::Tree table = orbis_tree(d, "Statics", {{"at", static_cast<std::int64_t>(*off)}, {"count", static_cast<std::int64_t>(entries)}});
-        const std::vector<eng::Node>& symbols = table.root.get("symbols").children;
-        for (std::size_t i = 1; i < symbols.size(); ++i) add_function(p, seen, make_symbol(d, symbols[i], *strings, *strings + *string_size));
+        for (std::uint64_t i = 1; i < *size / 24 && i < kMaxSymbols; ++i) add_function(p, seen, read_symbol(d, *off, i, *strings, *strings + *string_size));
     }
 }
 
@@ -149,12 +124,9 @@ void read_dynamic(Program& p) {
     std::map<std::int64_t, std::uint64_t> tag;
     std::vector<std::uint64_t> needed_values;
     std::vector<std::uint64_t> libs;
-    // the entries start before the segment's end (an end past the file is the file's)
-    const std::uint64_t dyn_end = std::min<std::uint64_t>(dyn->offset + dyn->file_size, d.size());
-    const eng::Tree dynamic = orbis_tree(d, "Dynamic", {{"dyn_at", static_cast<std::int64_t>(dyn->offset)}, {"dyn_end", static_cast<std::int64_t>(dyn_end)}});
-    for (const eng::Node& e : dynamic.root.get("entries").children) {
-        const std::int64_t t = e.i("tag");
-        const std::uint64_t v = e.u("value");
+    for (std::uint64_t o = dyn->offset; o + 16 <= d.size() && o < dyn->offset + dyn->file_size; o += 16) {
+        const std::int64_t t = at<std::int64_t>(d, o);
+        const std::uint64_t v = at<std::uint64_t>(d, o + 8);
         if (t == 0) break;
         if (t == kDtNeeded) needed_values.push_back(v);
         else if (t == kSceImportLib) libs.push_back(v);
@@ -209,25 +181,27 @@ void read_dynamic(Program& p) {
         if (strings != 0) library_by_id[static_cast<std::uint32_t>(v >> 48)] = c_string(d, strings + (v & 0xFFFFFFFFull));
     }
 
-    // the tables, where the tags place them (a place past the file, or one a signed offset cannot say, holds nothing)
-    const auto var = [&](std::uint64_t at) { return at < d.size() ? static_cast<std::int64_t>(at) : std::int64_t{-1}; };
-    const std::uint64_t symbols_at = symbols != 0 && strings != 0 ? symbols : 0;
-    const eng::Tree tables = orbis_tree(d, "Tables", {{"sym_at", symbols_at != 0 ? var(symbols_at) : 0}, {"sym_count", static_cast<std::int64_t>(symbol_count)},
-                                                      {"rela_at", rela != 0 ? var(rela) : 0}, {"rela_count", static_cast<std::int64_t>(rela_count)},
-                                                      {"jmprel_at", jmprel != 0 ? var(jmprel) : 0}, {"jmprel_count", static_cast<std::int64_t>(jmprel_count)}});
-    if (const eng::Node* table = tables.root.child("symbols"))
-        for (const eng::Node& e : table->children) p.symbols.push_back(make_symbol(d, e, strings, string_end));
-    for (const std::string_view name : {"rela", "jmprel"})
-        if (const eng::Node* table = tables.root.child(name))
-            for (const eng::Node& e : table->children) {
-                Relocation r;
-                r.offset = e.u("offset");
-                const std::uint64_t info = e.u("info");
-                r.type = static_cast<std::uint32_t>(info);
-                r.symbol = static_cast<std::uint32_t>(info >> 32);
-                r.addend = e.i("addend");
-                p.relocations.push_back(r);
-            }
+    if (symbols != 0 && strings != 0) {
+        for (std::uint64_t i = 0; i < symbol_count; ++i) {
+            if (symbols + (i + 1) * 24 > d.size()) break;
+            p.symbols.push_back(read_symbol(d, symbols, i, strings, string_end));
+        }
+    }
+    const auto relocations = [&](std::uint64_t table, std::uint64_t count) {
+        for (std::uint64_t i = 0; i < count; ++i) {
+            const std::uint64_t o = table + i * 24;
+            if (o + 24 > d.size()) break;
+            Relocation r;
+            r.offset = at<std::uint64_t>(d, o);
+            const std::uint64_t info = at<std::uint64_t>(d, o + 8);
+            r.type = static_cast<std::uint32_t>(info);
+            r.symbol = static_cast<std::uint32_t>(info >> 32);
+            r.addend = at<std::int64_t>(d, o + 16);
+            p.relocations.push_back(r);
+        }
+    };
+    if (rela != 0) relocations(rela, rela_count);
+    if (jmprel != 0) relocations(jmprel, jmprel_count);
 
     std::set<std::uint64_t> slots;
     for (const Relocation& r : p.relocations) {
@@ -276,18 +250,15 @@ void read_dynamic(Program& p) {
     std::ranges::sort(p.functions, {}, &Symbol::value);
 }
 
-// The layout is orbis.fmt's; what the types, the counts and the places mean is this reader's.
 Program build(Bytes file, bool self) {
     Program p;
     p.file = std::move(file);
     const ByteView d = p.file;
     if (!plain_elf_head(d)) throw FormatError(kReader, 0, "not an x86-64 ELF64 file");
-    const eng::Tree tree = orbis_tree(d, "Elf64");
-    const eng::Node& header = tree.root.get("header");
-    p.type = static_cast<std::uint16_t>(header.u("type"));
+    p.type = at<std::uint16_t>(d, 16);
     if (!good_type(p.type)) throw FormatError(kReader, 16, std::format("ELF type 0x{:X} is not an executable or a shared object", p.type));
-    p.entry = header.u("entry");
-    p.segments = read_segments(tree.root, d);
+    p.entry = at<std::uint64_t>(d, 24);
+    p.segments = read_segments(d);
     p.self = self;
     read_dynamic(p);
     p.container = self ? "fake SELF" : p.orbis ? "OELF" : "ELF";
@@ -298,40 +269,32 @@ Program build(Bytes file, bool self) {
 
 // The ELF a fake SELF holds, rebuilt: its header and program headers as the SELF copies them, each segment at its file offset.
 Program from_self(ByteView d) {
-    const eng::Tree tree = orbis_tree(d, "Self");
-    const eng::Node& self = tree.root;
-    const auto count = orbis_field(self, "entry_count");
-    if (!count) throw TruncatedError(kReader, 0x18, 2, d.size() > 0x18 ? d.size() - 0x18 : 0);
-    const std::uint64_t entries = *count;
+    const std::uint16_t entries = at<std::uint16_t>(d, 0x18);
     if (entries == 0 || entries > 1024) throw FormatError(kReader, 0x18, "a SELF with no segment entries (or too many)");
-    const std::uint64_t elf_at = 0x20 + entries * 0x20;
+    const std::uint64_t elf_at = 0x20 + static_cast<std::uint64_t>(entries) * 0x20;
     if (elf_at + 0x40 > d.size()) throw TruncatedError(kReader, elf_at, 0x40, d.size() > elf_at ? d.size() - elf_at : 0);
     const ByteView head = d.subspan(elf_at);
     if (!plain_elf_head(head)) throw FormatError(kReader, elf_at, "the SELF does not hold an x86-64 ELF header");
-    const eng::Node& header = self.get("header");
-    const std::uint64_t phnum = header.u("phnum");
-    if (phnum > kMaxSegments || header.u("phoff") != 0x40 || header.u("phentsize") != 56)
+    const std::uint16_t phnum = at<std::uint16_t>(head, 56);
+    if (phnum > kMaxSegments || at<std::uint64_t>(head, 32) != 0x40 || at<std::uint16_t>(head, 54) != 56)
         throw FormatError(kReader, elf_at, "the ELF header inside the SELF is not the layout CodeBreaker reads");
-    const std::uint64_t ext_at = (elf_at + 0x40 + phnum * 56 + 15) & ~15ull;
-    const auto paid = orbis_field(self, "paid"), program_type = orbis_field(self, "program_type");
+    const std::uint64_t ext_at = (elf_at + 0x40 + static_cast<std::uint64_t>(phnum) * 56 + 15) & ~15ull;
+    const auto paid = try_get<std::uint64_t>(d, ext_at), program_type = try_get<std::uint64_t>(d, ext_at + 8);
     if (!program_type || *program_type != 1)
         throw FormatError(kReader, ext_at, std::format("the SELF's program type is {} (1 is fake): a retail or system SELF is signed and encrypted, which CodeBreaker does not decrypt", program_type.value_or(0)));
 
     Bytes elf(0x40 + static_cast<std::size_t>(phnum) * 56);
     if (head.size() < elf.size()) throw TruncatedError(kReader, elf_at, elf.size(), head.size());
     std::copy_n(head.begin(), elf.size(), elf.begin());
-    const std::vector<Segment> segments = read_segments(orbis_tree(ByteView(elf), "Elf64").root, ByteView(elf));
+    const std::vector<Segment> segments = read_segments(ByteView(elf));
     std::uint64_t size = elf.size();
     struct Part {
         std::uint64_t at, offset, bytes;
     };
     std::vector<Part> parts;
-    const std::vector<eng::Node>& table = self.get("entries").children;
-    for (std::uint64_t k = 0; k < entries; ++k) {
-        const std::uint64_t o = 0x20 + k * 0x20;
-        if (k >= table.size()) throw TruncatedError(kReader, o, 24, o < d.size() ? d.size() - o : 0);
-        const eng::Node& e = table[k];
-        const std::uint64_t props = e.u("properties"), offset = e.u("offset"), bytes = e.u("size");
+    for (std::uint16_t k = 0; k < entries; ++k) {
+        const std::uint64_t o = 0x20 + static_cast<std::uint64_t>(k) * 0x20;
+        const std::uint64_t props = at<std::uint64_t>(d, o), offset = at<std::uint64_t>(d, o + 8), bytes = at<std::uint64_t>(d, o + 16);
         if ((props & (1u << 11)) == 0 || (props & (1u << 16)) != 0) continue;   // a data entry has blocks and no digests; the others are meta
         if ((props & 2) != 0 || (props & 8) != 0) throw FormatError(kReader, o, "a SELF segment is encrypted or compressed: CodeBreaker does not decrypt");
         const std::uint64_t index = (props >> 20) & 0xFFF;

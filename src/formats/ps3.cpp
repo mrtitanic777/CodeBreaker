@@ -9,12 +9,9 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
-#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::ps3 {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -25,6 +22,7 @@ std::uint16_t be16(ByteView d, std::size_t at) { return static_cast<std::uint16_
 std::uint32_t be32(ByteView d, std::size_t at) {
     return static_cast<std::uint32_t>(d[at]) << 24 | static_cast<std::uint32_t>(d[at + 1]) << 16 | static_cast<std::uint32_t>(d[at + 2]) << 8 | d[at + 3];
 }
+std::uint64_t be64(ByteView d, std::size_t at) { return static_cast<std::uint64_t>(be32(d, at)) << 32 | be32(d, at + 4); }
 void put16(Bytes& b, std::size_t at, std::uint32_t v) {
     b[at] = static_cast<std::uint8_t>(v >> 8);
     b[at + 1] = static_cast<std::uint8_t>(v);
@@ -85,31 +83,14 @@ void read_imports(Program& p, std::uint64_t param) {
     }
 }
 
-// The tree of the file (ps3.fmt): a SELF's headers and segment entries, or a plain ELF's headers and program headers.
-eng::Tree ps3_tree(ByteView d, std::string_view root) {
-    eng::ReadOptions options;
-    options.root = std::string(root);
-    options.keep_source = false;   // only read from
-    return eng::builtin().read("ps3", d, options);
-}
-
-Phdr ps3_phdr(const eng::Node& n) {
-    return {static_cast<std::uint32_t>(n.u("type")), static_cast<std::uint32_t>(n.u("flags")), n.u("offset"), n.u("vaddr"), n.u("filesz"), n.u("memsz")};
-}
-
-bool ps3_ppc64(const eng::Node* ident, const eng::Node* header) {
-    return ident && header && ident->u("class") == 2 && ident->u("data") == 2 && header->u("machine") == kMachinePpc64;
-}
-
-// The program from the ELF header's fields (`ident`, `header`), its program headers and the segments' bytes.
-Program build(const eng::Node& ident, const eng::Node& header, const std::vector<Phdr>& phdrs, const std::vector<Bytes>& data, bool self) {
+Program build(ByteView elf, const std::vector<Phdr>& phdrs, const std::vector<Bytes>& data, bool self) {
     Program p;
     p.self = self;
-    p.elf_type = static_cast<std::uint16_t>(header.u("type"));
-    p.os_abi = static_cast<std::uint8_t>(ident.u("os_abi"));
-    p.abi_version = static_cast<std::uint8_t>(ident.u("abi_version"));
-    p.entry = header.u("entry");
-    p.elf_flags = static_cast<std::uint32_t>(header.u("flags"));
+    p.elf_type = be16(elf, 16);
+    p.os_abi = elf[7];
+    p.abi_version = elf[8];
+    p.entry = be64(elf, 24);
+    p.elf_flags = be32(elf, 48);
     std::uint64_t param = 0;
     for (std::size_t k = 0; k < phdrs.size(); ++k) {
         if (phdrs[k].type == kPtPrxParam) {
@@ -135,58 +116,50 @@ Program build(const eng::Node& ident, const eng::Node& header, const std::vector
     return p;
 }
 
-// The layout is ps3.fmt's; that the headers, the tables and the segments lie in the file, and what an encrypted segment means, are this reader's rules.
 Program parse_self(ByteView d) {
-    const eng::Tree tree = ps3_tree(d, "Self");
-    const eng::Node& self = tree.root;
-    const std::uint64_t elf_at = self.u("elf_offset"), phdr_at = self.u("phdr_offset"), info_at = self.u("info_offset");
+    const std::uint64_t elf_at = be64(d, 0x30), phdr_at = be64(d, 0x38), info_at = be64(d, 0x48);
     if (elf_at + 64 > d.size() || phdr_at > d.size()) throw FormatError(kReader, 0x30, "the SELF's ELF header is outside the file");
-    const eng::Node* ident = self.child("ident");
-    const eng::Node* header = self.child("header");
-    if (!ps3_ppc64(ident, header)) throw FormatError(kReader, elf_at, "the SELF does not hold a PowerPC64 ELF");
-    const unsigned count = static_cast<unsigned>(header->u("phnum"));
+    const ByteView elf = d.subspan(elf_at);
+    if (!is_ppc64_elf(elf)) throw FormatError(kReader, elf_at, "the SELF does not hold a PowerPC64 ELF");
+    const unsigned count = be16(elf, 56);
     if (phdr_at + 56ull * count > d.size() || info_at + 32ull * count > d.size()) throw FormatError(kReader, phdr_at, "the SELF's tables are outside the file");
-    const eng::Node& segments = self.get("segments");
-    const eng::Node& infos = self.get("infos");
     std::vector<Phdr> phdrs;
     std::vector<Bytes> data;
     for (unsigned k = 0; k < count; ++k) {
-        phdrs.push_back(ps3_phdr(segments.children[k]));
-        const eng::Node& info = infos.children[k];
-        const std::uint64_t offset = info.u("offset"), length = info.u("length");
+        const std::size_t at = phdr_at + 56ull * k;
+        phdrs.push_back({be32(d, at), be32(d, at + 4), be64(d, at + 8), be64(d, at + 16), be64(d, at + 32), be64(d, at + 40)});
+        const std::size_t info = info_at + 32ull * k;
+        const std::uint64_t offset = be64(d, info), length = be64(d, info + 8);
+        const std::uint32_t compressed = be32(d, info + 16), encrypted = be32(d, info + 28);
         if (phdrs.back().type != kPtLoad || length == 0) {
             data.emplace_back();
             continue;
         }
-        if (info.u("encryption") == 1) throw FormatError(kReader, info.offset, "the SELF's segments are encrypted: not handled (CodeBreaker does not decrypt)");
-        if (offset + length > d.size()) throw FormatError(kReader, info.offset, "a segment is outside the file");
+        if (encrypted == 1) throw FormatError(kReader, info, "the SELF's segments are encrypted: not handled (CodeBreaker does not decrypt)");
+        if (offset + length > d.size()) throw FormatError(kReader, info, "a segment is outside the file");
         const ByteView raw = d.subspan(offset, length);
-        data.push_back(info.u("compression") == 2 ? inflate_exact(raw, phdrs.back().filesz, offset) : Bytes(raw.begin(), raw.end()));
+        data.push_back(compressed == 2 ? inflate_exact(raw, phdrs.back().filesz, offset) : Bytes(raw.begin(), raw.end()));
     }
-    return build(*ident, *header, phdrs, data, true);
+    return build(elf, phdrs, data, true);
 }
 
 Program parse_elf(ByteView d) {
-    const eng::Tree tree = ps3_tree(d, "PlainElf");
-    const eng::Node& elf = tree.root;
-    const eng::Node& header = elf.get("header");
-    const unsigned count = static_cast<unsigned>(header.u("phnum"));
-    const std::uint64_t phoff = header.u("phoff");
+    const unsigned count = be16(d, 56);
+    const std::uint64_t phoff = be64(d, 32);
     if (phoff + 56ull * count > d.size()) throw FormatError(kReader, phoff, "the program header table is outside the file");
-    const eng::Node* segments = elf.child("segments");
     std::vector<Phdr> phdrs;
     std::vector<Bytes> data;
     for (unsigned k = 0; k < count; ++k) {
-        const eng::Node& n = segments->children[k];
-        phdrs.push_back(ps3_phdr(n));
+        const std::size_t at = phoff + 56ull * k;
+        phdrs.push_back({be32(d, at), be32(d, at + 4), be64(d, at + 8), be64(d, at + 16), be64(d, at + 32), be64(d, at + 40)});
         if (phdrs.back().type != kPtLoad) {
             data.emplace_back();
             continue;
         }
-        if (phdrs.back().offset + phdrs.back().filesz > d.size()) throw FormatError(kReader, n.offset, "a segment is outside the file");
+        if (phdrs.back().offset + phdrs.back().filesz > d.size()) throw FormatError(kReader, at, "a segment is outside the file");
         data.emplace_back(d.begin() + static_cast<std::ptrdiff_t>(phdrs.back().offset), d.begin() + static_cast<std::ptrdiff_t>(phdrs.back().offset + phdrs.back().filesz));
     }
-    return build(elf.get("ident"), header, phdrs, data, false);
+    return build(d, phdrs, data, false);
 }
 
 }  // namespace
