@@ -1,7 +1,7 @@
 // ui/mcp_work.cpp -- what the MCP server works out on asking: one function decompiled now, and two builds of a module side by side.
 //
 // `decompile_function`: a 32-bit x86 function by itself (the decompiler's compilable32 on that one address); any other kind decompiles its whole module
-// once (as_c) and the function is cut out of it by its header. `compare` / `diff`: compare/versions matches the functions of two builds; the comparison
+// once (as_c) and the function is cut out of it by its header (decompiler::function_in). `compare` / `diff`: compare/versions matches the functions of two builds; the comparison
 // is kept (an hour) so that the pair `diff` shows is the one the listing came from.
 #include <algorithm>
 #include <chrono>
@@ -10,7 +10,6 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
-#include <regex>
 #include <string>
 #include <vector>
 
@@ -34,74 +33,6 @@ std::string work_address_text(std::string_view text) {
         while (a.ends_with('h')) a.pop_back();
     }
     return a;
-}
-
-// ---- cutting a function out of a module's C ---------------------------------------------------------------------------------
-
-// Does a function header line name the place `addr` is (hex, or segment:offset)? Compared as numbers: sub_00132 is 132, sub_1_0116 is 1:0116,
-// func_0x7f021036 is 7f021036.
-bool work_same_place(const std::string& addr, const std::string& header) {
-    static const std::regex pattern(R"(\b(?:sub|func|FUN)_(?:0x)?([0-9a-fA-F]+)(?:_([0-9a-fA-F]+))?\s*\()");
-    std::smatch m;
-    if (!std::regex_search(header, m, pattern)) return false;
-    try {
-        if (const std::size_t colon = addr.find(':'); colon != std::string::npos) {
-            if (!m[2].matched) return false;
-            return std::stoull(m[1].str(), nullptr, 16) == std::stoull(addr.substr(0, colon), nullptr, 16) &&
-                   std::stoull(m[2].str(), nullptr, 16) == std::stoull(addr.substr(colon + 1), nullptr, 16);
-        }
-        return !m[2].matched && std::stoull(m[1].str(), nullptr, 16) == std::stoull(addr, nullptr, 16);
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-std::string work_escape_regex(std::string_view s) {
-    std::string out;
-    for (const char c : s) {
-        if (std::string_view("\\^$.|?*+()[]{}").find(c) != std::string_view::npos) out.push_back('\\');
-        out.push_back(c);
-    }
-    return out;
-}
-
-// The function in a whole module's C at `addr` (or named `addr`), with the comment lines just above its header.
-std::optional<std::string> work_cut_function(const std::string& text, const std::string& addr) {
-    const bool by_address = !addr.empty() && std::all_of(addr.begin(), addr.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == ':'; });
-    std::optional<std::regex> named;
-    if (!by_address) named.emplace("\\b" + work_escape_regex(addr) + "\\s*\\(", std::regex::icase);
-    std::vector<std::string> lines;
-    {
-        std::size_t from = 0;
-        while (from < text.size()) {
-            std::size_t to = text.find_first_of("\r\n", from);
-            if (to == std::string::npos) to = text.size();
-            lines.push_back(text.substr(from, to - from));
-            if (to < text.size() && text[to] == '\r' && to + 1 < text.size() && text[to + 1] == '\n') ++to;
-            from = to + 1;
-        }
-    }
-    auto strip = [](std::string s) {
-        return std::string(text::trim(s));
-    };
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        const std::string& line = lines[i];
-        if (line.empty() || std::isspace(static_cast<unsigned char>(line[0])) || line.find('(') == std::string::npos) continue;
-        std::string right = line;
-        while (!right.empty() && std::isspace(static_cast<unsigned char>(right.back()))) right.pop_back();
-        const bool opens = right.ends_with("{") || (i + 1 < lines.size() && (strip(lines[i + 1]) == "{" || strip(lines[i + 1]).empty()));
-        if (!opens) continue;
-        const bool match = named ? std::regex_search(line, *named) : work_same_place(addr, line);
-        if (!match) continue;
-        std::size_t start = i;
-        while (start > 0 && (lines[start - 1].starts_with("/*") || lines[start - 1].starts_with(" *") || lines[start - 1].starts_with("//"))) --start;
-        std::size_t end = i + 1;
-        while (end < lines.size() && lines[end] != "}") ++end;
-        std::string out;
-        for (std::size_t k = start; k <= end && k < lines.size(); ++k) out += (k > start ? "\n" : "") + lines[k];
-        return out;
-    }
-    return std::nullopt;
 }
 
 // ---- the worker -----------------------------------------------------------------------------------------------------------
@@ -148,7 +79,7 @@ Json Worker::decompile_function(const std::filesystem::path& path, std::string_v
     if (hit == whole_.end() || std::chrono::steady_clock::now() - hit->second.first > std::chrono::hours{1}) {
         hit = whole_.insert_or_assign(key, std::pair{std::chrono::steady_clock::now(), decompiler.as_c(path).text}).first;
     }
-    const std::optional<std::string> cut = work_cut_function(hit->second.second, a);
+    const std::optional<std::string> cut = decompile::decompiler::function_in(hit->second.second, a);
     if (!cut) return Json{{"error", std::format("no function header naming {} in the module's C; run_command decompile writes all of it", addr_in)}};   // (the tool says it as it is)
     out["text"] = *cut;
     return out;

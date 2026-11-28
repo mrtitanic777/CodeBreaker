@@ -1,0 +1,37 @@
+# The functions cbsdk.dll exported at each release (sdk.abi test): a name may leave include/cb only in a major version, and then this list is made again.
+# 0.1.0
+cb_address_format
+cb_arch_find
+cb_arch_list
+cb_binary_arch
+cb_binary_close
+cb_binary_entry
+cb_binary_exports
+cb_binary_format
+cb_binary_function
+cb_binary_function_at
+cb_binary_function_count
+cb_binary_function_find
+cb_binary_image_base
+cb_binary_imports
+cb_binary_kind
+cb_binary_open
+cb_binary_path
+cb_binary_sections
+cb_binary_size
+cb_decompiler_check
+cb_disasm
+cb_function_address
+cb_function_binary
+cb_function_decompile
+cb_function_name
+cb_init
+cb_instructions_data
+cb_instructions_free
+cb_last_error
+cb_module_decompile
+cb_shutdown
+cb_status_name
+cb_string_free
+cb_version
+cb_version_string

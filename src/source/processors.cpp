@@ -190,8 +190,8 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
     return read_described(processor, code, base, count, {});
 }
 
-std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
-                                 const std::vector<std::pair<std::string_view, int>>& over) {
+Described read_instructions(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
+                             const std::vector<std::pair<std::string_view, int>>& over) {
     if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
     // readers per description, kept (reading a description costs more than any listing). A reader holds the translator's state between
     // instructions, so it reads for one caller at a time: each thread that reads at once has one of its own (made when first needed, up to the
@@ -261,8 +261,6 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
             pool.wake.notify_one();
         }
     } give_back{*pool, reader};
-    std::vector<Line> out;
-    const std::size_t unit = processor.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: addresses count words)
     // the context set over the bytes read: the processor's own, then the caller's (what a read before left there, such as the state an ARM `blx` switches to
     // from its target on, is replaced)
     std::vector<std::pair<std::string, int>> here;
@@ -272,11 +270,23 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
         if (same != here.end()) same->second = v;
         else here.emplace_back(std::string(k), v);
     }
-    for (const decompile::sleigh::Instruction& i : reader->read(code.data(), code.size(), base, count, here)) {
+    Described out;
+    out.unit = processor.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: addresses count words)
+    out.step = std::max<std::size_t>(reader->alignment(), 1) * out.unit;
+    out.instructions = reader->read(code.data(), code.size(), base, count, here);
+    return out;
+}
+
+std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
+                                 const std::vector<std::pair<std::string_view, int>>& over) {
+    const Described read = read_instructions(processor, code, base, count, over);
+    std::vector<Line> out;
+    out.reserve(read.instructions.size());
+    for (const decompile::sleigh::Instruction& i : read.instructions) {
         Line line;
         line.address = i.address;
-        const std::size_t at = static_cast<std::size_t>((i.address - base) * unit);
-        const std::size_t n = i.length != 0 ? i.length : std::min(std::max<std::size_t>(reader->alignment(), 1) * unit, code.size() - at);
+        const std::size_t at = static_cast<std::size_t>((i.address - base) * read.unit);
+        const std::size_t n = i.length != 0 ? i.length : std::min(read.step, code.size() - at);
         line.bytes.assign(code.begin() + static_cast<std::ptrdiff_t>(at), code.begin() + static_cast<std::ptrdiff_t>(at + n));
         line.text = i.length != 0 ? (i.operands.empty() ? i.mnemonic : i.mnemonic + " " + i.operands) : data_text(code.subspan(at, n));
         out.push_back(std::move(line));

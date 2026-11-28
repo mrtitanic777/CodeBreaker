@@ -1,0 +1,18 @@
+// LZCopy at 0xbfea11aa in lz32.dll (PE, x86-32)
+int4 LZCopy(int4 a1,int4 a2)
+
+{
+  int2 iVar1;
+  int2 iVar2;
+  int4 iVar3;
+  
+  iVar1 = func_0xbfea1430(a1);
+  if (iVar1 != 0) {
+    iVar2 = func_0xbfea1430(a1);
+    if (iVar2 != 0) {
+      iVar3 = func_0xbfea1139(iVar1,iVar2);
+      return iVar3;
+    }
+  }
+  return -1;
+}

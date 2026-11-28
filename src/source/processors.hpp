@@ -22,6 +22,7 @@
 
 #include "build/asm_text.hpp"
 #include "core/bytes.hpp"
+#include "decompile/engine/sleigh_reader.hh"
 #include "decompile/labels.hpp"
 #include "formats/code_scan.hpp"
 
@@ -75,6 +76,19 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
 // The source for it sets them with `.context m16=1 x16=0` (assemble_described).
 std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
                                  const std::vector<std::pair<std::string_view, int>>& context);
+
+// The instructions as the processor's SLEIGH description reads them, with all the description says of each (its length, how control
+// leaves it, where it goes): what read_described lists, before it is made text. An instruction of length 0 is bytes that are no
+// instruction of the processor's; the read stepped `step` bytes over them. `unit` is the bytes an address counts (2 for a
+// word-addressed processor, the CP1610). The readers are kept per description and shared by the threads that read at once.
+// UsageError for a processor with no description; NotFoundError when its description cannot be read.
+struct Described {
+    std::vector<decompile::sleigh::Instruction> instructions;
+    std::size_t step = 1;
+    std::size_t unit = 1;
+};
+Described read_instructions(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
+                            const std::vector<std::pair<std::string_view, int>>& context = {});
 
 // The image `source` assembles to through the processor's SLEIGH description: the one assembler (decompile/engine/
 // sleigh_assembler) under the one directive layer (build/mips_asm: labels, .org, data). The instructions are in the description's

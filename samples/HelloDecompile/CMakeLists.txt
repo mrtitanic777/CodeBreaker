@@ -1,0 +1,13 @@
+# samples/HelloDecompile (README.md): one program on the installed CodeBreaker SDK, in C++ (cb.hpp).
+cmake_minimum_required(VERSION 3.20)
+project(HelloDecompile LANGUAGES C CXX)
+if(NOT TARGET CodeBreaker::cbsdk)
+  find_package(CodeBreaker 0.1 REQUIRED)
+endif()
+if(NOT TARGET cb_samples_framework)
+  add_subdirectory(../framework "${CMAKE_CURRENT_BINARY_DIR}/framework")
+endif()
+add_executable(HelloDecompile main.cpp)
+set_target_properties(HelloDecompile PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+target_link_libraries(HelloDecompile PRIVATE CodeBreaker::cbsdk cb_samples_framework)
+codebreaker_runtime(HelloDecompile)

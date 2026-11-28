@@ -409,6 +409,12 @@ std::optional<ArgumentSizes> own_arguments(const translate::native_l2::Library& 
 // A text with every `func_0x<8 hex>` that `known` ({8 hex: name}) names replaced by the name.
 std::string by_their_names(std::string_view text, const std::map<std::string, std::string>& known);
 
+// The function at `place` in a whole module's C (as_c's text), with the comment lines just above its header: `place` is a hex address
+// ("10001000", lower case, no 0x), a segment and offset as the decompiler's names write them ("10:0124" for sub_10_0124), or a name.
+// Addresses compare as numbers with the names the decompiler gives (sub_10001000, sub_1_0116, func_0x7f021036). nullopt when no function
+// header names it (function_in.cpp).
+std::optional<std::string> function_in(std::string_view module_c, std::string_view place);
+
 // ---- the command --------------------------------------------------------------------------------------------------------
 
 // `codebreaker decompile <module> [--out FILE]`: decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows

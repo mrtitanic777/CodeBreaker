@@ -1,0 +1,13 @@
+# samples/HelloBinary (README.md): one program on the installed CodeBreaker SDK.
+cmake_minimum_required(VERSION 3.20)
+project(HelloBinary LANGUAGES C)
+if(NOT TARGET CodeBreaker::cbsdk)
+  find_package(CodeBreaker 0.1 REQUIRED)
+endif()
+if(NOT TARGET cb_samples_framework)
+  add_subdirectory(../framework "${CMAKE_CURRENT_BINARY_DIR}/framework")
+endif()
+add_executable(HelloBinary main.c)
+set_target_properties(HelloBinary PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+target_link_libraries(HelloBinary PRIVATE CodeBreaker::cbsdk cb_samples_framework)
+codebreaker_runtime(HelloBinary)

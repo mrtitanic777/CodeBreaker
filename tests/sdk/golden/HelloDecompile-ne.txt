@@ -1,0 +1,44 @@
+// LZCOPY at 4:015c in lzexpand.dll (NE, x86-16)
+int4 __stdcall16far LZCOPY(int2 a1,int2 a2)
+
+{
+  int2 iVar1;
+  xunknown2 unaff_DS;
+  int2 *piVar2;
+  int2 iStack_8;
+  int2 iStack_6;
+  
+  iVar1 = LZSTART();
+  if (iVar1 != 1) {
+    return (int4)iVar1;
+  }
+  if (a2 < 0x400) {
+code_r0x101801be:
+    iStack_8 = sub_7_00F4(a2,a1);
+    if (iStack_8 == 1) {
+      iStack_8 = *(int2 *)0x280;
+      iStack_6 = *(int2 *)0x282;
+    }
+    else {
+      iStack_6 = iStack_8 >> 0xf;
+    }
+  }
+  else {
+    iVar1 = *(int2 *)(a2 * 2 + -0x7f0);
+    if (iVar1 == 0) {
+      iStack_8 = -1;
+    }
+    else {
+      piVar2 = (int2 *)KERNEL_18(iVar1);
+      if (piVar2 != (int2 *)0x0) {
+        a2 = *piVar2;
+        KERNEL_19(iVar1);
+        goto code_r0x101801be;
+      }
+      iStack_8 = -6;
+    }
+    iStack_6 = -1;
+  }
+  LZDONE();
+  return CONCAT22(iStack_6,iStack_8);
+}

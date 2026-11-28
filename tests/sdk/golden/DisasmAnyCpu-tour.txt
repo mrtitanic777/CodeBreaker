@@ -1,0 +1,42 @@
+Z80: LD, CALL, RET (z80)
+  00000100  3E 12                    LD       A,0x12
+  00000102  CD 34 12                 CALL     0x1234                       call -> 1234
+  00000105  C9                       RET                                   return
+
+6502: LDA, STA, RTS (6502)
+  00008000  A9 12                    LDA      #0x12
+  00008002  8D 00 02                 STA      0x200
+  00008005  60                       RTS                                   return
+
+x86, 16-bit: DOS exit (x86-16)
+  00000100  B8 00 4C                 MOV      AX,0x4c00
+  00000103  CD 21                    INT      0x21                         call indirect
+
+x86, 32-bit: a frame, a call, return (x86-32)
+  00401000  55                       PUSH     EBP
+  00401001  8B EC                    MOV      EBP,ESP
+  00401003  83 EC 08                 SUB      ESP,0x8
+  00401006  E8 05 00 00 00           CALL     0x401010                     call -> 401010
+  0040100b  C9                       LEAVE
+  0040100c  C3                       RET                                   return
+
+68000: MOVEQ, JSR, RTS (m68k)
+  00001000  70 01                    moveq    0x1,D0
+  00001002  4E B9 00 00 20 00        jsr      0x2000.l                     call -> 2000
+  00001008  4E 75                    rts                                   return
+
+ARM: MOV, BL, BX LR (arm)
+  00008000  01 00 A0 E3              mov      r0,#0x1
+  00008004  01 00 00 EB              bl       0x8010                       call -> 8010
+  00008008  1E FF 2F E1              bx       lr                           return
+
+PowerPC: LI, BL, BLR (ppc)
+  82000000  38 60 00 01              li       r3,0x1
+  82000004  48 00 00 11              bl       0x82000014                   call -> 82000014
+  82000008  4E 80 00 20              blr                                   return
+
+MIPS: ADDIU, JR RA and its delay slot (mips)
+  80000000  01 00 02 24              li       v0, 0x1
+  80000004  08 00 E0 03              jr       ra                           return
+  80000008  00 00 00 00              nop
+
