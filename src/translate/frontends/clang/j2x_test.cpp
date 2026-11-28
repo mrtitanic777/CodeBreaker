@@ -239,6 +239,39 @@ CB_TEST("translate.j2x.types_in_lists_are_lifted", [] {
     CB_CHECK(std::get<ir::TypeP>(lifted_call->typeargs[0]) == string);
 });
 
+// JArray counts its references, so clang gives a copy of one (and a move, and the covariant conversion) as a constructor call: in Java
+// it is the same array, and `new JArray<int>(n)` stays an array creation.
+CB_TEST("translate.j2x.a_jarray_copy_is_the_same_array", [] {
+    Arena arena;
+    const ir::TypeP runtime_array = ir::class_type("JArray", {ir::i32_type()});
+    const ir::SymP local = ir::make_sym(ir::SymKind::Local, "a", std::nullopt, false, runtime_array);
+    const ir::SymP ctor = ir::make_sym(ir::SymKind::Ctor, "JArray", std::string("JArray<int>"));
+    ir::Node* source = ir::make(arena, ir::Name{.sym = local}, runtime_array);
+    ir::Node* copy = ir::make(arena, ir::New{.sym = ctor, .args = {source}, .memory = ir::MemoryModel::Stack}, runtime_array);
+    ir::Node* made = ir::make(arena, ir::New{.sym = ctor, .args = {ir::make(arena, ir::Lit{.value = std::int64_t(8)}, ir::i32_type())},
+                                             .memory = ir::MemoryModel::Stack}, runtime_array);
+    ir::MethodDecl m;
+    m.name = "m";
+    m.kind = "method";
+    m.sym = ir::make_sym(ir::SymKind::Method, "m", "C");
+    m.body = ir::make(arena, ir::Block{.stmts = {ir::make(arena, ir::ExprStmt{.expr = copy}), ir::make(arena, ir::ExprStmt{.expr = made})}});
+    ir::ClassDecl cls;
+    cls.name = "C";
+    cls.qname = "C";
+    cls.members = {ir::make(arena, std::move(m))};
+    ir::Unit unit;
+    unit.types = {ir::make(arena, std::move(cls))};
+    ir::Node* node = ir::make(arena, std::move(unit));
+    ir::Node* units[] = {node};
+    j2x::lift(arena, units);
+    const auto* method = ir::get<ir::MethodDecl>(ir::get<ir::ClassDecl>(ir::get<ir::Unit>(node)->types[0])->members[0]);
+    const auto* body = ir::get<ir::Block>(std::get<ir::Node*>(method->body));
+    ir::Node* copied = ir::get<ir::ExprStmt>(body->stmts[0])->expr;
+    CB_CHECK(ir::get<ir::Name>(copied) != nullptr && ir::get<ir::Name>(copied)->sym->name == "a");   // (the symbol lifted: a new one)
+    CB_CHECK(copied->type == ir::array_of(ir::i32_type()));
+    CB_CHECK(ir::is<ir::NewArray>(ir::get<ir::ExprStmt>(body->stmts[1])->expr));
+});
+
 // The round trip, whole, with the hook the native judge needs: Java classes -> (the Java lane's C++, read by clang: the units come
 // from the goldens here) -> j2x -> the Java back end -> javac -> the JVM, judged against the original Java.
 CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_expected_verdict", [] {

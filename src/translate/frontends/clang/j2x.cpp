@@ -348,6 +348,12 @@ private:
                 const auto& array = std::get<ir::ArrayType>(base->body);
                 return make(ir::NewArray{.elem = array.elem, .dims = {k->args[0]}}, base, e);
             }
+            // a copy, a move or the covariant conversion (JArray counts its references, so these are constructors): in Java the same
+            // array, another reference to it
+            if (k->args.size() == 1) {
+                Node* a = j2x_value(k->args[0]);
+                if (j2x_is_array(j2x_strip(a)->type)) return a;
+            }
         }
         return e;
     }
