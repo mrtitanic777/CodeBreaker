@@ -105,6 +105,8 @@ directives have no SLEIGH form. Its instruction encoding moves.
 runtime beside it. Tetris, Minecraft and Up must still play on the Xbox 360 at every step. After that it takes any CPU with a
 SLEIGH description.
 
+The design and its steps, each with its proof: docs/RECOMPILER.md.
+
 ## 6. The compiler middle on L2
 
 One optimizer and code generator under every language, from L2 down: x86cc is the first back end, then OpenWatcom's code generator
@@ -212,3 +214,7 @@ tests only what it changes.
 - 2026-11-28: item 6 started (docs/L2_COMPILER.md): seam 1, L2 lowered through x86cc's front end by its own semantic actions
   (build/x86cc/l2body.hpp, build/l2cc); first slice: parameters, integer literals, the binary operators and return give the same
   object byte for byte as their C on wcc386 and wcc. Next: locals and the other statements, then the lz32/lzexpand corpus.
+- 2026-11-28: item 5 (docs/RECOMPILER.md): the design written; step 0, the baseline (Minecraft and Up checked from the branch;
+  Tetris skipped, as Logan said); step 1, an instruction's p-code as data (`sleigh::Reader::pcode`); step 2, the p-code
+  translator beside XenonRecomp, 0 mismatches on the instruction tests; step 3, `recompile-project --translator pcode`: Minecraft
+  and Up with about 78% of their instructions from p-code present 6,600 frames in 120 s, as before.

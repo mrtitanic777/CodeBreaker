@@ -109,8 +109,8 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
     fmt::println(file, "#include <sys/mman.h>");
     fmt::println(file, "#endif");
     fmt::println(file, "#include <fmt/core.h>\n");
-    fmt::println(file, "#define PPC_CHECK_VALUE_U(f, lhs, rhs) if (lhs != rhs) xenon_log::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{:X}}\", lhs)\n");
-    fmt::println(file, "#define PPC_CHECK_VALUE_F(f, lhs, rhs) if (lhs != rhs) xenon_log::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{}}\", lhs)\n");
+    fmt::println(file, "#define PPC_CHECK_VALUE_U(f, lhs, rhs) if (lhs != rhs) fmt::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{:X}}\", lhs)\n");
+    fmt::println(file, "#define PPC_CHECK_VALUE_F(f, lhs, rhs) if (lhs != rhs) fmt::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{}}\", lhs)\n");
 
     for (auto& [fn, addr] : functions)
     {

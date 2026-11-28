@@ -259,6 +259,7 @@ int recompile_project(std::span<const std::string> args, const Environment& envi
     hooks.env.import_names = ordinal_names(config);
     hooks.env.rexglue = rexglue_root(config);
     hooks.recompiler = make_recompiler(environment, tool);
+    hooks.pcode_sla = config.checkout_root() / "src" / "decompile" / "engine" / "languages" / "ppc_64_xenonexact_be.sla";
     hooks.locate_title = [](const stdfs::path& path) -> std::optional<project::TitleFiles> {
         std::optional<title::Title> found = title::locate(path);
         if (!found) return std::nullopt;

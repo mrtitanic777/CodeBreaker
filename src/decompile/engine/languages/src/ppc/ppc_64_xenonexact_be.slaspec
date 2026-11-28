@@ -1,0 +1,7 @@
+# CodeBreaker: the Xbox 360's Xenon as the console runs a title (the recompiler's description, docs/RECOMPILER.md): ppc_64_xenon_be.slaspec with
+# XENON_EXACT. The title runs in 32-bit mode: record forms compare the low word and XER[CA] is the low words' carry; divw zero-extends its
+# quotient (a zero divisor, or the most negative word over -1, gives 0) and mulhw sign-extends its high word; lvebx, lvehx and lvewx load the
+# whole aligned quadword. Each is what the console's results in Xenia's instruction tests show. ppc_64_xenon_be.slaspec without it is the
+# decompiler's and the disassembler's description, unchanged.
+@define XENON_EXACT "1"
+@include "ppc_64_xenon_be.slaspec"

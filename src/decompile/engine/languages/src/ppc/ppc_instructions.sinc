@@ -33,14 +33,22 @@
 #addc r1,r2,r3  0x7c 22 18 14
 :addc D,A,B		is OP=31 & D & A & B & OE=0 & XOP_1_9=10 & Rc=0
 {	
+@ifdef XENON_EXACT
+	addCarry(A,B);
+@else
 	xer_ca = carry(A,B);
+@endif
 	D = A + B;
 }
 
 #addc. r1,r2,r3  0x7c 22 18 15
 :addc. D,A,B	is OP=31 & D & A & B & OE=0 & XOP_1_9=10 & Rc=1	
 { 	
+@ifdef XENON_EXACT
+	addCarry(A,B);
+@else
 	xer_ca = carry(A,B);
+@endif
 	D = A + B;
 	cr0flags(D);
 }
@@ -48,7 +56,11 @@
 #addco r1,r2,r3  0x7c 22 1c 14
 :addco D,A,B	is OP=31 & D & A & B & OE=1 & XOP_1_9=10 & Rc=0
 { 
-	xer_ca = carry(A,B); 	
+@ifdef XENON_EXACT
+	addCarry(A,B);
+@else
+	xer_ca = carry(A,B);
+@endif
 	addOverflow( A, B );
 	D = A + B;
 }
@@ -56,7 +68,11 @@
 #addco. r1,r2,r3  0x7c 22 1c 15
 :addco. D,A,B	is OP=31 & D & A & B & OE=1 & XOP_1_9=10 & Rc=1
 { 	
+@ifdef XENON_EXACT
+	addCarry(A,B);
+@else
 	xer_ca = carry(A,B);
+@endif
 	addOverflow( A, B );
 	D = A + B;	 
 	cr0flags(D);
@@ -126,21 +142,33 @@
 #addic r0,r0,2 0x30 00 00 02
 :addic D,A,SIMM		is $(NOTVLE) & OP=12 & D & A & SIMM_SIGN=0 & SIMM
 {
+@ifdef XENON_EXACT
+	addCarry(A,SIMM);
+@else
 	xer_ca=carry(A,SIMM);
+@endif
 	D = A + SIMM;
 }
 
 #subic r0,r0,2 0x30 00 FF FE	# addi simplified mnemonic
 :subic D,A,tmp		is $(NOTVLE) & OP=12 & D & A & SIMM_SIGN=1 & SIMM [ tmp = -SIMM; ]
 {
+@ifdef XENON_EXACT
+	addCarry(A,SIMM);
+@else
 	xer_ca=carry(A,SIMM);
+@endif
 	D = A + SIMM;
 }
 
 #addic. r0,r0,5 0x34 00 00 05
 :addic. D,A,SIMM	is $(NOTVLE) & OP=13 & D & A & SIMM_SIGN=0 & SIMM
 {
+@ifdef XENON_EXACT
+	addCarry(A,SIMM);
+@else
 	xer_ca = carry(A,SIMM);
+@endif
 	D = A + SIMM;
 	cr0flags( D );
 }
@@ -148,7 +176,11 @@
 #subic. r0,r0,1 0x34 00 FF FF	# addic. simplified mnemonic
 :subic. D,A,tmp		is $(NOTVLE) & OP=13 & D & A & SIMM_SIGN=1 & SIMM [ tmp = -SIMM; ]
 {
+@ifdef XENON_EXACT
+	addCarry(A,SIMM);
+@else
 	xer_ca=carry(A,SIMM);
+@endif
 	D = A + SIMM;
 	cr0flags( D );
 }
@@ -221,7 +253,11 @@
 :addze D,A		is OP=31 & D & A & BITS_11_15=0 & OE=0 & XOP_1_9=202 & Rc=0
 {
 	zextedCarry:$(REGISTER_SIZE) = zext( xer_ca );
+@ifdef XENON_EXACT
+	addCarry(A,zextedCarry);
+@else
 	xer_ca = carry(A,zextedCarry);
+@endif
 	D = A + zextedCarry;
 } 
 
@@ -229,7 +265,11 @@
 :addze. D,A		is OP=31 & D & A & BITS_11_15=0 & OE=0 & XOP_1_9=202 & Rc=1
 {
 	zextedCarry:$(REGISTER_SIZE) = zext( xer_ca );
+@ifdef XENON_EXACT
+	addCarry(A,zextedCarry);
+@else
 	xer_ca=carry(A,zextedCarry);
+@endif
 	D = A + zextedCarry;
 	cr0flags( D );
 }
@@ -238,7 +278,11 @@
 :addzeo D,A		is OP=31 & D & A & BITS_11_15=0 & OE=1 & XOP_1_9=202 & Rc=0
 {
 	zextedCarry:$(REGISTER_SIZE) = zext( xer_ca );
+@ifdef XENON_EXACT
+	addCarry(A,zextedCarry);
+@else
 	xer_ca=carry(A,zextedCarry);
+@endif
 	addOverflow(A,zextedCarry);
 	D = A + zextedCarry;
 } 
@@ -247,7 +291,11 @@
 :addzeo. D,A	is OP=31 & D & A & BITS_11_15=0 & OE=1 & XOP_1_9=202 & Rc=1
 {
 	zextedCarry:$(REGISTER_SIZE) = zext( xer_ca );
+@ifdef XENON_EXACT
+	addCarry(A,zextedCarry);
+@else
 	xer_ca=carry(A,zextedCarry);
+@endif
 	addOverflow(A,zextedCarry);
 	D = A + zextedCarry;
 	cr0flags( D );
@@ -922,7 +970,11 @@
 :divd. D,A,B		is OP=31 & D & A & B & OE=0 & XOP_1_9=489 & Rc=1
 {
 	D = A s/ B;
+@ifdef XENON_EXACT
+	cr0flags64(D);
+@else
 	cr0flags(D);
+@endif
 }
 
 #divdo r0,r0,r0		0x7c 00 07 d2
@@ -951,7 +1003,11 @@
 :divdu. D,A,B		is OP=31 & D & A & B & OE=0 & XOP_1_9=457 & Rc=1
 {
 	D = A / B;
+@ifdef XENON_EXACT
+	cr0flags64(D);
+@else
 	cr0flags(D);
+@endif
 }
 
 #divduo r0,r0,r0		0x7c 00 07 92
@@ -974,7 +1030,14 @@
 #divw r0,r0,r0		0x7c 00 03 d6
 :divw D,A,B			is OP=31 & D & A & B & OE=0 & XOP_1_9=491 & Rc=0
 {
-@ifdef BIT_64
+@ifdef XENON_EXACT
+	# (the quotient zero-extended; a zero divisor or the most negative word over -1 gives 0)
+	local quotient:4 = 0;
+	if ((B:4 == 0) || ((B:4 == -1) && (A:4 == 0x80000000))) goto <done>;
+	quotient = A:4 s/ B:4;
+	<done>
+	D = zext(quotient);
+@elif defined(BIT_64)
 	D = sext(A:4 s/ B:4);
 @else
 	D = A s/ B;
@@ -986,7 +1049,15 @@
 {
 @ifdef BIT_64
 	divOverflow(A:4,B:4);
+@ifdef XENON_EXACT
+	local quotient:4 = 0;
+	if ((B:4 == 0) || ((B:4 == -1) && (A:4 == 0x80000000))) goto <done>;
+	quotient = A:4 s/ B:4;
+	<done>
+	D = zext(quotient);
+@else
 	D = sext(A:4 s/ B:4);
+@endif
 	cr0flags(D:4);
 @else
 	divOverflow(A,B);
@@ -2746,7 +2817,11 @@ CRM_val: crmval is CRM [crmval = CRM+0;] {export *[const]:1 crmval;}
 @ifdef BIT_64
 	tmp:8 = sext(A:4) * sext(B:4);
 	tmp2:4 = tmp(4);
+@ifdef XENON_EXACT
+	D = sext(tmp2);
+@else
 	D = zext(tmp2);
+@endif
 @else
 	tmp:8 = sext(A) * sext(B);
 	D = tmp(4);
@@ -2759,7 +2834,11 @@ CRM_val: crmval is CRM [crmval = CRM+0;] {export *[const]:1 crmval;}
 @ifdef BIT_64
 	tmp:8 = sext(A:4) * sext(B:4);
 	tmp2:4 = tmp(4);
+@ifdef XENON_EXACT
+	D = sext(tmp2);
+@else
 	D = zext(tmp2);
+@endif
 @else
 	tmp:8 = sext(A) * sext(B);
 	D = tmp(4);
@@ -3043,7 +3122,11 @@ CRM_val: crmval is CRM [crmval = CRM+0;] {export *[const]:1 crmval;}
 	shift:4 = SH;
 	tmp:$(REGISTER_SIZE)=(S<<shift)|(S>>(64-shift));
 	A = tmp & (0xffffffffffffffff >> MB);
+@ifdef XENON_EXACT
+	cr0flags64(A);
+@else
 	cr0flags(A);
+@endif
 }
 #rldicr r0,r0,r0,0	0x78 00 00 04
 :rldicr A,S,SH,MB	is $(NOTVLE) & OP=30 & S & A & B & SH & MB & XOP_2_4=1 & Rc=0
@@ -3713,14 +3796,22 @@ define pcodeop stswxOp;
 #subfc r0,r0,r0  0x7c 00 00 10
 :subfc D,A,B		is OP=31 & D & A & B & OE=0 & XOP_1_9=8 & Rc=0
 {	
+@ifdef XENON_EXACT
+	subCarry(A,B);
+@else
 	xer_ca = (A <= B);
+@endif
 	D = B - A;
 }
 
 #subfc. r0,r0,r0  0x7c 00 00 11
 :subfc. D,A,B		is OP=31 & D & A & B & OE=0 & XOP_1_9=8 & Rc=1	
 { 	
+@ifdef XENON_EXACT
+	subCarry(A,B);
+@else
 	xer_ca = (A <= B);
+@endif
 	D = B - A;
 	cr0flags(D);
 }
@@ -3728,7 +3819,11 @@ define pcodeop stswxOp;
 #subfco r0,r0,r0  0x7c 00 04 10
 :subfco D,A,B		is OP=31 & D & A & B & OE=1 & XOP_1_9=8 & Rc=0
 { 
+@ifdef XENON_EXACT
+	subCarry(A,B);
+@else
 	xer_ca = (A <= B);
+@endif
 	subOverflow(B,A);
 	D = B - A;
 }
@@ -3736,7 +3831,11 @@ define pcodeop stswxOp;
 #subfco. r0,r0,r0  0x7c 00 04 11
 :subfco. D,A,B		is OP=31 & D & A & B & OE=1 & XOP_1_9=8 & Rc=1
 { 	
+@ifdef XENON_EXACT
+	subCarry(A,B);
+@else
 	xer_ca = (A <= B);
+@endif
 	subOverflow( B, A );
 	D = B - A;
 	cr0flags(D);
@@ -3781,7 +3880,11 @@ define pcodeop stswxOp;
 #subfic r0,r0,2 0x20 00 00 02
 :subfic D,A,SIMM		is $(NOTVLE) & OP=8 & D & A & SIMM
 {
+@ifdef XENON_EXACT
+	subCarry(A,SIMM);
+@else
 	xer_ca = !(SIMM<A);
+@endif
 	D = SIMM - A;
 }
 

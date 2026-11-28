@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -54,7 +55,23 @@ struct Config {
     std::chrono::minutes compile_timeout{120};       // clang-cl building the instruction tests
     ToolRunner runner;                               // empty: cb::process::run
     xenon_engine::Tool recomp = xenon_engine::recomp;   // XenonRecomp (a test hands its own)
+    // The p-code translator (recompile/pcode_emit, on this description: ppc_64_xenon_be.sla) writes every instruction it can, and
+    // XenonRecomp the rest (docs/RECOMPILER.md, step 2). Unset: XenonRecomp writes them all.
+    std::optional<stdfs::path> pcode_sla;
 };
+
+// What the p-code translator did in the last XenonRecomp run (all zero without one).
+struct Translation {
+    std::size_t translated = 0;                      // instructions it wrote
+    std::size_t declined = 0;                        // instructions XenonRecomp wrote
+    std::map<std::string, std::size_t> why;          // the reasons it declined, counted
+    std::map<std::string, std::size_t> written;      // the mnemonics it wrote, counted
+};
+
+// `inner` (XenonRecomp) with the p-code translator on the description `sla` asked first for every instruction; what it did goes
+// into `counted` (reset at each run). For finding a translation that differs, CB_PCODE_ONLY (mnemonics, comma-separated) lets it
+// write only those and CB_PCODE_EXCEPT all but those; XenonRecomp writes the rest.
+xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::shared_ptr<Translation> counted);
 
 // The environment vcvars64.bat sets up (the linker, the SDK's headers and libraries).
 using Environment = std::map<std::string, std::string>;
@@ -78,6 +95,7 @@ struct InstructionTestResult {
     std::vector<std::string> skipped;                // tests of instructions XenonRecomp does not implement
     std::vector<std::string> mismatches;             // the lines the tests printed
     std::vector<std::string> failed;                 // the tests those lines belong to
+    Translation translation;                         // what the p-code translator wrote (Config::pcode_sla)
 };
 
 using ReportFn = std::function<void(std::string_view line)>;
@@ -111,9 +129,16 @@ public:
     // Xenia's PowerPC instruction tests (and ours) through XenonRecomp.
     InstructionTestResult instruction_tests(const InstructionTestOptions& options = {});
 
+    // What the p-code translator did in the last XenonRecomp run.
+    const Translation& last_translation() const { return translation_; }
+
 private:
+    // XenonRecomp in-process over `args`, with the p-code translator asked first when the configuration names one.
+    xenon_engine::Run run_recomp(const std::vector<std::string>& args);
+
     Config config_;
     std::optional<Environment> msvc_env_;
+    Translation translation_;
 };
 
 // Tests that are not run: a host-side helper, and one that needs a switch-table configuration test mode has not.

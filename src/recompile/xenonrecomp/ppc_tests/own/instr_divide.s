@@ -77,3 +77,19 @@ test_divd_record:
   blr
   #_ REGISTER_OUT r3 -0x100000000
   #_ REGISTER_OUT r6 0x80000000
+
+test_divw_into_its_dividend:
+  #_ REGISTER_IN r3 -7
+  #_ REGISTER_IN r4 2
+  divw r3, r3, r4
+  blr
+  #_ REGISTER_OUT r3 0x00000000FFFFFFFD
+  #_ REGISTER_OUT r4 2
+
+test_divw_into_its_divisor:
+  #_ REGISTER_IN r3 9
+  #_ REGISTER_IN r4 3
+  divw r4, r3, r4
+  blr
+  #_ REGISTER_OUT r3 9
+  #_ REGISTER_OUT r4 3

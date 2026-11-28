@@ -150,11 +150,60 @@ CB_TEST("recompile.x360.xenias_instruction_tests_through_xenonrecomp", [] {
     xenon::InstructionTestResult result;
     try {
         result = x.instruction_tests();
+    } catch (const cb::ToolError& e) {
+        // the tests' own programs missing is a skip; the recompiled tests not building is a failure
+        if (e.tool() != "clang-cl" || e.output().empty()) {
+            std::cout << "SKIP " << e.what() << "\n";
+            return;
+        }
+        std::cout << e.what() << "\n" << e.output() << "\n";
+        CB_CHECK(false);
+        return;
     } catch (const cb::Error& e) {
         std::cout << "SKIP " << e.what() << "\n";
         return;
     }
     for (const std::string& m : result.mismatches) std::cout << "  mismatch: " << m << "\n";
     CB_CHECK(result.tested >= 150);
+    CB_CHECK(result.mismatches.empty());
+});
+
+// Step 2 of docs/RECOMPILER.md: the same tests with the p-code translator writing every instruction it can (recompile/pcode_emit) and
+// XenonRecomp the rest. Prints how many it wrote and why it declined the others.
+CB_TEST("recompile.x360.xenias_instruction_tests_through_the_pcode_translator", [] {
+    if (!x3r_slow()) {
+        std::cout << "SKIP slow: set CB_SLOW_TESTS=1\n";
+        return;
+    }
+    cb::fs::ScopedTempDir dir("cb-x360-pcode-tests");
+    const cb::config::Config settings = cb::config::Config::load(cb::config::current().main_checkout());
+    if (!settings.path("ppc_binutils")) {
+        std::cout << "SKIP no PowerPC binutils (setting ppc_binutils)\n";
+        return;
+    }
+    xenon::Config config = x3r_config(settings, dir.path() / "state");
+    config.pcode_sla = config.checkout_root / "src" / "decompile" / "engine" / "languages" / "ppc_64_xenonexact_be.sla";
+    xenon::Xenon x(config);
+    xenon::InstructionTestResult result;
+    try {
+        result = x.instruction_tests();
+    } catch (const cb::ToolError& e) {
+        // the tests' own programs missing is a skip; the recompiled tests not building is a failure
+        if (e.tool() != "clang-cl" || e.output().empty()) {
+            std::cout << "SKIP " << e.what() << "\n";
+            return;
+        }
+        std::cout << e.what() << "\n" << e.output() << "\n";
+        CB_CHECK(false);
+        return;
+    } catch (const cb::Error& e) {
+        std::cout << "SKIP " << e.what() << "\n";
+        return;
+    }
+    for (const std::string& m : result.mismatches) std::cout << "  mismatch: " << m << "\n";
+    std::cout << "  p-code wrote " << result.translation.translated << " instructions, XenonRecomp " << result.translation.declined << "\n";
+    for (const auto& [why, n] : result.translation.why) std::cout << "    declined " << n << ": " << why << "\n";
+    CB_CHECK(result.tested >= 150);
+    CB_CHECK(result.translation.translated > 0);
     CB_CHECK(result.mismatches.empty());
 });

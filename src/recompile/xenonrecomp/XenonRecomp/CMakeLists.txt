@@ -7,6 +7,7 @@ project("XenonRecomp")
 add_library(LibXenonRecomp STATIC
     "main.cpp"
     "recompiler.cpp"
+    "instruction_translator.cpp"
     "test_recompiler.cpp"
     "recompiler_config.cpp")
 target_compile_definitions(LibXenonRecomp PRIVATE XENON_RECOMP_LIBRARY)

@@ -191,6 +191,11 @@ define pcodeop vectorUnpackLowSignedHalfWord;
 
 :lvebx vrD,RA_OR_ZERO,B		is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=7 & Rc=0
 {	
+@ifdef XENON_EXACT
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = (RA_OR_ZERO + B) & 0xfffffffffffffff0;
+	vrD = *[ram]:16 ea;
+@else
 	tmp:$(REGISTER_SIZE) = (RA_OR_ZERO + B);
 	tmpb:1 = *[ram]:1 tmp;
 	eb:1 = tmp[0,4];
@@ -202,16 +207,27 @@ define pcodeop vectorUnpackLowSignedHalfWord;
 	eb = eb * 8;
 	vrD = (zext(tmpb) << eb);	
 	#vrD = loadVectorElementByteIndexed(A,B);
+@endif
 }
 
 :lvehx vrD,A,B		is OP=31 & vrD & A & B & XOP_1_10=39 & Rc=0
 {	# TODO defintion
+@ifdef XENON_EXACT
+	ea:$(REGISTER_SIZE) = (A + B) & 0xfffffffffffffff0;
+	vrD = *[ram]:16 ea;
+@else
 	vrD = loadVectorElementHalfWordIndexed(A,B);
+@endif
 }
 
 :lvewx vrD,A,B		is OP=31 & vrD & A & B & XOP_1_10=71 & Rc=0
 {	# TODO definition
+@ifdef XENON_EXACT
+	ea:$(REGISTER_SIZE) = (A + B) & 0xfffffffffffffff0;
+	vrD = *[ram]:16 ea;
+@else
 	vrD = loadVectorElementWordIndexed(A,B);
+@endif
 }
 
 :lvsl vrD,A,B		is OP=31 & vrD & A & B & XOP_1_10=6 & Rc=0

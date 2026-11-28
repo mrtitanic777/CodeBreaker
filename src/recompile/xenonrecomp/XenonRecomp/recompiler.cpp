@@ -2,6 +2,7 @@
 #include "recompile/xenonrecomp/XenonRecomp/pch.h"
 #include <unordered_set>
 #include "recompile/xenonrecomp/XenonRecomp/recompiler.h"
+#include "recompile/xenonrecomp/XenonRecomp/instruction_translator.h"
 #include "recompile/xenonrecomp/XenonUtils/xex_patcher.h"
 
 static uint64_t ComputeMask(uint32_t mstart, uint32_t mstop)
@@ -839,6 +840,30 @@ bool Recompiler::Recompile(
     if (midAsmHook != config.midAsmHooks.end() && !midAsmHook->second.afterInstruction)
         printMidAsmHook();
 
+    // An instruction translator set by the caller (CodeBreaker's p-code translator) writes the instruction when it can; the
+    // switch below writes it when there is none or it declines.
+    bool translatedByCaller = false;
+    if (const xenon_translate::Translator& translate = xenon_translate::current(); translate && !config.relocatableCode)
+    {
+        const xenon_translate::Names names{ r, f, v, cr,
+            [&] { return std::string(ctr()); },
+            [&] { return std::string(xer()); },
+            [&] { return config.skipLr ? std::string() : std::string("ctx.lr"); } };
+        if (std::optional<xenon_translate::Translated> t = translate(base, ByteSwap(*data), ByteSwap(*(data + 1)), names))
+        {
+            if (t->fpu)
+                printSetFlushMode(false);
+            out += t->text;
+            translatedByCaller = true;
+            ++xenon_translate::counts().translated;
+        }
+        else
+        {
+            ++xenon_translate::counts().declined;
+        }
+    }
+
+    if (!translatedByCaller) {
     int id = insn.opcode->id;
 
     // Handling instructions that don't disassemble correctly for some reason here
@@ -3091,9 +3116,10 @@ bool Recompiler::Recompile(
     default:
         return false;
     }
+    }   // (!translatedByCaller)
 
 #if 1
-    if (strchr(insn.opcode->name, '.'))
+    if (!translatedByCaller && strchr(insn.opcode->name, '.'))
     {
         int lastLine = out.find_last_of('\n', out.size() - 2);
         if (out.find("cr0", lastLine + 1) == std::string::npos && out.find("cr6", lastLine + 1) == std::string::npos)

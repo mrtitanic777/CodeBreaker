@@ -12,6 +12,8 @@
 #include "core/log.hpp"
 #include "core/process.hpp"
 #include "core/text.hpp"
+#include "recompile/pcode_emit.hpp"
+#include "recompile/xenonrecomp/XenonRecomp/instruction_translator.h"
 
 namespace cb::recompile::xenon {
 namespace {
@@ -113,6 +115,54 @@ std::optional<std::string> out_directory_path(std::string_view toml_text) {
 
 Xenon::Xenon(Config config) : config_(std::move(config)) {}
 
+xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::shared_ptr<Translation> counted) {
+    return [inner = std::move(inner), sla = std::move(sla), counted = std::move(counted)](const std::vector<std::string>& args) {
+        *counted = {};
+        const pcode_emit::Translator translator(sla);
+        const auto listed = [](const char* name) {
+            std::set<std::string, std::less<>> out;
+            if (const std::optional<std::string> v = fs::get_env(name)) {
+                for (const std::string_view m : text::split(*v, ',')) {
+                    if (!text::trim(m).empty()) out.emplace(text::trim(m));
+                }
+            }
+            return out;
+        };
+        const std::set<std::string, std::less<>> only = listed("CB_PCODE_ONLY"), except = listed("CB_PCODE_EXCEPT");
+        xenon_translate::set([&](std::uint32_t address, std::uint32_t word, std::uint32_t next_word, const xenon_translate::Names& names)
+                                 -> std::optional<xenon_translate::Translated> {
+            const pcode_emit::Names ours{names.r, names.f, names.v, names.cr, names.ctr, names.xer, names.lr};
+            std::string why;
+            const std::string mnemonic = translator.mnemonic(address, word);
+            std::optional<pcode_emit::Statements> s;
+            if (!only.empty() && !only.contains(mnemonic)) why = "not in CB_PCODE_ONLY";
+            else if (except.contains(mnemonic)) why = "in CB_PCODE_EXCEPT";
+            else s = translator.instruction(address, word, next_word, ours, &why);
+            if (!s) {
+                ++counted->declined;
+                ++counted->why[why];
+                return std::nullopt;
+            }
+            ++counted->translated;
+            ++counted->written[mnemonic];
+            return xenon_translate::Translated{std::move(s->text), s->fpu};
+        });
+        struct Unset {
+            ~Unset() { xenon_translate::set({}); }
+        } unset;
+        return inner(args);
+    };
+}
+
+xenon_engine::Run Xenon::run_recomp(const std::vector<std::string>& args) {
+    translation_ = {};
+    if (!config_.pcode_sla) return config_.recomp(args);
+    const auto counted = std::make_shared<Translation>();
+    const xenon_engine::Run r = with_pcode(config_.recomp, *config_.pcode_sla, counted)(args);
+    translation_ = *counted;
+    return r;
+}
+
 stdfs::path Xenon::visual_studio() const {
     if (config_.visual_studio && !config_.visual_studio->empty()) return *config_.visual_studio;
     const std::string program_files = fs::get_env("ProgramFiles(x86)").value_or("C:\\Program Files (x86)");
@@ -170,7 +220,11 @@ static xenon_engine::Run recomp_or_throw(const Config& config, const std::vector
 std::string Xenon::recompile(const stdfs::path& config_toml) {
     // the configuration's paths are joined to its own folder: given absolute, nothing depends on the working folder
     const stdfs::path config = stdfs::absolute(config_toml);
-    return recomp_or_throw(config_, {fs::to_text(config), fs::to_text(context_header())}).log;
+    const std::vector<std::string> args = {fs::to_text(config), fs::to_text(context_header())};
+    if (!config_.pcode_sla) return recomp_or_throw(config_, args).log;
+    const xenon_engine::Run r = run_recomp(args);
+    if (r.code != 0) throw ToolError("XenonRecomp", static_cast<std::uint32_t>(r.code), tail(r.log, 4000), "failed");
+    return r.log;
 }
 
 SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportFn& report) {
@@ -201,7 +255,7 @@ SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportF
         const stdfs::path work = folder / work_name;
         const RemoveOnExit remove_work(work);
         fs::write_text(work, rewritten);
-        run = config_.recomp({fs::to_text(work), fs::to_text(context_header())});
+        run = run_recomp({fs::to_text(work), fs::to_text(context_header())});
     }
     for (const std::string_view line : text::lines(run.log)) {
         if (!line.starts_with("Recompiling functions")) result.log.emplace_back(line);
@@ -299,7 +353,7 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
 
     // a test of an instruction XenonRecomp does not implement is left out (and listed): a title's own recompile
     // reports any instruction it uses
-    xenon_engine::Run recomp = config_.recomp({fs::to_text(objs), fs::to_text(out)});
+    xenon_engine::Run recomp = run_recomp({fs::to_text(objs), fs::to_text(out)});
     std::set<std::string> skipped_set;
     for (const std::string_view line : text::lines(recomp.log)) {
         if (line.find("has unimplemented") == std::string_view::npos) continue;
@@ -319,7 +373,7 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
         }
         fs::remove_tree(out);
         fs::make_dirs(out);
-        recomp = config_.recomp({fs::to_text(objs), fs::to_text(out)});
+        recomp = run_recomp({fs::to_text(objs), fs::to_text(out)});
     }
 
     const stdfs::path exe = work / "ppc_tests.exe";
@@ -347,6 +401,7 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
     }
     result.tested = tested.size() - result.skipped.size();
     result.failed.assign(failed.begin(), failed.end());
+    result.translation = translation_;
     return result;
 }
 
