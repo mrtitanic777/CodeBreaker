@@ -1,1 +1,0 @@
-EnumObject.<init>	class	a Java enum with fields, methods or constructor arguments (an enum of objects) (Planet)

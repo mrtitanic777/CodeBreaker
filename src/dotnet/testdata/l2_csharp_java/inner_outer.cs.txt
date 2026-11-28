@@ -8,7 +8,21 @@ public class InnerOuter
 
     internal int count = 3;
 
-    // CB-GAP: an inner class that reaches its outer instance (Counter)
+    internal class Counter
+    {
+        internal Counter(InnerOuter outer_arg)
+        {
+            outer_ = outer_arg;
+        }
+
+        internal virtual int twice()
+        {
+            return outer_.count * 2;
+        }
+
+        internal InnerOuter outer_;
+    }
+
     internal static int plain(int x)
     {
         return x + 1;

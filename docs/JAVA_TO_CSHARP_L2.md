@@ -154,13 +154,21 @@ same class: the same tree, apart from source positions. Then the C# from both is
   plus `var` where the declared and made types are now the same .NET type, and plain concatenation where the old writer also
   wrote it for Java.
 
-  Not yet carried, each declined by name (step 3, second part):
-  - classes declared in a method, and anonymous classes;
-  - inner classes that reach their outer instance;
-  - lambdas of the program's own interfaces (JFn);
-  - enums of objects (JEnum);
-  - boxes that may hold a null (`int?`, JLib.Unbox);
-  - java.util.stream;
-  - Iterable and Comparator classes;
-  - switch-expression arms with statements;
-  - the reflection classes.
+- 2026-11-28: step 3, second part: what the rule set declined by name is carried, each as the old writer does it, in L2:
+  - java.util.stream, Optional, Collectors and a Comparator's combinators (the runtime's JStream ...), with String.format, Map's
+    merge and compute, List.of, Set.of, Map.of and Arrays.asList;
+  - boxes that may hold a null: the old writer's flow over the program finds them; each is `int?`, read through `JLib.Unbox`
+    where Java reads the number;
+  - classes declared in a method and anonymous classes, hoisted to members of the class around them with their captured locals
+    (`cap_x`), and inner classes that reach their outer instance (`outer_`);
+  - lambdas of the program's interfaces, through the interface's class `JFn`;
+  - enums of objects, as classes of `JEnum`;
+  - Comparator classes (an implicit conversion to Comparison) and Iterable classes (GetEnumerator);
+  - switch-expression arms with statements, as a function called on the spot;
+  - CodeBreaker's reflection classes (Class, Constructor), of no type in C#.
+
+  Two changes to the plain lowering come with it: a class nested in a generic one has the outer's arguments on the outer's name
+  (`Op<int>.JFn`), and a method named `Iface.Name` is an explicit implementation. Proof: every Java program translate.capability
+  takes to C# (the kits, Shapes, Recs, Streams, Printable) goes through translate_file's Java to C# route on the new path and gives
+  what the test wants of the old one: the JVM's output, or the refusal (AsListKit, Fixed, Early) or the divergence (TreeBin,
+  Shuffled) it checks for.

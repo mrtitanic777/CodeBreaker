@@ -730,6 +730,34 @@ AstType* UnitBuilder::class_type(const ir::ClassType& c) {
     const std::string simple = short_name(c.name);
     std::vector<AstType*> targs;
     for (const TypeP& a : c.args) targs.push_back(type(a));
+    // more arguments than the class declares: a class nested in a generic one (Java's Outer<T>.Inner), whose name C# writes as
+    // Outer<int>.Inner; inside the outer class, its arguments are the outer's own and are left out
+    if (const ir::ClassDecl* d = prog_.class_named(c.name); d != nullptr && d->typeparams.size() < c.args.size()) {
+        std::vector<const ir::ClassDecl*> chain{d};   // innermost first
+        while (chain.back()->outer) {
+            const ir::ClassDecl* o = prog_.class_named(*chain.back()->outer);
+            if (o == nullptr) break;
+            chain.push_back(o);
+        }
+        const std::vector<std::string_view> parts = text::split(simple, '.');
+        if (parts.size() <= chain.size()) {
+            std::size_t total = 0;
+            for (std::size_t i = 0; i < parts.size(); ++i) total += chain[i]->typeparams.size();
+            if (total <= c.args.size()) {
+                std::size_t next = targs.size() - total;
+                AstType* out = nullptr;
+                for (std::size_t k = 0; k < parts.size(); ++k) {
+                    const ir::ClassDecl* level = chain[parts.size() - 1 - k];
+                    std::vector<AstType*> own(targs.begin() + static_cast<std::ptrdiff_t>(next),
+                                              targs.begin() + static_cast<std::ptrdiff_t>(next + level->typeparams.size()));
+                    next += level->typeparams.size();
+                    const std::string part(parts[k]);
+                    out = out == nullptr ? static_cast<AstType*>(make<SimpleType>(part, own)) : static_cast<AstType*>(make<MemberType>(out, part, own));
+                }
+                return nullable(out);
+            }
+        }
+    }
     return nullable(named(simple, targs));
 }
 
@@ -775,6 +803,11 @@ std::string UnitBuilder::short_name(const std::string& qname) {
         std::vector<std::string> relp;
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) relp.push_back(clean((*it)->name.value_or("")));
         const std::string rel = text::join(relp, ".");
+        if (java_ && ns.starts_with("java.") && (rel == "Stack" || rel == "Queue") && ns != namespace_of(cls_)) {   // (.NET has one of the name in System.Collections.Generic)
+            std::vector<std::string> parts;
+            for (std::string_view part : text::split(ns, '.')) parts.push_back(clean(std::string(part)));
+            return "global::" + text::join(parts, ".") + "." + rel;
+        }
         if (!ns.empty() && ns != namespace_of(cls_)) usings_.insert(ns);
         // inside the class itself or its outer classes, the nested name alone
         for (const ir::ClassDecl* cur = cls_; cur != nullptr; cur = cur->outer ? prog_.class_named(*cur->outer) : nullptr) {
@@ -1226,7 +1259,12 @@ EntityDeclaration* UnitBuilder::method_decl(Node* node, ir::ClassDecl& c) {
     auto* md = make<MethodDeclaration>();
     md->set_modifiers(modifiers_of(mods));
     md->set_return_type(type(m.ret));
-    md->set_name(clean(mname));
+    if (const std::size_t dot = mname.rfind('.'); dot != std::string::npos) {   // `Iface.Name`: an explicit implementation of the interface's method
+        md->set_private_implementation_type(named(mname.substr(0, dot)));
+        md->set_name(clean(mname.substr(dot + 1)));
+    } else {
+        md->set_name(clean(mname));
+    }
     type_parameters(m.typeparams, m.tparams, md->type_parameters());
     for (ParameterDeclaration* p : params(m.params)) md->parameters().add(p);
     for (Node* tp : m.tparams) {
@@ -1976,7 +2014,9 @@ Expression* UnitBuilder::dispatch(Node* e) {
     }
     if (ir::is<ir::Cast>(e)) {
         const auto* x = ir::get<ir::Cast>(e);
-        Expression* t = make<CastExpression>(type(e->type), expr(x->x));
+        Expression* operand = expr(x->x);
+        if (ir::is<ir::Lambda>(strip(x->x))) operand = make<ParenthesizedExpression>(operand);   // `(Func<T>)(() => ...)`: C# reads a cast lambda only in parentheses
+        Expression* t = make<CastExpression>(type(e->type), operand);
         if (x->overflow == ir::Overflow::Trap) return make<CheckedExpression>(t);
         return t;
     }

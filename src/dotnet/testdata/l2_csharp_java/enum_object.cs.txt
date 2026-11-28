@@ -8,7 +8,20 @@ public class EnumObject
     {
     }
 
-    // CB-GAP: a Java enum with fields, methods or constructor arguments (an enum of objects) (Planet)
+    internal class Planet : JEnum
+    {
+        public static readonly Planet MERCURY = JLib.EnumMade(new Planet(3.3E+23), "MERCURY", 0);
+
+        public static readonly Planet EARTH = JLib.EnumMade(new Planet(5.9E+24), "EARTH", 1);
+
+        internal double mass;
+
+        internal Planet(double mass)
+        {
+            this.mass = mass;
+        }
+    }
+
     internal enum Color
     {
         RED,

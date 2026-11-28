@@ -8,19 +8,23 @@
 //
 // What it carries over from Java (the knowledge translate/backends/csharp_java holds as text, here as L2):
 //   * types: java.lang.String is System.String, java.util.List<T> System.Collections.Generic.List<T>, a functional interface the
-//     delegate System.Func<...> / System.Action<...>, a box the number it holds, char a UTF-16 char;
+//     delegate System.Func<...> / System.Action<...>, a box the number it holds (int? where a null can reach it), char a UTF-16 char,
+//     a stream the runtime's JStream;
 //   * dispatch: a Java instance method is `virtual` unless final, private or static, `override` where it overrides a class of the
 //     units or Object's (toString -> ToString ...), `main(String[])` is `Main`;
 //   * construction order: instance initialisers after the base constructor, statics in one static constructor in Java's order;
+//   * classes: a class declared in a method or anonymous is hoisted to a member of the class around it (its captured locals cap_x
+//     fields), an inner class that reaches its outer instance holds it (outer_), an enum of objects is a class of JEnum, an
+//     interface of the program a lambda is made for gets a class JFn over a delegate, a Comparator converts to Comparison and an
+//     Iterable has GetEnumerator;
 //   * the library: each call through the API-mapping registry, whose C# templates are read into L2 here (`{t}` the target, `{0}` an
-//     argument ...), the rest by rules (text conversions through JavaRt.Str, Java's reference comparison of strings and boxes, ...);
+//     argument ...), the rest by rules (text conversions through JavaRt.Str, Java's reference comparison of strings and boxes,
+//     streams, String.format ...);
 //   * statements: labelled break and continue as goto to labels after and inside the loop, try-with-resources with Java's suppressed
-//     exceptions, a finally that jumps written after its try.
+//     exceptions, a finally that jumps written after its try, a switch-expression arm with statements as a function called on the spot.
 //
-// What it cannot carry it declines: a member whose body holds such a construct gets a body of one Unsupported node (the back end writes
-// the gap and its ledger line), a class one Unsupported member in place of the class. Not yet carried (each declined, by name): classes
-// declared in a method or anonymous, inner classes that reach their outer instance, lambdas of the program's own interfaces, enums of
-// objects, java.util.stream, boxes that may hold a null, the reflection classes.
+// What it cannot carry it declines, each with its reason: a member whose body holds such a construct gets a body of one Unsupported node
+// (the back end writes the gap and its ledger line), a class one Unsupported member in place of the class.
 #pragma once
 
 #include <set>

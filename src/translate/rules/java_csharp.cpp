@@ -15,6 +15,7 @@
 #include <unordered_set>
 
 #include "core/text.hpp"
+#include "translate/backends/jmodel.hpp"
 
 namespace cb::translate::rules::java_csharp {
 
@@ -24,6 +25,7 @@ using ir::Node;
 using ir::TypeP;
 namespace text = cb::text;
 namespace apimap = cb::java::apimap;
+namespace jmodel = cb::translate::backends::jmodel;
 
 struct Declined {
     std::string kind;
@@ -66,6 +68,25 @@ std::vector<Node*> body_statements(const ir::Suite& body) {
         if (const ir::Block* b = ir::get<ir::Block>(*one)) return b->stmts;
     }
     return ir::statements(body);
+}
+
+// The nodes of a member, leaving out the bodies of classes declared inside it.
+std::vector<Node*> own_nodes(Node* root) {
+    std::vector<Node*> out;
+    std::vector<Node*> todo{root};
+    while (!todo.empty()) {
+        Node* n = todo.back();
+        todo.pop_back();
+        if (n == nullptr || ir::is<ir::ClassDecl>(n) || ir::is<ir::LocalClass>(n)) continue;
+        out.push_back(n);
+        if (const auto* made = ir::get<ir::New>(n); made != nullptr && made->body != nullptr) {
+            todo.insert(todo.end(), made->args.begin(), made->args.end());
+            if (made->outer != nullptr) todo.push_back(made->outer);
+            continue;
+        }
+        for (Node* child : ir::children(*n)) todo.push_back(child);
+    }
+    return out;
 }
 
 // ---- the tables -----------------------------------------------------------------------------------------------------------------
@@ -491,9 +512,51 @@ private:
         return q != nullptr ? class_named(*q) : nullptr;
     }
     bool overrides_base(const ir::ClassDecl& c, const ir::MethodDecl& m) const;
+    // A method's Java name (rewrite_class gives it its C# one: what overrides what is read by the Java names).
+    std::string jname(const ir::MethodDecl& m) const {
+        const auto it = java_names_.find(&m);
+        return it != java_names_.end() ? it->second : m.name.value_or("");
+    }
     bool closeable(const ir::ClassDecl& c) const;
     void prepare(std::vector<Node*>& classes);
     std::optional<std::string> refused_class(ir::ClassDecl& c);
+
+    // ---- classes in methods, anonymous classes, inner classes
+    struct Hoisted {
+        ir::ClassDecl* decl = nullptr;
+        std::vector<std::pair<std::string, TypeP>> captures;   // the locals it reads from the methods around it, by name
+        std::vector<ir::SymP> fields;                          // their fields, cap_NAME
+        std::string delegate_method;                           // an anonymous class of a library functional interface: its one method
+        TypeP delegate_type;
+    };
+    void prepare_local_classes(std::span<Node* const> units, std::vector<Node*>& classes);
+    void find_local_captures();
+    void add_capture_fields();
+    void prepare_inner_classes(const std::vector<Node*>& classes);
+    bool is_a(const ir::ClassDecl* c, const std::string& q) const;
+    TypeP own_type(const std::string& qname) const;
+    bool reaches_outer(const ir::ClassDecl& c) const;
+    const Hoisted* hoisted(const ir::ClassDecl& c) const;
+    bool has_captures(const ir::ClassDecl& c) const;
+    bool needs_outer(const ir::ClassDecl& c) const { return c.qname && inner_.contains(*c.qname); }
+    Node* outer_path(const std::string& qname);
+    Node* this_node(Node* e);
+    Node* new_inner(Node* e, const ir::ClassDecl& c);
+    bool base_construction_is_closed(const ir::ClassDecl* base) const;
+
+    // ---- enums of objects: a class of JEnum, each constant a static field made in order
+    const std::vector<std::string>* object_enum(const std::string& q) const {
+        const auto it = object_enums_.find(q);
+        return it == object_enums_.end() ? nullptr : &it->second;
+    }
+    void enum_members(ir::ClassDecl& c);
+    Node* enum_call(Node* e);
+    Node* enum_scrutinee(Node* scrutinee, std::vector<Node*>& cases);
+
+    // ---- lambdas of the program's interfaces
+    const ir::MethodDecl* single_abstract(const ir::ClassDecl& start) const;
+    void prepare_lambda_classes();
+    Node* as_interface(Node* fn, const TypeP& face);
 
     // ---- declarations
     void rewrite_class(ir::ClassDecl& c);
@@ -560,12 +623,27 @@ private:
     ir::ClassDecl* cls_ = nullptr;
     std::unordered_map<const ir::FieldDecl*, bool> moved_;
     std::unordered_map<std::string, std::vector<Node*>> prologue_;
+    std::unordered_set<std::string> prologue_done_;
+    std::unordered_map<const ir::MethodDecl*, std::string> java_names_;   // a method renamed -> its Java name
+    bool catches_negative_size_ = false;                     // whether the program catches NegativeArraySizeException
     std::map<std::pair<std::string, std::string>, std::string> concrete_;
     std::unordered_set<std::string> stored_arrays_;
     bool list_over_array_ = false;
     int try_helpers_ = 0;
     std::map<std::string, std::pair<bool, bool>> labels_;   // a label -> its uses (break, continue)
     TypeP ret_;                                              // the result of the method (or lambda) whose body is rewritten
+    TypeP yield_type_;                                       // the result of the switch expression whose arm is rewritten
+    std::vector<Node*> java_;                                // the Java units (copies)
+    std::map<std::string, Hoisted> hoisted_;                 // the classes hoisted out of methods, by qualified name
+    std::unordered_map<const Node*, ir::ClassDecl*> hoist_of_;   // a class declared in a method or anonymous (its ClassDecl) -> its hoisted copy
+    std::unordered_map<const Node*, std::string> refused_;   // a class that could not be hoisted (its ClassDecl node) -> why
+    std::unordered_map<const ir::ClassDecl*, std::string> refused_decl_;   // a class that could not be carried -> why
+    std::unordered_map<const Node*, std::string> capture_names_;   // a read of a captured local -> the field (cap_x) or parameter (cap_x_arg)
+    std::unordered_map<const Node*, std::set<std::string>> via_field_;   // a New that hands on captures the class making it holds
+    std::unordered_set<const Node*> before_base_;            // a New in a constructor's base call (its captures are the parameters)
+    std::unordered_map<std::string, ir::SymP> inner_;        // an inner class that holds its outer instance -> its outer_ field
+    std::map<std::string, const ir::MethodDecl*> lambda_interfaces_;   // an interface of the program lambdas are made for -> its one method
+    std::map<std::string, std::vector<std::string>> object_enums_;   // an enum of objects -> its constants, in order
     std::unordered_set<const Node*> null_reads_;             // reads of a box that may be null
     std::unordered_set<const Node*> read_as_is_;             // ... and those of them that are not read as a number
 };
@@ -590,7 +668,7 @@ bool Pass::overrides_base(const ir::ClassDecl& c, const ir::MethodDecl& m) const
     for (const ir::ClassDecl* b = base_of(c); b != nullptr && b->qname && seen.insert(*b->qname).second; b = base_of(*b)) {
         for (Node* xn : b->members) {
             const auto* x = ir::get<ir::MethodDecl>(xn);
-            if (x != nullptr && x->kind == "method" && x->name == m.name && signature(*x) == mine && !has(x->mods, "static") && !has(x->mods, "private")) return true;
+            if (x != nullptr && x->kind == "method" && jname(*x) == jname(m) && signature(*x) == mine && !has(x->mods, "static") && !has(x->mods, "private")) return true;
         }
     }
     return false;
@@ -598,67 +676,82 @@ bool Pass::overrides_base(const ir::ClassDecl& c, const ir::MethodDecl& m) const
 
 bool Pass::closeable(const ir::ClassDecl& start) const {
     std::set<std::string> seen;
-    for (const ir::ClassDecl* c = &start; c != nullptr && c->qname && seen.insert(*c->qname).second; c = base_of(*c)) {
+    std::vector<const ir::ClassDecl*> todo{&start};   // (its bases, and the interfaces of the program they implement)
+    while (!todo.empty()) {
+        const ir::ClassDecl* c = todo.back();
+        todo.pop_back();
+        if (c == nullptr || !c->qname || !seen.insert(*c->qname).second) continue;
         for (const TypeP& i : c->implements) {
             const std::string* q = qual(i);
             if (q != nullptr && (*q == "java.lang.AutoCloseable" || *q == "java.io.Closeable")) return true;
+            if (q != nullptr) todo.push_back(class_named(*q));
         }
+        todo.push_back(base_of(*c));
     }
     return false;
 }
 
 // What of this class the rule set does not carry yet (each named in the header): the reason, or nothing.
 std::optional<std::string> Pass::refused_class(ir::ClassDecl& c) {
-    if (c.qname == "java.lang.Class" || c.qname == "java.lang.reflect.Constructor") return "the reflection classes";
-    if (c.kind == "enum") {
-        for (Node* m : c.members) {
-            const auto* md = ir::get<ir::MethodDecl>(m);
-            const auto* ec = ir::get<ir::EnumConst>(m);
-            if (ir::is<ir::FieldDecl>(m) || (md != nullptr && !has(md->mods, "IMPLICIT")) || (ec != nullptr && (!ec->args.empty() || ec->body != nullptr)))
-                return "a Java enum with fields, methods or constructor arguments (an enum of objects)";
-        }
-    }
-    for (const TypeP& i : c.implements) {
-        const std::string* q = qual(i);
-        if (q != nullptr && *q == "java.lang.Iterable") return "a class that is a Java Iterable (its GetEnumerator)";
-        if (q != nullptr && *q == "java.util.Comparator") return "a class that is a Java Comparator (its conversion to Comparison)";
-    }
-    const bool inner = c.kind == "class" && c.outer && !has(c.mods, "static");
-    for (Node* m : c.members) {
-        if (const auto* nested = ir::get<ir::ClassDecl>(m); nested != nullptr) continue;
-        for (Node* n : ir::walk(m)) {
-            if (ir::is<ir::LocalClass>(n)) return "a class declared in a method";
-            if (const auto* made = ir::get<ir::New>(n); made != nullptr && made->body != nullptr) return "an anonymous class";
-            if (const auto* made = ir::get<ir::New>(n); made != nullptr && made->outer != nullptr) return "an inner class made on an outer instance";
-            if (const auto* th = ir::get<ir::This>(n); th != nullptr && th->qualifier && c.qname && qual(th->qualifier) != nullptr && *qual(th->qualifier) != *c.qname)
-                return "an inner class that reaches its outer instance";
-            if (inner) {
-                if (const auto* call = ir::get<ir::Call>(n); call != nullptr && call->target == nullptr && call->sym != nullptr && !call->sym->is_static &&
-                                                             call->sym->owner && c.qname && *call->sym->owner != *c.qname && class_named(*call->sym->owner) != nullptr) {
-                    // a method of its own base is its own
-                    bool own = false;
-                    for (const ir::ClassDecl* k = &c; k != nullptr; k = base_of(*k)) own = own || k->qname == call->sym->owner;
-                    if (!own) return "an inner class that reaches its outer instance";
-                }
-                if (const auto* sel = ir::get<ir::Select>(n); sel != nullptr && ir::is<ir::This>(sel->obj) && sel->sym && sel->sym->owner && c.qname &&
-                                                             *sel->sym->owner != *c.qname && class_named(*sel->sym->owner) != nullptr) {
-                    bool own = false;
-                    for (const ir::ClassDecl* k = &c; k != nullptr; k = base_of(*k)) own = own || k->qname == sel->sym->owner;
-                    if (!own) return "an inner class that reaches its outer instance";
-                }
-            }
-            if (ir::is<ir::Lambda>(n) || ir::is<ir::MethodRef>(n)) {
-                const std::string* target = qual(n->type);
-                if (target != nullptr && class_named(*target) != nullptr) return "a lambda of an interface of the program";
-            }
-        }
-    }
+    if (const auto why = refused_decl_.find(&c); why != refused_decl_.end()) return why->second;
     return std::nullopt;
 }
 
 // ---- before the rewrite: what the whole program says ---------------------------------------------------------------------------------
 
 void Pass::prepare(std::vector<Node*>& classes) {
+    for (Node* cn : classes) {   // CodeBreaker's Class and Constructor are of no type in C#: what Java types T is an object, cast where it is used
+        ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (c.qname != "java.lang.Class" && c.qname != "java.lang.reflect.Constructor") continue;
+        c.typeparams.clear();
+        c.tparams.clear();
+        const auto plain = [&](const TypeP& t) { return t && t->kind() == "typevar" ? obj_type() : t; };
+        for (Node* m : c.members) {
+            for (Node* n : ir::walk(m)) {
+                n->type = plain(n->type);
+                ir::visit(*n, [&](auto& k) {
+                    using K = std::decay_t<decltype(k)>;
+                    if constexpr (std::is_same_v<K, ir::Local> || std::is_same_v<K, ir::Param> || std::is_same_v<K, ir::FieldDecl>) k.type = plain(k.type);
+                    if constexpr (std::is_same_v<K, ir::MethodDecl>) k.ret = plain(k.ret);
+                });
+            }
+        }
+    }
+    for (Node* cn : classes) {   // an enum of objects is a class: a plain one stays a C# enum
+        ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (c.kind != "enum" || !c.qname) continue;
+        bool rich = false, bodies = false;
+        std::vector<std::string> names;
+        for (Node* m : c.members) {
+            const auto* md = ir::get<ir::MethodDecl>(m);
+            if (const auto* ec = ir::get<ir::EnumConst>(m)) {
+                names.push_back(ec->sym->name);
+                rich = rich || !ec->args.empty();
+                bodies = bodies || ec->body != nullptr;
+            } else if (ir::is<ir::FieldDecl>(m) || (md != nullptr && !has(md->mods, "IMPLICIT"))) {
+                rich = true;
+            }
+        }
+        if (rich || bodies) object_enums_[*c.qname] = std::move(names);
+        if (bodies) {   // what a constant's body must give makes the enum's class abstract
+            const bool open = std::any_of(c.members.begin(), c.members.end(), [](Node* m) {
+                const auto* md = ir::get<ir::MethodDecl>(m);
+                return md != nullptr && has(md->mods, "abstract");
+            });
+            if (open && !has(c.mods, "abstract")) c.mods.push_back("abstract");
+            std::erase(c.mods, "final");
+        }
+    }
+    prepare_local_classes(java_, classes);
+    prepare_inner_classes(classes);
+    prepare_lambda_classes();
+    for (Node* u : java_) {
+        for (Node* n : ir::walk(u)) {
+            if (const auto* caught = ir::get<ir::Catch>(n)) {
+                for (const TypeP& t : caught->types) catches_negative_size_ = catches_negative_size_ || (qual(t) != nullptr && *qual(t) == "java.lang.NegativeArraySizeException");
+            }
+        }
+    }
     for (Node* cn : classes) {   // an abstract class that leaves an interface's method to its subclasses declares it abstract (C# requires it)
         ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
         if (c.kind != "class" || !has(c.mods, "abstract")) continue;
@@ -785,7 +878,7 @@ std::vector<std::string> Pass::method_mods(const ir::MethodDecl& m, const ir::Cl
         if (face == nullptr) continue;
         for (Node* member : face->members) {
             const auto* d = ir::get<ir::MethodDecl>(member);
-            if (d != nullptr && d->name == m.name && d->params.size() == m.params.size()) return out;
+            if (d != nullptr && jname(*d) == jname(m) && d->params.size() == m.params.size()) return out;
         }
     }
     std::vector<std::string> lowered{"internal"};
@@ -821,7 +914,7 @@ std::vector<std::string> Pass::method_mods_plain(const ir::MethodDecl& m, const 
         for (const ir::ClassDecl* up = base_of(c); up != nullptr; up = base_of(*up)) {   // Java may widen what it overrides; C# wants the base's own access
             for (Node* member : up->members) {
                 const auto* d = ir::get<ir::MethodDecl>(member);
-                if (d != nullptr && d->kind == "method" && d->name == m.name && d->params.size() == m.params.size() && !has(d->mods, "static")) out = access(d->mods, *up);
+                if (d != nullptr && d->kind == "method" && jname(*d) == jname(m) && d->params.size() == m.params.size() && !has(d->mods, "static")) out = access(d->mods, *up);
             }
         }
         out.push_back("override");
@@ -870,7 +963,7 @@ std::optional<std::string> Pass::member_name(const ir::Sym& s) const {
         if (const ir::ClassDecl* c = class_named(*s.owner)) {
             const bool method_too = std::any_of(c->members.begin(), c->members.end(), [&](Node* m) {
                 const auto* md = ir::get<ir::MethodDecl>(m);
-                return md != nullptr && md->name == s.name;
+                return md != nullptr && jname(*md) == s.name;
             });
             if (method_too) return s.name + "_";
         }
@@ -895,9 +988,20 @@ std::vector<Node*> Pass::arrange_members(ir::ClassDecl& c) {
     const bool init_needs_this = std::any_of(c.members.begin(), c.members.end(), [&](Node* mn) {
         const auto* f = ir::get<ir::FieldDecl>(mn);
         if (f == nullptr || f->init == nullptr || has(f->mods, "static")) return false;
-        for (Node* n : ir::walk(f->init)) {
+        for (Node* n : own_nodes(f->init)) {
             if (ir::is<ir::This>(n)) return true;
+            if (const auto* read = ir::get<ir::Name>(n); read != nullptr && read->sym && read->sym->kind == ir::SymKind::Field && !read->sym->is_static) return true;
             if (const auto* call = ir::get<ir::Call>(n); call != nullptr && call->target == nullptr && call->sym && !call->sym->is_static) return true;
+            const auto* made = ir::get<ir::New>(n);
+            if (made == nullptr) continue;
+            const ir::ClassDecl* target = nullptr;
+            if (made->body != nullptr) {
+                const auto found = hoist_of_.find(made->body);
+                target = found != hoist_of_.end() ? found->second : nullptr;
+            } else if (const std::string* q = qual(n->type)) {
+                target = class_named(*q);
+            }
+            if (target != nullptr && needs_outer(*target)) return true;
         }
         return false;
     });
@@ -914,7 +1018,7 @@ std::vector<Node*> Pass::arrange_members(ir::ClassDecl& c) {
         }
         if (const auto* f = ir::get<ir::FieldDecl>(mn)) {
             if (has(f->mods, "static") && f->init != nullptr && !is_const(*f)) statics.push_back(mn);
-            if (!has(f->mods, "static") && f->init != nullptr && (base_is_ours || init_needs_this)) moves.push_back(mn);
+            if (!has(f->mods, "static") && f->init != nullptr && (base_is_ours || needs_outer(c) || has_captures(c) || init_needs_this)) moves.push_back(mn);
         }
         out.push_back(mn);
     }
@@ -971,9 +1075,21 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
         ~Restore() { slot = saved; }
     } restore{cls_, cls_};
     cls_ = &c;
+    if (needs_outer(c) || has_captures(c)) {   // Java sets these before the base constructor runs, C# only after it
+        const ir::ClassDecl* base = base_of(c);
+        if (base != nullptr && !base_construction_is_closed(base))
+            throw Declined{"inner-class", "a class whose base constructor may call back into it before its outer instance and captured locals are set (" +
+                                              c.name.value_or("") + ")"};
+    }
+    TypeP comparator, iterable;   // a Comparator converts to the delegate that stands for one; an Iterable gives .NET's enumerator
+    for (const TypeP& i : c.implements) {
+        const std::string* q = qual(i);
+        if (q != nullptr && *q == "java.util.Comparator") comparator = i;
+        if (q != nullptr && *q == "java.lang.Iterable") iterable = i;
+    }
     std::erase_if(c.implements, [](const TypeP& i) {
         const std::string* q = qual(i);
-        return q != nullptr && (*q == "java.io.Serializable" || *q == "java.lang.Cloneable" || *q == "java.util.RandomAccess");
+        return q != nullptr && (*q == "java.io.Serializable" || *q == "java.lang.Cloneable" || *q == "java.util.RandomAccess" || *q == "java.util.Comparator");
     });
     c.mods = class_mods(c);
     struct Record {
@@ -982,6 +1098,7 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
             if (c.kind == "record") c.kind = "class";
         }
     } record{c};
+    if (c.kind == "enum" && c.qname && object_enum(*c.qname) != nullptr) enum_members(c);
     if (c.kind == "enum") {   // javac's values, valueOf and constructor of a plain enum: C#'s enum has its own
         std::erase_if(c.members, [](Node* m) {
             const auto* md = ir::get<ir::MethodDecl>(m);
@@ -996,7 +1113,11 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
                 mn = mk_.unsupported("class", *why + " (" + nested->name.value_or("") + ")");
                 continue;
             }
-            rewrite_class(*nested);
+            try {
+                rewrite_class(*nested);
+            } catch (const Declined& d) {
+                mn = mk_.unsupported(d.kind, d.why);
+            }
             continue;
         }
         try {
@@ -1014,20 +1135,14 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
                 continue;
             }
             const std::vector<std::string> mods = m->kind == "ctor" ? access(m->mods, c) : method_mods(*m, c);
-            if (m->kind == "method") m->name = method_name(*m, c);
+            if (m->kind == "method") {
+                java_names_.emplace(m, m->name.value_or(""));
+                m->name = method_name(*m, c);
+            }
             if (m->kind == "ctor") {
                 const bool implicit = has(m->mods, "IMPLICIT");
                 const auto pro = prologue_.find(qname);
-                const bool needed = c.kind == "record" || (pro != prologue_.end() && !pro->second.empty());
-                // the statements Java runs after the base call: in each constructor that does not call another of its own
-                std::vector<Node*> body = body_statements(m->body);
-                const auto* first = body.empty() ? nullptr : ir::get<ir::CtorCall>(body[0]);
-                if (pro != prologue_.end() && !(first != nullptr && first->kind == "this")) {
-                    std::vector<Node*> copies;
-                    for (Node* s : pro->second) copies.push_back(ir::clone(arena_, s));
-                    body.insert(body.begin() + (first != nullptr ? 1 : 0), copies.begin(), copies.end());
-                }
-                m->body = mk_.block(std::move(body));
+                const bool needed = c.kind == "record" || (pro != prologue_.end() && !pro->second.empty()) || needs_outer(c) || has_captures(c);
                 m->mods = mods;
                 if (m->sym != nullptr && m->sym->varargs && !m->params.empty()) {   // Java's T... is C#'s params T[]
                     if (auto* last = ir::get<ir::Param>(m->params.back()); last != nullptr && !has(last->mods, "params")) last->mods.push_back("params");
@@ -1035,7 +1150,30 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
                 if (implicit && !needed) m->mods.push_back("IMPLICIT");
                 labels_.clear();
                 ret_ = TypeP{};
+                m->body = mk_.block(body_statements(m->body));
                 suite(m->body);
+                if (pro != prologue_.end() && prologue_done_.insert(qname).second) stmts(pro->second);   // (rewritten once, copied into each)
+                // the statements Java runs after the base call: in each constructor that does not call another of its own
+                std::vector<Node*> body = body_statements(m->body);
+                const auto* first = body.empty() ? nullptr : ir::get<ir::CtorCall>(body[0]);
+                if (!(first != nullptr && first->kind == "this")) {
+                    std::vector<Node*> copies;
+                    const auto set_field = [&](const ir::SymP& field, std::size_t at) {
+                        const auto* given = ir::get<ir::Param>(m->params.at(at));
+                        Node* self = ir::make(arena_, ir::This{}, ir::class_type(qname));
+                        copies.push_back(mk_.expr_stmt(mk_.assign(ir::make(arena_, ir::Select{.obj = self, .sym = field}, field->type), mk_.name(given->sym, field->type))));
+                    };
+                    if (needs_outer(c) && !m->params.empty()) set_field(inner_.at(qname), 0);   // the outer instance first: what follows may use it
+                    if (const Hoisted* h = hoisted(c)) {   // then the locals it read, which follow the outer instance among the parameters
+                        const std::size_t at = needs_outer(c) ? 1 : 0;
+                        for (std::size_t i = 0; i < h->fields.size(); ++i) set_field(h->fields[i], at + i);
+                    }
+                    if (pro != prologue_.end()) {
+                        for (Node* s : pro->second) copies.push_back(ir::clone(arena_, s));
+                    }
+                    body.insert(body.begin() + (first != nullptr ? 1 : 0), copies.begin(), copies.end());
+                }
+                m->body = mk_.block(std::move(body));
                 continue;
             }
             m->mods = mods;
@@ -1052,6 +1190,36 @@ void Pass::rewrite_class(ir::ClassDecl& c) {
                 mn = mk_.unsupported(d.kind, d.why);
             }
         }
+    }
+    const auto item_of = [](const TypeP& t) {
+        const auto& args = std::get<ir::ClassType>(t->body).args;
+        return args.empty() ? obj_type() : args[0];
+    };
+    const auto method = [&](const std::string& name, const TypeP& ret, std::vector<std::string> mods, std::vector<Node*> params, Node* result) {
+        ir::MethodDecl m;
+        m.sym = mk_.method(name, qname);
+        m.name = name;
+        m.kind = "method";
+        m.ret = ret;
+        m.mods = std::move(mods);
+        m.params = std::move(params);
+        m.body = mk_.block({ir::make(arena_, ir::Return{.expr = result})});
+        c.members.push_back(ir::make(arena_, std::move(m)));
+    };
+    if (comparator && c.kind != "interface") {   // handed over wherever Java wants a Comparator: `public static implicit operator Comparison<T>(C by) => by.compare;`
+        const TypeP self = own_type(qname);
+        const TypeP to = ir::class_type("System.Comparison", {item_of(comparator)});
+        const ir::SymP by = ir::make_sym(ir::SymKind::Param, "by", std::nullopt, false, self);
+        Node* group = ir::make(arena_, ir::MethodRef{.target = mk_.name(by, self), .sym = mk_.method("compare", qname)}, to);
+        method("op_Implicit", to, {"public", "static", "operator"}, {ir::make(arena_, ir::Param{.sym = by, .type = self})}, group);
+    }
+    if (iterable && c.kind != "interface") {   // `foreach` walks its iterator()
+        const TypeP item = item_of(iterable);
+        Node* walk = mk_.call(nullptr, "iterator", {}, ir::class_type("java.util.Iterator", {item}));
+        method("GetEnumerator", ir::class_type("System.Collections.Generic.IEnumerator", {item}), {"public"}, {},
+               jlib("Walk", {walk}, ir::class_type("System.Collections.Generic.IEnumerator", {item})));
+        method("System.Collections.IEnumerable.GetEnumerator", ir::class_type("System.Collections.IEnumerator"), {}, {},
+               mk_.call(nullptr, "GetEnumerator", {}, ir::class_type("System.Collections.Generic.IEnumerator", {item})));
     }
 }
 
@@ -1217,7 +1385,7 @@ std::vector<Node*> Pass::stmt(Node* s) {
     }
     if (ir::is<ir::Assert>(s)) return {ir::make(arena_, ir::Comment{.text = "assert dropped: Java runs asserts only with -ea"})};
     if (auto* x = ir::get<ir::Switch>(s)) {
-        x->expr = expr(x->expr);
+        x->expr = enum_scrutinee(x->expr, x->cases);
         for (Node* cn : x->cases) {
             auto* c = ir::get<ir::Case>(cn);
             for (Node*& l : c->labels) {
@@ -1232,8 +1400,16 @@ std::vector<Node*> Pass::stmt(Node* s) {
         for (Node*& a : x->args) a = expr(a);
         return {s};
     }
-    if (ir::is<ir::LocalClass>(s)) throw Declined{"local-class", "a class declared in a method"};
-    if (ir::is<ir::Yield>(s)) throw Declined{"switch-expression", "a switch-expression arm with statements"};
+    if (const auto* lc = ir::get<ir::LocalClass>(s)) {
+        if (hoist_of_.contains(lc->decl)) return {};
+        const auto why = refused_.find(lc->decl);
+        throw Declined{"local-class", why != refused_.end() ? why->second : std::string("a class declared in a method")};
+    }
+    if (auto* x = ir::get<ir::Yield>(s)) {
+        if (!yield_type_) throw Declined{"switch-expression", "a yield outside a switch expression"};
+        x->expr = to(x->expr, yield_type_);
+        return {s};
+    }
     return {s};
 }
 
@@ -1346,25 +1522,6 @@ bool map_get(const Node* x) {
     if (c == nullptr || c->sym == nullptr || c->sym->name != "get" || c->args.size() != 1 || !is_box(x->type)) return false;
     const auto fam = family_table().find(c->sym->owner.value_or(""));
     return fam != family_table().end() && fam->second == "Map";
-}
-
-// The nodes of a member, leaving out the bodies of classes declared inside it.
-std::vector<Node*> own_nodes(Node* root) {
-    std::vector<Node*> out;
-    std::vector<Node*> todo{root};
-    while (!todo.empty()) {
-        Node* n = todo.back();
-        todo.pop_back();
-        if (n == nullptr || ir::is<ir::ClassDecl>(n) || ir::is<ir::LocalClass>(n)) continue;
-        out.push_back(n);
-        if (const auto* made = ir::get<ir::New>(n); made != nullptr && made->body != nullptr) {
-            todo.insert(todo.end(), made->args.begin(), made->args.end());
-            if (made->outer != nullptr) todo.push_back(made->outer);
-            continue;
-        }
-        for (Node* child : ir::children(*n)) todo.push_back(child);
-    }
-    return out;
 }
 
 void Pass::prepare_boxed_nulls(const std::vector<Node*>& classes) {
@@ -1653,6 +1810,747 @@ Node* Pass::update(Node* e) {
     Node* next = mk_.assign(place, mk_.cast(plain, sum));
     if (postfix) return mk_.static_call("JLib", "Before", {unboxed(), next}, plain);
     return next;
+}
+
+// ---- classes in methods, anonymous classes, inner classes ---------------------------------------------------------------------------
+//
+// C# has neither classes declared in a method nor anonymous ones, and its nested classes hold no outer instance. Each class declared in a
+// method or anonymous is hoisted to a member of the class around it (an anonymous one named Anon1, Anon2 ..., an enum constant's body
+// Const_NAME), with a field `cap_x` for each local of the methods around it that it reads, given to its constructor (`cap_x_arg`); an
+// inner class that reaches its outer instance gets a field `outer_`, given first. `Outer.this` is then the path of outer_ fields from
+// the class that names it, and a class that needs them is made with them.
+
+// Is `q` this class or one it extends (among the program's classes)?
+bool Pass::is_a(const ir::ClassDecl* c, const std::string& q) const {
+    std::set<std::string> seen;
+    for (; c != nullptr && c->qname && seen.insert(*c->qname).second; c = base_of(*c)) {
+        if (*c->qname == q) return true;
+    }
+    return false;
+}
+
+// A class as its own members name it: a generic one with its own type variables.
+TypeP Pass::own_type(const std::string& qname) const {
+    const ir::ClassDecl* c = class_named(qname);
+    if (c == nullptr || c->typeparams.empty()) return ir::class_type(qname);
+    ir::ClassType own;
+    own.name = qname;
+    for (const std::string& t : c->typeparams) own.args.push_back(ir::typevar_type(t));
+    return ir::make_type(std::move(own));
+}
+
+bool is_inner(const ir::ClassDecl& c) { return c.kind == "class" && c.outer && !has(c.mods, "static"); }
+
+// Does anything in `c` reach an instance of a class around it?
+bool Pass::reaches_outer(const ir::ClassDecl& c) const {
+    const auto around = [&](const std::string& q) {
+        if (is_a(&c, q)) return false;
+        for (const ir::ClassDecl* k = c.outer ? class_named(*c.outer) : nullptr; k != nullptr; k = k->outer ? class_named(*k->outer) : nullptr) {
+            if (is_a(k, q)) return true;
+        }
+        return false;
+    };
+    for (Node* m : c.members) {
+        if (const auto* nested = ir::get<ir::ClassDecl>(m); nested != nullptr && has(nested->mods, "static")) continue;
+        for (Node* n : ir::walk(m)) {
+            if (const auto* th = ir::get<ir::This>(n)) {
+                const std::string* q = qual(th->qualifier ? th->qualifier : n->type);
+                if (q != nullptr && around(*q)) return true;
+            }
+            if (const auto* call = ir::get<ir::Call>(n);
+                call != nullptr && call->target == nullptr && call->sym != nullptr && !call->sym->is_static && call->sym->owner && around(*call->sym->owner))
+                return true;
+            if (const auto* made = ir::get<ir::New>(n); made != nullptr && made->outer == nullptr && made->body == nullptr) {
+                const std::string* q = qual(n->type);
+                if (q != nullptr && inner_.contains(*q)) {
+                    const ir::ClassDecl* other = class_named(*q);
+                    if (other != nullptr && other->outer && around(*other->outer)) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+const Pass::Hoisted* Pass::hoisted(const ir::ClassDecl& c) const {
+    if (!c.qname) return nullptr;
+    const auto it = hoisted_.find(*c.qname);
+    return it != hoisted_.end() && it->second.decl == &c ? &it->second : nullptr;
+}
+
+bool Pass::has_captures(const ir::ClassDecl& c) const {
+    const Hoisted* h = hoisted(c);
+    return h != nullptr && !h->captures.empty();
+}
+
+// The locals and parameters these nodes declare.
+std::set<std::string> declared_in(const std::vector<Node*>& nodes) {
+    std::set<std::string> out;
+    for (Node* n : nodes) {
+        if (ir::is<ir::Name>(n)) continue;
+        ir::visit(*n, [&](auto& k) {
+            if constexpr (requires { k.sym; }) {
+                const ir::Sym* s = k.sym.get();
+                if (s != nullptr && (s->kind == ir::SymKind::Local || s->kind == ir::SymKind::Param)) out.insert(s->name);
+            }
+        });
+    }
+    return out;
+}
+
+void Pass::prepare_local_classes(std::span<Node* const> units, std::vector<Node*>& classes) {
+    const jmodel::Model model(units);
+    std::map<std::string, int> local_names;   // (Java may reuse a local class's name in another method; a member's must be unique)
+    for (Node* u : units) {
+        for (Node* n : ir::walk(u)) {
+            if (const auto* lc = ir::get<ir::LocalClass>(n)) ++local_names[ir::get<ir::ClassDecl>(lc->decl)->qname.value_or("")];
+        }
+    }
+    int anonymous = 0;
+    for (const auto& entry : model.classes()) {
+        const jmodel::ClassInfo& ci = *entry.second;
+        if (!(ci.local || ci.anon) || ci.outer == nullptr) continue;
+        const auto refuse = [&](std::string why) { refused_[ci.node] = std::move(why); };
+        ir::ClassDecl* around = ci.outer->decl;
+        if (ci.outer->local || ci.outer->anon) {
+            const auto found = hoist_of_.find(ci.outer->node);
+            around = found != hoist_of_.end() ? found->second : nullptr;
+        }
+        if (around == nullptr || !around->qname) {
+            refuse("a class inside a class that could not be written");
+            continue;
+        }
+        ir::ClassDecl copy = *ci.decl;
+        std::string name, q;
+        Hoisted made;
+        const auto forwarding_ctor = [&](const ir::SymP& base, const std::vector<Node*>& given, const std::vector<TypeP>& types) {
+            ir::MethodDecl ctor;
+            ctor.sym = ir::make_sym(ir::SymKind::Ctor, name, q);
+            ctor.name = name;
+            ctor.kind = "ctor";
+            ctor.ret = ir::void_type();
+            std::vector<Node*> forwarded;
+            for (std::size_t i = 0; i < given.size(); ++i) {
+                const TypeP type = types[i];
+                const ir::SymP param = ir::make_sym(ir::SymKind::Param, "a" + std::to_string(i), std::nullopt, false, type);
+                ctor.params.push_back(ir::make(arena_, ir::Param{.sym = param, .type = type}));
+                forwarded.push_back(mk_.name(param, type));
+                ctor.sym->params.push_back(type);
+            }
+            std::vector<Node*> body;
+            if (!forwarded.empty()) body.push_back(ir::make(arena_, ir::CtorCall{.kind = "super", .sym = base, .args = std::move(forwarded)}));
+            ctor.body = mk_.block(std::move(body));
+            return ir::make(arena_, std::move(ctor));
+        };
+        if (const auto* constant = ir::get<ir::EnumConst>(ci.enum_const)) {   // a constant with a body: a class of the enum's, made with the constant's arguments
+            name = "Const_" + constant->sym->name;
+            q = *around->qname + "." + name;
+            copy.kind = "class";
+            copy.extends = ir::class_type(*around->qname);
+            copy.implements.clear();
+            std::erase_if(copy.members, [](Node* m) {
+                const auto* md = ir::get<ir::MethodDecl>(m);
+                return md != nullptr && md->kind == "ctor";
+            });
+            std::vector<TypeP> types;
+            for (std::size_t i = 0; i < constant->args.size(); ++i) {
+                const bool typed = constant->ctor != nullptr && i < constant->ctor->params.size() && static_cast<bool>(constant->ctor->params[i]);
+                types.push_back(typed ? constant->ctor->params[i] : constant->args[i]->type);
+            }
+            copy.members.push_back(forwarding_ctor(constant->ctor, constant->args, types));
+        } else if (ci.anon) {
+            const auto& creation = *ir::get<ir::New>(ci.creation);
+            if (creation.outer != nullptr) {
+                refuse("an anonymous class made on an outer instance");
+                continue;
+            }
+            if (creation.sym != nullptr && creation.sym->varargs) {
+                refuse("an anonymous class with a varargs base constructor");
+                continue;
+            }
+            if (std::any_of(copy.members.begin(), copy.members.end(), [](Node* m) { return ir::is<ir::ClassDecl>(m); })) {
+                refuse("an anonymous class with a class inside it");
+                continue;
+            }
+            do {
+                name = "Anon" + std::to_string(++anonymous);
+                q = *around->qname + "." + name;
+            } while (class_named(q) != nullptr);
+            const bool is_interface = !ci.ifaces.empty();
+            const std::string target = is_interface ? ci.ifaces[0] : ci.base.value_or("java.lang.Object");
+            const TypeP written = copy.extends ? copy.extends : ci.creation->type;
+            copy.extends = TypeP{};
+            copy.implements.clear();
+            if (model.info(target) != nullptr) {
+                if (is_interface) copy.implements.push_back(written);
+                else copy.extends = written;
+            } else if (function_table().contains(target) || target == "java.lang.Runnable") {
+                const jmodel::Signature* single = jmodel::library_functional(target);
+                if (single == nullptr) {
+                    refuse("an anonymous " + target);
+                    continue;
+                }
+                made.delegate_method = single->name;
+                const std::string* typed = qual(ci.creation->type);
+                made.delegate_type = typed != nullptr && *typed == target ? ci.creation->type : written;
+            } else if (target == "java.lang.Comparable" || target == "java.lang.AutoCloseable" || target == "java.io.Closeable" || target == "java.util.Iterator" ||
+                       target == "java.lang.Iterable") {
+                copy.implements.push_back(written);
+            } else if (const auto mapped = class_table().find(target); mapped != class_table().end() && mapped->second.ends_with("Exception")) {
+                copy.extends = written;
+            } else if (!is_interface && generic_table().contains(target)) {   // `new ArrayList<>() {{ add(1); }}`: a collection filled as it is made
+                const bool overrides = std::any_of(copy.members.begin(), copy.members.end(), [](Node* m) {
+                    const auto* md = ir::get<ir::MethodDecl>(m);
+                    return md != nullptr && md->kind == "method" && !has(md->mods, "IMPLICIT");
+                });
+                if (overrides) {
+                    refuse("an anonymous class overriding methods of the library type " + target);
+                    continue;
+                }
+                copy.extends = written;
+                for (Node* member : copy.members) {   // what the block calls by name alone is the collection's own
+                    for (Node* n : own_nodes(member)) {
+                        auto* call = ir::get<ir::Call>(n);
+                        if (call == nullptr || call->target != nullptr || call->sym == nullptr || call->sym->is_static) continue;
+                        if (class_named(call->sym->owner.value_or("")) == nullptr) call->target = ir::make(arena_, ir::This{}, written);
+                    }
+                }
+            } else if (target != "java.lang.Object") {
+                refuse("an anonymous class of the library type " + target);
+                continue;
+            }
+            std::erase_if(copy.members, [](Node* m) {
+                const auto* md = ir::get<ir::MethodDecl>(m);
+                return md != nullptr && md->kind == "ctor";
+            });
+            // its one constructor hands its arguments to the base's
+            std::vector<TypeP> types;
+            for (std::size_t i = 0; i < creation.args.size(); ++i) {
+                const bool typed = creation.sym != nullptr && i < creation.sym->params.size() && creation.sym->params[i] && creation.sym->params[i]->kind() != "typevar";
+                types.push_back(typed ? creation.sym->params[i] : creation.args[i]->type);
+            }
+            copy.members.push_back(forwarding_ctor(creation.sym, creation.args, types));
+        } else {
+            q = ci.decl->qname.value_or("");
+            name = ci.decl->name.value_or("");
+            if (local_names[q] > 1 || class_named(q) != nullptr) {
+                refuse("two classes named " + name + " where C# needs one");
+                continue;
+            }
+        }
+        copy.name = name;
+        copy.qname = q;
+        copy.outer = *around->qname;
+        if (!ci.needs_outer && copy.kind == "class" && !has(copy.mods, "static")) copy.mods.push_back("static");   // (declared where there is no `this`)
+        for (Node* member : copy.members) {   // javac leaves the owner of what such a class declares empty
+            for (Node* n : own_nodes(member)) {
+                ir::visit(*n, [&](auto& k) {
+                    if constexpr (requires { k.sym; }) {
+                        ir::Sym* s = k.sym.get();
+                        if (s != nullptr && s->owner && s->owner->empty() && (s->kind == ir::SymKind::Field || s->kind == ir::SymKind::Method || s->kind == ir::SymKind::Ctor))
+                            s->owner = q;
+                    }
+                });
+                if (ir::is<ir::This>(n)) {
+                    const std::string* t = qual(n->type);
+                    if (t != nullptr && t->empty()) n->type = ir::class_type(q);
+                }
+            }
+        }
+        Node* node = ir::make(arena_, std::move(copy), TypeP{}, ci.node->line, ci.node->col);
+        made.decl = ir::get<ir::ClassDecl>(node);
+        around->members.push_back(node);
+        index(node);
+        hoist_of_[ci.node] = made.decl;
+        hoisted_[q] = std::move(made);
+        const std::function<void(Node*)> collect = [&](Node* n) {
+            if (auto* cd = ir::get<ir::ClassDecl>(n)) {
+                classes.push_back(n);
+                for (Node* m : cd->members) collect(m);
+            }
+        };
+        collect(node);
+    }
+    find_local_captures();
+    add_capture_fields();
+}
+
+// What each class reads from the methods around it: the names its members do not declare, then whatever a class it makes needs from there.
+void Pass::find_local_captures() {
+    const auto add = [](Hoisted& h, const std::string& name, const TypeP& type) {
+        if (std::any_of(h.captures.begin(), h.captures.end(), [&](const auto& c) { return c.first == name; })) return false;
+        h.captures.emplace_back(name, type);
+        return true;
+    };
+    struct Part {
+        Hoisted* owner;
+        std::vector<Node*> nodes;
+        std::set<std::string> declared;
+    };
+    std::vector<Part> parts;
+    for (auto& [q, h] : hoisted_) {
+        for (Node* member : h.decl->members) {
+            Part part{&h, own_nodes(member), {}};
+            part.declared = declared_in(part.nodes);
+            for (Node* n : part.nodes) {
+                const auto* read = ir::get<ir::Name>(n);
+                if (read == nullptr || !read->sym || part.declared.contains(read->sym->name)) continue;
+                add(h, read->sym->name, n->type);
+                capture_names_[n] = "cap_" + read->sym->name;
+            }
+            parts.push_back(std::move(part));
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (Part& part : parts) {
+            for (Node* n : part.nodes) {
+                const auto* made = ir::get<ir::New>(n);
+                if (made == nullptr) continue;
+                const Hoisted* target = nullptr;
+                if (made->body != nullptr) {
+                    if (const auto found = hoist_of_.find(made->body); found != hoist_of_.end()) target = hoisted(*found->second);
+                } else if (const std::string* q = qual(n->type)) {
+                    if (const auto found = hoisted_.find(*q); found != hoisted_.end()) target = &found->second;
+                }
+                if (target == nullptr) continue;
+                const std::vector<std::pair<std::string, TypeP>> wanted = target->captures;   // (it may be this class)
+                for (const auto& [name, type] : wanted) {
+                    if (part.declared.contains(name)) continue;
+                    via_field_[n].insert(name);
+                    if (add(*part.owner, name, type)) changed = true;
+                }
+            }
+        }
+    }
+}
+
+void Pass::add_capture_fields() {
+    for (auto& [q, h] : hoisted_) {
+        if (h.captures.empty()) continue;
+        std::sort(h.captures.begin(), h.captures.end(), [](const auto& a, const auto& b) { return a.first < b.first; });   // (the map's order is no order)
+        for (const auto& [name, type] : h.captures) {
+            if (!type) {
+                refused_decl_[h.decl] = "a captured local with no type (" + name + ")";
+                continue;
+            }
+            const ir::SymP field = ir::make_sym(ir::SymKind::Field, "cap_" + name, q, false, type);
+            h.fields.push_back(field);
+            h.decl->members.push_back(ir::make(arena_, ir::FieldDecl{.sym = field, .type = type, .mods = {}}));
+        }
+        for (Node* mn : h.decl->members) {
+            auto* m = ir::get<ir::MethodDecl>(mn);
+            if (m == nullptr || m->kind != "ctor") continue;
+            if (m->sym && m->sym->varargs) {
+                refused_decl_[h.decl] = "a local class with a varargs constructor (" + h.decl->name.value_or("") + ")";
+                continue;
+            }
+            std::vector<Node*> params, passed;
+            std::vector<TypeP> types;
+            for (const auto& [name, type] : h.captures) {
+                const ir::SymP given = ir::make_sym(ir::SymKind::Param, "cap_" + name + "_arg", std::nullopt, false, type);
+                params.push_back(ir::make(arena_, ir::Param{.sym = given, .type = type}));
+                passed.push_back(mk_.name(given, type));
+                types.push_back(type);
+            }
+            m->params.insert(m->params.begin(), params.begin(), params.end());
+            if (m->sym) {
+                auto shifted = std::make_shared<ir::Sym>(*m->sym);
+                shifted->params.insert(shifted->params.begin(), types.begin(), types.end());
+                m->sym = std::move(shifted);
+            }
+            for (Node* st : body_statements(m->body)) {
+                auto* chained = ir::get<ir::CtorCall>(st);
+                if (chained == nullptr) continue;
+                for (Node* arg : chained->args) {   // (C# has no `this` in a constructor's initialiser: these read its parameters)
+                    for (Node* n : own_nodes(arg)) {
+                        if (const auto held = capture_names_.find(n); held != capture_names_.end()) held->second += "_arg";
+                        if (ir::is<ir::New>(n)) before_base_.insert(n);
+                    }
+                }
+                if (chained->kind != "this") continue;
+                chained->args.insert(chained->args.begin(), passed.begin(), passed.end());
+                if (chained->sym) {   // (its parameters line up with its arguments)
+                    auto shifted = std::make_shared<ir::Sym>(*chained->sym);
+                    shifted->params.insert(shifted->params.begin(), types.begin(), types.end());
+                    if (!shifted->refs.empty()) shifted->refs.insert(shifted->refs.begin(), types.size(), shifted->refs.front());
+                    chained->sym = std::move(shifted);
+                }
+            }
+        }
+    }
+}
+
+void Pass::prepare_inner_classes(const std::vector<Node*>& classes) {
+    // which inner classes need their instance: one that makes another that does needs its own, so until nothing changes
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (Node* cn : classes) {
+            const ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+            if (!is_inner(c) || !c.qname || inner_.contains(*c.qname) || !reaches_outer(c)) continue;
+            inner_[*c.qname] = ir::make_sym(ir::SymKind::Field, "outer_", *c.qname, false, own_type(*c.outer));
+            changed = true;
+        }
+    }
+    for (Node* cn : classes) {   // `outer.new Inner()` hands it one whether it reads it or not
+        for (Node* n : ir::walk(cn)) {
+            const auto* made = ir::get<ir::New>(n);
+            const std::string* q = made != nullptr && made->outer != nullptr ? qual(n->type) : nullptr;
+            const ir::ClassDecl* c = q != nullptr ? class_named(*q) : nullptr;
+            if (c != nullptr && c->outer && !inner_.contains(*q)) inner_[*q] = ir::make_sym(ir::SymKind::Field, "outer_", *q, false, own_type(*c->outer));
+        }
+    }
+    for (Node* cn : classes) {
+        ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (!needs_outer(c)) continue;
+        const ir::SymP& field = inner_.at(*c.qname);
+        c.members.push_back(ir::make(arena_, ir::FieldDecl{.sym = field, .type = field->type, .mods = {}}));
+        for (Node* mn : c.members) {
+            auto* m = ir::get<ir::MethodDecl>(mn);
+            if (m == nullptr || m->kind != "ctor") continue;
+            if (m->sym && m->sym->varargs) {
+                refused_decl_[&c] = "an inner class with a varargs constructor (" + c.name.value_or("") + ")";
+                continue;
+            }
+            const ir::SymP given = ir::make_sym(ir::SymKind::Param, "outer_arg", std::nullopt, false, field->type);
+            m->params.insert(m->params.begin(), ir::make(arena_, ir::Param{.sym = given, .type = field->type}));
+            if (m->sym) {
+                auto shifted = std::make_shared<ir::Sym>(*m->sym);
+                shifted->params.insert(shifted->params.begin(), field->type);
+                m->sym = std::move(shifted);
+            }
+            for (Node* st : body_statements(m->body)) {
+                auto* chained = ir::get<ir::CtorCall>(st);
+                if (chained == nullptr || chained->kind != "this") continue;
+                chained->args.insert(chained->args.begin(), mk_.name(given, field->type));
+                if (chained->sym) {   // (its parameters line up with its arguments)
+                    auto shifted = std::make_shared<ir::Sym>(*chained->sym);
+                    shifted->params.insert(shifted->params.begin(), field->type);
+                    if (!shifted->refs.empty()) shifted->refs.insert(shifted->refs.begin(), shifted->refs.front());
+                    chained->sym = std::move(shifted);
+                }
+            }
+        }
+    }
+}
+
+// The path of outer_ fields from the class being rewritten to its instance of `qname`: null when it is not one it holds.
+Node* Pass::outer_path(const std::string& qname) {
+    const ir::ClassDecl* k = cls_;
+    Node* path = nullptr;
+    while (k != nullptr && !is_a(k, qname)) {
+        if (!needs_outer(*k)) return nullptr;   // (not an instance it holds: as written)
+        const ir::SymP& field = inner_.at(*k->qname);
+        Node* from = path != nullptr ? path : ir::make(arena_, ir::This{}, ir::class_type(*k->qname));
+        path = ir::make(arena_, ir::Select{.obj = from, .sym = field}, field->type);
+        k = k->outer ? class_named(*k->outer) : nullptr;
+    }
+    return k != nullptr ? path : nullptr;
+}
+
+// `this`, `Outer.this`: the path to the instance it names.
+Node* Pass::this_node(Node* e) {
+    auto& th = *ir::get<ir::This>(e);
+    const std::string* q = qual(th.qualifier ? th.qualifier : e->type);
+    if (q == nullptr) return e;
+    if (Node* path = outer_path(*q)) return path;
+    if (th.qualifier && cls_ != nullptr && is_a(cls_, *q)) {   // (`Self.this`)
+        th.qualifier = TypeP{};
+        e->type = ir::class_type(cls_->qname.value_or(""));
+    }
+    return e;
+}
+
+// A class that needs its outer instance or the locals it read, made: those first, then its own arguments.
+Node* Pass::new_inner(Node* e, const ir::ClassDecl& c) {
+    auto& made = *ir::get<ir::New>(e);
+    std::vector<Node*> args;
+    std::vector<TypeP> types;
+    if (needs_outer(c)) {
+        Node* outer = nullptr;
+        const TypeP type = inner_.at(*c.qname)->type;
+        if (made.outer != nullptr) {
+            outer = jlib("NonNull", {expr(made.outer)}, type);   // (Java throws on `null.new Inner()`)
+        } else {
+            outer = outer_path(*c.outer);
+            if (outer == nullptr) outer = ir::make(arena_, ir::This{}, cls_ != nullptr ? ir::class_type(cls_->qname.value_or("")) : type);
+        }
+        args.push_back(outer);
+        types.push_back(type);
+    }
+    const Hoisted* local = hoisted(c);
+    if (local != nullptr) {
+        const auto from_field = via_field_.find(e);
+        for (const auto& [name, type] : local->captures) {
+            types.push_back(type);
+            if (from_field != via_field_.end() && from_field->second.contains(name)) {
+                if (before_base_.contains(e)) {
+                    args.push_back(mk_.name(ir::make_sym(ir::SymKind::Param, "cap_" + name + "_arg", std::nullopt, false, type), type));
+                } else {
+                    const std::string owner = cls_ != nullptr ? cls_->qname.value_or("") : std::string();
+                    args.push_back(mk_.field(ir::make(arena_, ir::This{}, ir::class_type(owner)), "cap_" + name, type));
+                }
+                continue;
+            }
+            args.push_back(expr(mk_.name(ir::make_sym(ir::SymKind::Local, name, std::nullopt, false, type), type)));
+        }
+    }
+    for (std::size_t i = 0; i < made.args.size(); ++i) {
+        const bool typed = made.sym != nullptr && i < made.sym->params.size() && made.sym->params[i] && made.sym->params[i]->kind() != "typevar";
+        args.push_back(typed ? to(made.args[i], made.sym->params[i]) : expr(made.args[i]));
+        types.push_back(typed ? made.sym->params[i] : made.args[i]->type);
+    }
+    auto sym = ir::make_sym(ir::SymKind::Ctor, c.name.value_or(""), c.qname);
+    sym->params = std::move(types);
+    const TypeP type = made.body != nullptr ? ir::class_type(c.qname.value_or("")) : e->type;   // (made inside the class around it, whose T it shares)
+    Node* object = ir::make(arena_, ir::New{.sym = sym, .args = std::move(args)}, type);
+    if (local != nullptr && !local->delegate_method.empty()) {   // a library functional interface is a delegate here: to this object's one method
+        const auto method = ir::make_sym(ir::SymKind::Method, local->delegate_method, c.qname);
+        Node* group = ir::make(arena_, ir::MethodRef{.target = object, .sym = method}, local->delegate_type);
+        return ir::make(arena_, ir::New{.sym = ir::make_sym(ir::SymKind::Ctor, "delegate"), .args = {group}}, local->delegate_type);
+    }
+    return object;
+}
+
+// Can constructing this class (and the program classes above it) run nothing of a subclass? True when no constructor, instance
+// initialiser or field initialiser calls an instance method or lets `this` go anywhere but a field access.
+bool Pass::base_construction_is_closed(const ir::ClassDecl* base) const {
+    std::set<std::string> seen;
+    for (; base != nullptr && base->qname && seen.insert(*base->qname).second; base = base_of(*base)) {
+        for (Node* m : base->members) {
+            const auto* md = ir::get<ir::MethodDecl>(m);
+            const auto* f = ir::get<ir::FieldDecl>(m);
+            const bool runs = (md != nullptr && (md->kind == "ctor" || md->kind == "init")) || (f != nullptr && !has(f->mods, "static") && f->init != nullptr);
+            if (!runs) continue;
+            std::size_t thises = 0, field_reads = 0;
+            for (Node* n : own_nodes(m)) {
+                if (ir::is<ir::This>(n)) ++thises;
+                if (const auto* sel = ir::get<ir::Select>(n); sel != nullptr && ir::is<ir::This>(sel->obj)) ++field_reads;
+                if (const auto* call = ir::get<ir::Call>(n); call != nullptr && call->target == nullptr && (call->sym == nullptr || !call->sym->is_static)) return false;
+            }
+            if (thises > field_reads) return false;
+        }
+    }
+    return true;
+}
+
+// ---- enums of objects ----------------------------------------------------------------------------------------------------------------
+//
+// A Java enum with fields, methods, constructor arguments or constants with bodies is a class of objects; C#'s enum is a named number. It is
+// written as a class of the runtime's JEnum (its JName and JOrdinal), each constant a static field made in order by JLib.EnumMade, a
+// constant with a body an object of its hoisted class Const_NAME; values() is the array of them, valueOf JLib.EnumOf, and a switch on
+// one switches on its ordinal.
+
+void Pass::enum_members(ir::ClassDecl& c) {
+    const std::string qname = c.qname.value_or("");
+    runtime_.insert("JavaRt");
+    runtime_.insert("JavaCollections");
+    const TypeP self = ir::class_type(qname);
+    std::vector<Node*> kept;
+    std::int64_t ordinal = 0;
+    for (Node* mn : c.members) {
+        const auto* ec = ir::get<ir::EnumConst>(mn);
+        if (ec == nullptr) continue;
+        TypeP made_type = self;
+        if (ec->body != nullptr) {
+            if (const auto own = hoist_of_.find(ec->body); own != hoist_of_.end()) made_type = ir::class_type(own->second->qname.value_or(""));
+            else throw Declined{"enum", refused_.contains(ec->body) ? refused_.at(ec->body) : std::string("an enum constant with a body")};
+        }
+        auto sym = ec->ctor != nullptr ? std::make_shared<ir::Sym>(*ec->ctor) : ir::make_sym(ir::SymKind::Ctor, c.name.value_or(""), qname);
+        if (ec->body != nullptr) {
+            sym->name = hoist_of_.at(ec->body)->name.value_or(sym->name);
+            sym->owner = qual(made_type) != nullptr ? std::optional<std::string>(*qual(made_type)) : std::nullopt;
+        }
+        Node* made = ir::make(arena_, ir::New{.sym = sym, .args = ec->args}, made_type);
+        Node* named = jlib("EnumMade", {made, mk_.text(ec->sym->name), mk_.number(ordinal++)}, self);
+        ir::FieldDecl field;
+        field.sym = ir::make_sym(ir::SymKind::Field, ec->sym->name, qname, true, self);
+        field.type = self;
+        field.init = named;
+        field.mods = {"public", "static", "final"};
+        kept.push_back(ir::make(arena_, std::move(field)));
+    }
+    for (Node* mn : c.members) {
+        const auto* md = ir::get<ir::MethodDecl>(mn);
+        if (ir::is<ir::EnumConst>(mn) || (md != nullptr && md->kind != "ctor" && has(md->mods, "IMPLICIT"))) continue;
+        kept.push_back(mn);
+    }
+    c.members = std::move(kept);
+    c.kind = "class";
+    c.extends = ir::class_type("JEnum");
+}
+
+// A call of an enum of objects' own or inherited methods (values, valueOf, name, ordinal ...); null for any other call.
+Node* Pass::enum_call(Node* e) {
+    auto& call = *ir::get<ir::Call>(e);
+    const ir::Sym& s = *call.sym;
+    const std::string owner = s.owner.value_or("");
+    const ir::ClassDecl* c = class_named(owner);
+    const ir::ClassDecl* of = c != nullptr && c->qname && object_enum(*c->qname) != nullptr ? c : nullptr;
+    if (of == nullptr && call.target != nullptr) {
+        const std::string* tq = qual(call.target->type);
+        const ir::ClassDecl* tc = tq != nullptr ? class_named(*tq) : nullptr;
+        if (tc != nullptr && object_enum(*tq) != nullptr) of = tc;
+    }
+    if (of == nullptr && call.target == nullptr && owner == "java.lang.Enum" && cls_ != nullptr && cls_->qname && object_enum(*cls_->qname) != nullptr)
+        of = cls_;   // (`name()` inside the enum)
+    if (of == nullptr) return nullptr;
+    const std::string q = *of->qname;
+    const TypeP self = ir::class_type(q);
+    const auto receiver = [&]() -> Node* {
+        if (call.target != nullptr && !ir::is<ir::TypeName>(call.target)) return expr(call.target);
+        return ir::make(arena_, ir::This{}, self);
+    };
+    if (s.is_static && (s.name == "values" || s.name == "valueOf")) {
+        std::vector<Node*> all;
+        for (const std::string& n : *object_enum(q)) all.push_back(mk_.field(mk_.type_name(self), n, self, true));
+        Node* array = ir::make(arena_, ir::NewArray{.elem = self, .init = std::move(all)}, ir::array_of(self));
+        if (s.name == "values") return array;
+        return jlib("EnumOf", {array, expr(call.args.at(0))}, self);
+    }
+    const bool inherited = owner == "java.lang.Enum" || c == nullptr;
+    if (!inherited) return nullptr;
+    if (s.name == "name" && call.args.empty()) return mk_.field(receiver(), "JName", ir::class_type("java.lang.String"));
+    if (s.name == "ordinal" && call.args.empty()) return mk_.field(receiver(), "JOrdinal", ir::i32_type());
+    if (s.name == "compareTo" && call.args.size() == 1) return mk_.call(receiver(), "CompareTo", {expr(call.args[0])}, ir::i32_type());
+    if (s.name == "toString" && call.args.empty()) return mk_.call(receiver(), "ToString", {}, ir::class_type("java.lang.String"));
+    if (s.name == "equals" && call.args.size() == 1) return mk_.call(receiver(), "Equals", {expr(call.args[0])}, ir::bool_type());
+    return nullptr;
+}
+
+// A switch on an enum of objects: on its ordinal, each constant's label its number (C# cases need constants). The scrutinee as written.
+Node* Pass::enum_scrutinee(Node* scrutinee, std::vector<Node*>& cases) {
+    const std::string* q = qual(scrutinee->type);
+    const std::vector<std::string>* names = q != nullptr ? object_enum(*q) : nullptr;
+    if (names == nullptr) return expr(scrutinee);
+    for (Node* cn : cases) {
+        for (Node*& l : ir::get<ir::Case>(cn)->labels) {
+            const auto* sel = ir::get<ir::Select>(strip(l));
+            const auto* name = ir::get<ir::Name>(strip(l));
+            const std::string label = sel != nullptr && sel->sym ? sel->sym->name : name != nullptr && name->sym ? name->sym->name : std::string();
+            const auto at = std::find(names->begin(), names->end(), label);
+            if (at == names->end()) throw Declined{"enum", "a case label that is not a constant of " + *q};
+            l = mk_.number(at - names->begin());
+        }
+    }
+    return mk_.field(expr(scrutinee), "JOrdinal", ir::i32_type());
+}
+
+// ---- lambdas of the program's interfaces --------------------------------------------------------------------------------------------
+//
+// C#'s lambda converts to a delegate, never to an interface. An interface of the program that a lambda (or a method reference) is made for,
+// with one method to implement, gets a class JFn that implements it over a delegate, and the lambda is made as one: `new Op<int>.JFn(x => x
+// + 1)`.
+
+// The one method an interface leaves to implement, with what it inherits; null when there are several, or one a generic parent would retype.
+const ir::MethodDecl* Pass::single_abstract(const ir::ClassDecl& start) const {
+    std::vector<const ir::MethodDecl*> found;
+    std::set<std::string> seen;
+    bool must_close = false;
+    const std::function<bool(const ir::ClassDecl&, bool)> visit = [&](const ir::ClassDecl& k, bool top) {
+        if (!k.qname || !seen.insert(*k.qname).second) return true;
+        if (!k.typeparams.empty() && !top) return false;
+        for (Node* mn : k.members) {
+            const auto* m = ir::get<ir::MethodDecl>(mn);
+            if (m == nullptr || has(m->mods, "static") || has(m->mods, "default") || has(m->mods, "private") || ir::present(m->body)) continue;
+            const std::string name = m->name.value_or("");
+            if (object_method(name, m->params.size())) continue;
+            const bool again = std::any_of(found.begin(), found.end(), [&](const ir::MethodDecl* x) { return x->name == m->name && x->params.size() == m->params.size(); });
+            if (!again) found.push_back(m);
+        }
+        std::vector<TypeP> parents = k.implements;
+        if (k.extends) parents.push_back(k.extends);
+        for (const TypeP& parent : parents) {
+            const std::string* q = qual(parent);
+            if (q == nullptr) return false;
+            if (*q == "java.lang.Object") continue;
+            if (*q == "java.lang.AutoCloseable" || *q == "java.io.Closeable") {
+                must_close = true;
+            } else if (const ir::ClassDecl* up = class_named(*q)) {
+                if (!visit(*up, false)) return false;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!visit(start, true) || found.size() != 1 || !found[0]->typeparams.empty()) return nullptr;
+    if (must_close && !(found[0]->name == "close" && found[0]->params.empty())) return nullptr;
+    return found[0];
+}
+
+void Pass::prepare_lambda_classes() {
+    for (Node* u : java_) {   // the interfaces of the program that lambdas are made for
+        for (Node* n : ir::walk(u)) {
+            if (!ir::is<ir::Lambda>(n) && !ir::is<ir::MethodRef>(n)) continue;
+            const std::string* q = qual(n->type);
+            const ir::ClassDecl* target = q != nullptr ? class_named(*q) : nullptr;
+            if (target == nullptr || target->kind != "interface" || lambda_interfaces_.contains(*q)) continue;
+            if (const ir::MethodDecl* method = single_abstract(*target)) lambda_interfaces_.emplace(*q, method);
+        }
+    }
+    for (const auto& [q, m] : lambda_interfaces_) {
+        ir::ClassDecl& face = *class_named(q);
+        const std::string fq = q + ".JFn";
+        // the delegate it holds: Func<params..., result>, or Action<params...>
+        std::vector<TypeP> types;
+        for (Node* p : m->params) types.push_back(ir::get<ir::Param>(p)->type);
+        const bool returns = m->ret && m->ret->kind() != "void";
+        if (returns) types.push_back(m->ret);
+        const TypeP fn = ir::class_type(returns ? "System.Func" : "System.Action", std::move(types));
+        const ir::SymP field = ir::make_sym(ir::SymKind::Field, "body", fq, false, fn);
+        const auto self = [&] { return ir::make(arena_, ir::This{}, ir::class_type(fq)); };
+        const auto held = [&] { return ir::make(arena_, ir::Select{.obj = self(), .sym = field}, fn); };
+        ir::MethodDecl ctor;
+        ctor.sym = ir::make_sym(ir::SymKind::Ctor, "JFn", fq);
+        ctor.sym->params = {fn};
+        ctor.name = "JFn";
+        ctor.kind = "ctor";
+        ctor.ret = ir::void_type();
+        ctor.mods = {"public"};
+        const ir::SymP given = ir::make_sym(ir::SymKind::Param, "body", std::nullopt, false, fn);
+        ctor.params = {ir::make(arena_, ir::Param{.sym = given, .type = fn})};
+        ctor.body = mk_.block({mk_.expr_stmt(mk_.assign(held(), mk_.name(given, fn)))});
+        ir::MethodDecl method;
+        method.sym = std::make_shared<ir::Sym>(*m->sym);
+        method.sym->owner = fq;
+        method.name = m->name;
+        method.kind = "method";
+        method.ret = m->ret;
+        method.mods = {"public"};
+        std::vector<Node*> passed;
+        for (std::size_t i = 0; i < m->params.size(); ++i) {
+            const TypeP type = ir::get<ir::Param>(m->params[i])->type;
+            const ir::SymP a = ir::make_sym(ir::SymKind::Param, "a" + std::to_string(i), std::nullopt, false, type);
+            method.params.push_back(ir::make(arena_, ir::Param{.sym = a, .type = type}));
+            passed.push_back(mk_.name(a, type));
+        }
+        auto invoke = ir::make_sym(ir::SymKind::Method, "Invoke");
+        invoke->flags.push_back("delegate");
+        Node* run = ir::make(arena_, ir::Call{.target = held(), .sym = invoke, .args = std::move(passed)}, m->ret);
+        method.body = mk_.block({returns ? ir::make(arena_, ir::Return{.expr = run}) : mk_.expr_stmt(run)});
+        ir::ClassDecl jfn;
+        jfn.kind = "class";
+        jfn.name = "JFn";
+        jfn.qname = fq;
+        jfn.outer = q;
+        jfn.mods = {"public", "final"};
+        jfn.implements = {own_type(q)};
+        jfn.members = {ir::make(arena_, ir::FieldDecl{.sym = field, .type = fn, .mods = {"private", "final"}}), ir::make(arena_, std::move(ctor)),
+                       ir::make(arena_, std::move(method))};
+        Node* node = ir::make(arena_, std::move(jfn));
+        face.members.push_back(node);
+        index(node);
+    }
+}
+
+// A lambda or a method group made for an interface of the program: an object of its JFn over it.
+Node* Pass::as_interface(Node* fn, const TypeP& face) {
+    const std::string* q = qual(face);
+    if (q == nullptr || !lambda_interfaces_.contains(*q)) return fn;
+    const auto* c = std::get_if<ir::ClassType>(&face->body);
+    const TypeP made = ir::class_type(*q + ".JFn", c != nullptr ? c->args : std::vector<TypeP>{});
+    return ir::make(arena_, ir::New{.sym = ir::make_sym(ir::SymKind::Ctor, "JFn", *q + ".JFn"), .args = {fn}}, made);
 }
 
 // ---- expressions --------------------------------------------------------------------------------------------------------------
@@ -2157,8 +3055,22 @@ Node* Pass::call(Node* e, bool statement) {
         if (wanted != values.end() && have != ranks.end() && c.args.empty() && wanted->second.second >= have->second)   // (a widening: C#'s cast is Java's)
             return mk_.cast(ir::prim_type(wanted->second.first), expr(c.target));
     }
+    if (Node* got = enum_call(e)) return got;
+    if ((owner == "java.lang.Class" || owner == "java.lang.reflect.Constructor") && s->ret && s->ret->kind() == "typevar" && !statement) {
+        const std::string* wanted = qual(e->type);   // (an object in C#: the type Java knows it to be)
+        if (wanted != nullptr && *wanted != "java.lang.Object") {
+            const TypeP to = e->type;
+            auto copy = std::make_shared<ir::Sym>(*s);
+            copy->ret = obj_type();
+            c.sym = std::move(copy);
+            e->type = obj_type();
+            return mk_.cast(to, call(e, false));
+        }
+    }
     const ir::ClassDecl* own = class_named(owner);
-    if (own != nullptr && own->kind == "enum" && s->is_static && (s->name == "values" || s->name == "valueOf")) {
+    if (own != nullptr && c.target == nullptr && !s->is_static && outer_path(owner) != nullptr)   // a method of an enclosing instance, by its name alone
+        c.target = ir::make(arena_, ir::This{}, ir::class_type(owner));
+    if (own != nullptr && (own->kind == "enum" && own->qname && object_enum(*own->qname) == nullptr) && s->is_static && (s->name == "values" || s->name == "valueOf")) {
         const TypeP tn = ir::class_type(own->qname.value_or(""));
         auto* made = ir::get<ir::Call>(mk_.static_call("System.Enum", s->name == "values" ? "GetValues" : "Parse", {}, e->type));
         made->typeargs.push_back(tn);
@@ -2207,8 +3119,11 @@ Node* Pass::call(Node* e, bool statement) {
         if (owner == "java.util.Arrays" && s->name == "sort" && c.args.size() == 2) {   // stable, as Java's is for objects
             const auto* array = c.args[0]->type ? std::get_if<ir::ArrayType>(&c.args[0]->type->body) : nullptr;
             if (array == nullptr) throw Declined{"library", "Arrays.sort of what is not an array"};
-            Node* by = ir::make(arena_, ir::New{.sym = ir::make_sym(ir::SymKind::Ctor, "Comparison"), .args = {expr(c.args[1])}},
-                                ir::class_type("System.Comparison", {array->elem}));
+            const std::string* given = qual(c.args[1]->type);
+            Node* order = expr(c.args[1]);
+            if (given != nullptr && class_named(*given) != nullptr)   // (a Comparator class of the program: its compare)
+                order = ir::make(arena_, ir::MethodRef{.target = order, .sym = mk_.method("compare", *given)}, ir::class_type("System.Comparison", {array->elem}));
+            Node* by = ir::make(arena_, ir::New{.sym = ir::make_sym(ir::SymKind::Ctor, "Comparison"), .args = {order}}, ir::class_type("System.Comparison", {array->elem}));
             return jlib("SortWith", {expr(c.args[0]), by}, e->type);
         }
     }
@@ -2257,7 +3172,7 @@ Node* Pass::method_ref(Node* e) {
     if (!in_library && !unbound) {   // (a method of the program: C#'s method group)
         if (auto n = member_name(*s)) x.sym = renamed(s, *n);
         x.target = expr(x.target);
-        return e;
+        return as_interface(e, e->type);
     }
     const std::string* interface_name = qual(e->type);
     const auto single = interface_name != nullptr ? functional_method(*interface_name) : std::nullopt;
@@ -2288,7 +3203,10 @@ Node* Pass::method_ref(Node* e) {
 void Pass::check_lambda(Node* e) {
     const std::string* q = qual(e->type);
     if (q == nullptr) return;
-    if (class_named(*q) != nullptr) throw Declined{"lambda", "a lambda of an interface of the program"};
+    if (class_named(*q) != nullptr) {
+        if (lambda_interfaces_.contains(*q)) return;
+        throw Declined{"lambda", "a lambda of an interface of the program with no single method a delegate can stand for"};
+    }
     if (!function_table().contains(*q) && *q != "java.lang.Runnable") throw Declined{"lambda", "a lambda of the interface " + *q + " (no C# delegate for it)"};
 }
 
@@ -2303,10 +3221,23 @@ Node* Pass::expr(Node* e) {
         return jlib("Unbox", {inner}, plain_box(x->type));
     }
     if (Node* changed = update(x)) return changed;
+    if (const auto held = capture_names_.find(x); held != capture_names_.end()) {   // a local of the methods around: the class's copy
+        if (held->second.ends_with("_arg")) return mk_.name(ir::make_sym(ir::SymKind::Param, held->second, std::nullopt, false, x->type), x->type);
+        const std::string owner = cls_ != nullptr ? cls_->qname.value_or("") : std::string();
+        return mk_.field(ir::make(arena_, ir::This{}, ir::class_type(owner)), held->second, x->type);
+    }
+    if (ir::is<ir::This>(x)) return this_node(x);
     if (ir::is<ir::Call>(x)) return call(x, false);
     if (ir::is<ir::Select>(x)) return select(x);
     if (ir::is<ir::New>(x)) {
-        if (ir::get<ir::New>(x)->body != nullptr) throw Declined{"anonymous-class", "an anonymous class"};
+        if (const Node* body = ir::get<ir::New>(x)->body; body != nullptr) {
+            if (const auto found = hoist_of_.find(body); found != hoist_of_.end()) return new_inner(x, *found->second);
+            const auto why = refused_.find(body);
+            throw Declined{"anonymous-class", why != refused_.end() ? why->second : std::string("an anonymous class")};
+        }
+        if (const std::string* q = qual(x->type)) {
+            if (const ir::ClassDecl* own = class_named(*q); own != nullptr && (needs_outer(*own) || has_captures(*own))) return new_inner(x, *own);
+        }
         return new_object(x);
     }
     if (ir::is<ir::Binary>(x)) return binary(x);
@@ -2323,7 +3254,7 @@ Node* Pass::expr(Node* e) {
             l->body = expr(l->body);
         }
         ret_ = saved_ret;
-        return x;
+        return as_interface(x, x->type);
     }
     if (auto* c = ir::get<ir::Cond>(x)) {
         c->cond = expr(c->cond);
@@ -2332,23 +3263,56 @@ Node* Pass::expr(Node* e) {
         return x;
     }
     if (auto* a = ir::get<ir::NewArray>(x)) {
-        for (Node*& d : a->dims) d = expr(d);
-        for (Node*& item : a->init) item = to(item, a->elem);
+        for (Node*& d : a->dims) {
+            d = expr(d);
+            if (catches_negative_size_ && !ir::is<ir::Lit>(strip(d))) d = jlib("ArraySize", {d}, ir::i32_type());   // (the program reads the message: Java's is the size)
+        }
+        if (a->dims.size() > 1 && a->init.empty()) {   // Java's arrays of arrays, each its own: C# has no one expression for them
+            auto* made = ir::get<ir::Call>(jlib("Jagged", a->dims, x->type));
+            made->typeargs.push_back(x->type);
+            return ir::make(arena_, std::move(*made), x->type);
+        }
+        const auto* whole = x->type ? std::get_if<ir::ArrayType>(&x->type->body) : nullptr;   // (the array's own type says what its items hold)
+        for (Node*& item : a->init) item = to(item, whole != nullptr ? whole->elem : a->elem);
         return x;
     }
     if (ir::is<ir::SwitchExpr>(x)) {
         auto& sw = *ir::get<ir::SwitchExpr>(x);
-        sw.expr = expr(sw.expr);
+        sw.expr = enum_scrutinee(sw.expr, sw.cases);
+        const TypeP saved = std::exchange(yield_type_, x->type);
         for (Node* cn : sw.cases) {
             auto* c = ir::get<ir::Case>(cn);
             for (Node*& l : c->labels) {
-                if (!ir::is<ir::Select>(strip(l))) l = expr(l);
+                if (!ir::is<ir::Select>(strip(l)) && !ir::is<ir::Lit>(strip(l))) l = expr(l);
             }
-            for (Node* b : c->body) {
-                if (ir::is<ir::Block>(b)) throw Declined{"switch-expression", "a switch-expression arm with statements"};
+            if (c->body.size() == 1 && ir::is<ir::Block>(c->body[0])) {
+                // C#'s arms are expressions: a block is a function called on the spot, its `yield` that function's return:
+                // `((Func<T>)(() => { ...; return v; }))()`
+                const TypeP saved_ret = std::exchange(ret_, TypeP{});
+                auto saved_labels = labels_;
+                Node* body = stmt_node(c->body[0]);
+                labels_ = std::move(saved_labels);
+                ret_ = saved_ret;
+                const std::function<void(Node*&)> returns = [&](Node*& n) {
+                    if (n == nullptr || ir::is<ir::SwitchExpr>(n) || ir::is<ir::Lambda>(n) || ir::is<ir::ClassDecl>(n)) return;
+                    if (const auto* y = ir::get<ir::Yield>(n)) {
+                        n = ir::make(arena_, ir::Return{.expr = y->expr});
+                        return;
+                    }
+                    ir::visit(*n, [&](auto& k) { k.each_child([&](Node*& child) { returns(child); }); });
+                };
+                returns(body);
+                const TypeP fn = ir::class_type("System.Func", {x->type});
+                Node* lambda = ir::make(arena_, ir::Lambda{.body = body}, fn);
+                auto invoke = ir::make_sym(ir::SymKind::Method, "Invoke");
+                invoke->flags.push_back("delegate");
+                Node* run = ir::make(arena_, ir::Call{.target = mk_.cast(fn, lambda), .sym = invoke}, x->type);
+                c->body = {ir::make(arena_, ir::Yield{.expr = run})};
+                continue;
             }
             stmts(c->body);
         }
+        yield_type_ = saved;
         return x;
     }
     if (auto* w = ir::get<ir::Assign>(x)) {
@@ -2384,6 +3348,7 @@ TypeP Pass::cs(const TypeP& t) {
     std::vector<TypeP> args;
     for (const TypeP& a : c->args) args.push_back(cs(a));
     if (const ir::ClassDecl* own = class_named(q)) {
+        if (q == "java.lang.Class" || q == "java.lang.reflect.Constructor") return ir::class_type(q);   // (of no type: see prepare)
         if (args.empty() && !own->typeparams.empty()) args.assign(own->typeparams.size(), ir::class_type("System.Object"));   // a raw use: of Object
         ir::ClassType next = *c;
         next.args = std::move(args);
@@ -2536,6 +3501,7 @@ Result Pass::run(std::span<Node* const> units) {
     for (Node* u : java) {
         for (Node* t : ir::get<ir::Unit>(u)->types) collect(t);
     }
+    java_ = java;
     prepare(classes);
     for (Node* u : java) {
         for (Node*& t : ir::get<ir::Unit>(u)->types) {
@@ -2551,7 +3517,8 @@ Result Pass::run(std::span<Node* const> units) {
                 t = mk_.unsupported(d.kind, d.why);
             }
         }
-        // the types last: the rules above read Java's
+    }
+    for (Node* u : java) {   // the types last, once every unit is rewritten: the rules above read Java's (of other units' classes too)
         for (Node*& t : ir::get<ir::Unit>(u)->types) {
             auto* cd = ir::get<ir::ClassDecl>(t);
             if (cd == nullptr) continue;
