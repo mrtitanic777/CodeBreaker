@@ -1,7 +1,53 @@
-# vita.fmt -- how the PlayStation Vita's files are told (formats/detect): a SELF (its segment table says whether the
-# segments are encrypted) and an ARM ELF of a Sony type ($FE00-$FE04: VitaSDK's .velf).
+# vita.fmt -- the PlayStation Vita's programs (formats/vita): VitaSDK's ARM ELF of a Sony type ($FE00-$FE04: a .velf) and
+# the SELF (version 3) that wraps one: the ELF header and program headers at the offsets the SELF gives, and a table of
+# 32-byte segment entries (one per program header: where the segment's bytes are, how many, whether they are compressed
+# and whether they are encrypted). The structures of the ELF itself are elf.fmt's (32-bit, little-endian).
+# How the files are told (formats/detect) is at the end.
+#
+# What a table outside the file, a segment that is not there or an encrypted one means is the reader's: the tables are
+# read tolerantly (`try`) and the reader checks them.
 
 format vita
+endian le
+use elf
+
+struct File {
+    if peek32(0) == 0x00454353 {
+        self : Self
+    } else {
+        elf : PlainElf
+    }
+}
+
+# A plain ELF: the identification, the file header and the program headers (32 bytes each, whatever phentsize says).
+struct PlainElf {
+    let is64 = 0
+    ident    : Ident
+    header   : Header
+    segments @ header.phoff : Segment[header.phnum] try
+}
+
+# A SELF: "SCE\0", version 3, then (at $40, $48 and $58) the offsets of the ELF header, the program headers and the
+# segment entries.
+struct Self {
+    magic       : bytes(4) == "SCE\0"
+    version     : u32 == 3
+    elf_offset  @ 0x40 : u64
+    phdr_offset @ 0x48 : u64
+    info_offset @ 0x58 : u64
+    let is64 = 0
+    ident    @ elf_offset : Ident try
+    header   @ elf_offset + 16 : Header try
+    segments @ phdr_offset : Segment[header.phnum] try
+    infos    @ info_offset : SegmentInfo[header.phnum] try
+}
+
+struct SegmentInfo {
+    offset      : u64
+    length      : u64
+    compression : u64        # 1 plain, 2 zlib
+    encryption  : u64        # 1 encrypted, 2 not
+}
 
 detect 150 vita "PlayStation Vita SELF (encrypted)" command gap
     when $size >= 0x60 && at(0, "SCE\0") && peek32(4) == 3 && peek32(0x58) + 32 <= $size && peek32(peek32(0x58) + 24) == 1
