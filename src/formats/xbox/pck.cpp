@@ -4,15 +4,13 @@
 #include <format>
 
 #include "core/error.hpp"
-#include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/gen/pck.hpp"
 
 namespace cb::formats::xbox::pck {
 
 namespace {
 
-constexpr std::string_view kReader = "pck";
-constexpr std::uint32_t kMaxNameLength = 8192;   // in UTF-16 units
 constexpr std::size_t kFirstPayloadGap = 12;     // bytes between the table and the first payload
 constexpr std::size_t kMaxPadding = 512;         // zero padding skipped before a payload
 constexpr std::uint8_t kPng[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
@@ -28,29 +26,16 @@ bool ends_with_png(const std::string& name) { return text::lower(name).ends_with
 
 }  // namespace
 
+// The layout is pck.fmt's (its generated reader, formats/gen/pck).
 Archive parse(ByteView file) {
-    io::ByteReader r(file, kReader);
+    const gen::pck::File h = gen::pck::read(file);
     Archive a;
-    a.version = r.u32_be();
-    const std::uint32_t property_count = r.u32_be();
-    for (std::uint32_t i = 0; i < property_count; ++i) {
-        const std::uint32_t id = r.u32_be(), length = r.u32_be();
-        if (length > kMaxNameLength) throw FormatError(kReader, r.pos(), std::format("bad name length {}", length));
-        const std::string name = utf16be(r.bytes(std::uint64_t{length} * 2));
-        r.skip(4);
-        a.properties.emplace_back(id, name);
-    }
-    const std::uint32_t count = r.u32_be();
-    for (std::uint32_t i = 0; i < count; ++i) {
-        Entry e;
-        e.size = r.u32_be();
-        e.type = r.u32_be();
-        const std::uint32_t length = r.u32_be();
-        e.name = utf16be(r.bytes(std::uint64_t{length} * 2));
-        r.skip(4);
-        a.entries.push_back(std::move(e));
-    }
-    a.table_end = r.pos();
+    a.version = h.version;
+    a.properties.reserve(h.properties.size());
+    for (const gen::pck::Property& p : h.properties) a.properties.emplace_back(p.id, utf16be(p.name));
+    a.entries.reserve(h.entries.size());
+    for (const gen::pck::PckEntry& n : h.entries) a.entries.push_back({n.size, n.type, utf16be(n.name)});
+    a.table_end = static_cast<std::size_t>(h.table_end);
     return a;
 }
 
