@@ -137,6 +137,24 @@ Vectored vectored_of(const nlohmann::ordered_json& j) {
     return v;
 }
 
+Executable executable_of(const nlohmann::ordered_json& j) {
+    Executable e;
+    e.container = text_of(j, "container");
+    e.cpu = text_of(j, "cpu");
+    e.variant = text_of(j, "variant");
+    e.description = text_of(j, "description");
+    e.extension = text_of(j, "extension");
+    if (const auto views = j.find("views"); views != j.end()) {
+        for (const auto& v : *views) e.views.push_back({number_of(v.at("from")), number_of(v.at("to")), number_of(v, "mask", 0), number_of(v, "minus", 0)});
+    }
+    for (const auto& [key, out] : {std::pair{"ram", &e.ram}, std::pair{"ram_virtual", &e.ram_virtual}}) {
+        if (const auto it = j.find(key); it != j.end()) {
+            for (const auto& r : *it) out->push_back({number_of(r.at(0)), number_of(r.at(1))});
+        }
+    }
+    return e;
+}
+
 Banked banked_of(const nlohmann::ordered_json& j) {
     Banked b;
     b.cpu = text_of(j, "cpu");
@@ -206,6 +224,7 @@ Description read_description(std::string_view name) {
     if (const auto cart = j.find("cart"); cart != j.end()) d.cart = cart_of(*cart);
     if (const auto segmented = j.find("segmented"); segmented != j.end()) d.segmented = segmented_of(*segmented);
     if (const auto vectored = j.find("vectored"); vectored != j.end()) d.vectored = vectored_of(*vectored);
+    if (const auto executable = j.find("executable"); executable != j.end()) d.executable = executable_of(*executable);
     return d;
 }
 
@@ -338,6 +357,7 @@ image_writer::Written write_shape(const Description& description, const Loaded& 
     values.insert_or_assign("origin", static_cast<std::int64_t>(program.origin));
     values.try_emplace("stem", std::filesystem::path(file_name).stem().string());
     const std::string stem = std::get<std::string>(values.at("stem"));   // (a loader may name the source otherwise: the Neo Geo's `<name>.m1`)
+    if (description.shape == "executable") return write_executable(description, program, values, folder);
     if (description.shape == "vectored" && description.vectored.cpu == "arm") return arm_code::write(description, program, values, folder);   // (their heads name what flow found)
     if (description.shape == "vectored" && description.vectored.cpu == "v810") return v810_code::write(description, program, values, folder);
     if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);

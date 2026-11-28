@@ -1,5 +1,5 @@
 // source/mips_elf_writer.hpp -- a little-endian MIPS ELF program (the PlayStation 2's `.elf`, the PSP's `.elf`, `.prx` and `EBOOT.PBP`) as assembly source
-// that builds back into it. The two consoles' writers (ps2_writer, psp_writer) are this one with their processor, hardware and names.
+// that builds back into it. The console writer's `executable` shape writes the two consoles through it (config/platforms/ps2.json, psp.json) with their processor, hardware and names.
 //
 //     image_writer::Written r = mips_elf_writer::write(machine, file, elf, elf_offset, "game.elf", "out");
 //     r.source                  game.s (GNU as syntax: mips-as / psp-as read the instructions, `.org` and the data directives are CodeBreaker's)

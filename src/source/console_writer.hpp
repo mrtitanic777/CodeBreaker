@@ -34,6 +34,9 @@ struct Program;
 namespace cb::formats::genesis {
 struct Rom;
 }
+namespace cb::formats::mips_elf {
+struct Elf;
+}
 
 namespace cb::source::console_writer {
 
@@ -177,6 +180,24 @@ struct Vectored {
     std::string block_cpu;
 };
 
+// ---- the executable shape's part of a description: a loader-format executable (an ELF, a PRX, a PBP holding one) written whole, each part at
+// the address it is loaded at, by the engine for its container (console_executable.cpp) ----
+struct AddressView {
+    std::uint32_t from = 0, to = 0;   // [from, to): a view of memory
+    std::uint32_t mask = 0;           // the physical address is the address & mask ...
+    std::uint32_t minus = 0;          // ... or the address - minus
+};
+struct Executable {
+    std::string container;            // the engine: "mips-elf" (source/mips_elf_writer)
+    std::string cpu;                  // the processor's SLEIGH description ("r5900", "mips")
+    std::string variant;              // the decoder's variant ("r5900", "allegrex")
+    std::string description;          // what the program is, for the head (a template over the loader's values)
+    std::string extension;            // the rebuilt file's extension (a template)
+    std::vector<AddressView> views;   // how an address is seen as a physical one (others are their own)
+    std::vector<Range> ram;           // physical ranges that are RAM (named `var_<address>` unless the program holds them)
+    std::vector<Range> ram_virtual;   // virtual ranges that are RAM (a scratchpad seen at its own address)
+};
+
 // A platform's description (config/platforms/<name>.json).
 struct Description {
     std::string name;        // the file's name: what reconstruct() is asked for
@@ -191,6 +212,7 @@ struct Description {
     CartShape cart;          // (the cart6502 shape's)
     Segmented segmented;     // (the segmented shape's)
     Vectored vectored;       // (the vectored shape's)
+    Executable executable;   // (the executable shape's)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -256,6 +278,14 @@ struct Segments {
     std::function<void(image_writer::Written&, const Values& values, const std::filesystem::path& folder)> after;
 };
 
+// (executable) The program inside the file, for the container's engine.
+struct Contained {
+    std::shared_ptr<const formats::mips_elf::Elf> mips_elf;    // ("mips-elf") the ELF, which starts at `elf_offset` in the image
+    std::size_t elf_offset = 0;
+    image_writer::Names names;                                  // functions and data the container names, by address
+    std::function<std::optional<std::string>(std::uint32_t)> hardware;   // the name of the hardware register at an address (the format's table)
+};
+
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
 struct Loaded {
     Bytes image;
@@ -266,6 +296,7 @@ struct Loaded {
     Bytes memory;                        // (banked) the address space at power-on that flow decodes
     Cart cart;                           // (cart6502)
     Segments segments;                   // (segmented: `image` is the whole file the pieces lie in, `memory` what flow decodes)
+    Contained contained;                 // (executable: `image` is the whole file)
 };
 
 // The program in `file`, as the platform's loader reads it (IoError when the file cannot be read, FormatError when it is not the platform's).

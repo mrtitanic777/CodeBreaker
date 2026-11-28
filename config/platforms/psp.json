@@ -1,0 +1,23 @@
+{
+  "platform": "psp",
+  "title": "PSP",
+  "description": "An ELF, a PRX module or an EBOOT.PBP holding one: the whole file in file order, each part at the address it is loaded at (source/mips_elf_writer), the exports and the imports' stubs named (by NID when the name is not known), the hardware's blocks by name, RAM, video memory and the scratchpad (kernel, user and uncached views) as var_ equates.",
+  "machine": {
+    "family": "mips",
+    "container": "ELF (.elf), module (.prx), EBOOT.PBP",
+    "cpu": {"language": "MIPS:LE:32:default", "bits": 32, "endian": "little", "decoder": "mips",
+            "registers": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"], "stack": "SP"},
+    "results": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as (ps2sdk / pspsdk)"
+  },
+  "shape": "executable",
+  "executable": {
+    "container": "mips-elf",
+    "cpu": "mips",
+    "variant": "allegrex",
+    "description": "PSP {pbp?EBOOT.PBP|{prx?module (PRX)|executable (ELF)}} (Allegrex){title?: {title}|}",
+    "extension": "{pbp?.pbp|{prx?.prx|.elf}}",
+    "views": [{"from": "0x80000000", "to": "0xC0000000", "mask": "0x1FFFFFFF"}, {"from": "0x40000000", "to": "0x60000000", "minus": "0x40000000"}],
+    "ram": [["0x08000000", "0x0A000000"], ["0x04000000", "0x04200000"], ["0x00010000", "0x00014000"]]
+  }
+}

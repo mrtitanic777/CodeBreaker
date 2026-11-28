@@ -6,6 +6,8 @@
 
 #include <format>
 #include <algorithm>
+#include <cctype>
+#include <unordered_set>
 #include <map>
 #include <memory>
 #include <set>
@@ -29,6 +31,8 @@
 #include "formats/n64.hpp"
 #include "formats/neogeo.hpp"
 #include "formats/nes.hpp"
+#include "formats/ps2.hpp"
+#include "formats/psp.hpp"
 #include "formats/psx.hpp"
 #include "formats/sms.hpp"
 #include "formats/vb.hpp"
@@ -454,6 +458,55 @@ Loaded load_vb(const std::filesystem::path& path) {
     return l;
 }
 
+// The PlayStation 2: an R5900 ELF, or the BOOT2 program of a disc image (written under the disc's name).
+Loaded load_ps2(const std::filesystem::path& path) {
+    std::optional<formats::ps2::Program> program = formats::ps2::read(path);
+    if (!program) throw FormatError("ps2", 0, "not a PlayStation 2 program (an R5900 ELF, or a disc image whose BOOT2 file is one)");
+    const bool disc = program->kind == formats::ps2::Kind::Disc;
+    Loaded l;
+    l.image = program->elf.data;
+    l.contained.mips_elf = std::make_shared<const formats::mips_elf::Elf>(std::move(program->elf));
+    l.contained.hardware = [](std::uint32_t a) { return formats::ps2::hardware_name(a); };
+    l.values = {{"disc", Num{disc}}};
+    if (disc) l.values.insert_or_assign("file", path.stem().string() + ".elf");
+    return l;
+}
+
+// The PSP: an ELF, a PRX module or an EBOOT.PBP holding one; the exports and the imports' stubs named (by NID when the name is not known).
+Loaded load_psp(const std::filesystem::path& path) {
+    std::optional<formats::psp::Program> program = formats::psp::read(path);
+    if (!program) throw FormatError("psp", 0, "not an unencrypted PSP program (an ELF, a PRX, or an EBOOT.PBP holding one)");
+    const auto clean = [](std::string_view text) {
+        std::string out;
+        for (const char c : text) out += (std::isalnum(static_cast<unsigned char>(c)) || c == '_') ? c : '_';
+        return out;
+    };
+    Loaded l;
+    image_writer::Names& names = l.contained.names;
+    std::unordered_set<std::string> used;
+    const auto unique = [&](std::string name, std::uint32_t address) {
+        if (!used.insert(name).second) name = std::format("{}_{:08X}", name, address);
+        used.insert(name);
+        return name;
+    };
+    for (const formats::psp::Export& e : formats::psp::exports(program->elf)) {
+        if (e.variable || e.address == 0) continue;
+        const std::string name = e.name.empty() ? std::format("export_{}_{:08X}", e.library.empty() ? "system" : clean(e.library), e.nid) : e.name;
+        if (!names.contains(e.address)) names[e.address] = unique(name, e.address);
+    }
+    for (const formats::psp::Import& i : formats::psp::imports(program->elf)) {
+        if (i.variable) continue;
+        const std::string name = i.name.empty() ? std::format("{}_{:08X}", clean(i.library), i.nid) : i.name;
+        if (!names.contains(i.stub)) names[i.stub] = unique(name, i.stub);
+    }
+    l.values = {{"pbp", Num{program->kind == formats::psp::Kind::Pbp}}, {"prx", Num{program->prx()}}, {"title", program->title}};
+    l.image = std::move(program->file);
+    l.contained.elf_offset = program->elf_offset;
+    l.contained.mips_elf = std::make_shared<const formats::mips_elf::Elf>(std::move(program->elf));
+    l.contained.hardware = [](std::uint32_t a) { return formats::psp::hardware_name(a); };
+    return l;
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -475,6 +528,8 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"neogeo_sound", load_neogeo_sound_file},
     {"nes", load_nes},
     {"pce", pce_code::load_pce_file},
+    {"ps2", load_ps2},
+    {"psp", load_psp},
     {"ps1", load_ps1},
     {"sms", load_sms},
     {"snes", snes_code::load_snes_file},

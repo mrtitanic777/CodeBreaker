@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_allegrex.hpp"
 #include "formats/read.hpp"
-#include "platforms/psp.hpp"
 #include "formats/psp.hpp"
-#include "source/psp_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -122,7 +122,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::psp_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("psp", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -154,7 +154,7 @@ vl::ImageLaneSpec psp_lane_spec() {
 void register_psp_lane() {
     register_lane({
         .name = "psp",
-        .platform = platforms::psp,
+        .platform = [] { return platforms::described("psp"); },
         .probe = [](const stdfs::path& p) { return formats::psp::probe(p); },
         .make_spec = psp_lane_spec,
     });

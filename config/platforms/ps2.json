@@ -1,0 +1,24 @@
+{
+  "platform": "ps2",
+  "title": "PlayStation 2",
+  "description": "An R5900 ELF, or the BOOT2 program of a disc image: the whole file in file order, each part at the address it is loaded at (source/mips_elf_writer), the Emotion Engine's hardware registers by name, RAM (any of the kernel's views) and the scratchpad as var_ equates.",
+  "machine": {
+    "family": "mips",
+    "container": "ELF (.elf), disc image (.iso)",
+    "cpu": {"language": "MIPS:LE:64:default", "bits": 64, "endian": "little", "decoder": "mips",
+            "registers": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"], "stack": "SP"},
+    "results": ["V0", "V1", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "GP", "SP", "FP", "RA", "HI", "LO", "F0"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as (ps2sdk / pspsdk)"
+  },
+  "shape": "executable",
+  "executable": {
+    "container": "mips-elf",
+    "cpu": "r5900",
+    "variant": "r5900",
+    "description": "{disc?PlayStation 2 disc: the BOOT2 program (Emotion Engine R5900)|PlayStation 2 ELF (Emotion Engine R5900)}",
+    "extension": ".elf",
+    "views": [{"from": "0x80000000", "to": "0xC0000000", "mask": "0x1FFFFFFF"}, {"from": "0x20000000", "to": "0x22000000", "minus": "0x20000000"}],
+    "ram": [["0x00000000", "0x02000000"]],
+    "ram_virtual": [["0x70000000", "0x70004000"]]
+  }
+}

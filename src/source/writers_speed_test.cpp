@@ -17,7 +17,6 @@
 #include "source/console_writer.hpp"
 #include "source/nds_writer.hpp"
 #include "source/ps3_writer.hpp"
-#include "source/psp_writer.hpp"
 #include "source/vita_writer.hpp"
 #include "source/switch_writer.hpp"
 
@@ -47,7 +46,7 @@ CB_TEST("source.writers_speed.files", [] {
         const std::string ext = text::lower(fs::to_text(file.extension()));
         const auto start = std::chrono::steady_clock::now();
         image_writer::Written w;
-        if (ext == ".pbp" || ext == ".prx") w = psp_writer::reconstruct(file, folder);
+        if (ext == ".pbp" || ext == ".prx") w = console_writer::reconstruct("psp", file, folder);
         else if (ext == ".3dsx") w = n3ds_writer::reconstruct(file, folder);
         else if (ext == ".nro" || ext == ".nso") w = switch_writer::reconstruct(file, folder);
         else if (ext == ".dol" || ext == ".rpx" || ext == ".rpl") w = gekko_writer::reconstruct(file, folder);

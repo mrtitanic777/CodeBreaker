@@ -196,3 +196,5 @@ tests only what it changes.
 - 2026-11-28: item 7: GBA on `vectored`'s ARM processor, byte-identical on its 41 homebrew programs. Next: Neo Geo, Virtual Boy.
 - 2026-11-28: item 7: Neo Geo (P-ROM and M-ROM) on `vectored` and `z80-block`, byte-identical on its homebrew programs. Next: Virtual Boy.
 - 2026-11-28: item 7: the Virtual Boy on `vectored`'s V810 processor, byte-identical on its 4 homebrew programs. Next: the `executable` shape.
+- 2026-11-28: item 7: the `executable` shape, PS2 and PSP on it (container `mips-elf`), byte-identical on their 15 homebrew programs.
+  Next: PS3, Vita, 3DS, DS, Switch, GameCube/Wii, Saturn, Dreamcast.

@@ -8,8 +8,6 @@
 #include "source/gekko_writer.hpp"
 #include "source/n3ds_writer.hpp"
 #include "source/nds_writer.hpp"
-#include "source/ps2_writer.hpp"
-#include "source/psp_writer.hpp"
 #include "source/saturn_writer.hpp"
 #include "source/sega32x_writer.hpp"
 #include "source/vita_writer.hpp"
@@ -153,9 +151,9 @@ CB_TEST("source.writers.homebrew.nintendo_ds", [] {
 
 // (the PlayStation 2's R5900 and the PSP's Allegrex: what the MIPS description lacks stays as its bits with the decoder's text)
 CB_TEST("source.writers.homebrew.playstation_2_and_portable", [] {
-    rebuild("ps2/neutrino/ee_core.elf", 100, ps2_writer::reconstruct);
-    rebuild("psp/psplink/usbgdb.prx", 70, psp_writer::reconstruct);
-    rebuild("psp/psplink/siokprintf.prx", 10, psp_writer::reconstruct);
+    rebuild("ps2/neutrino/ee_core.elf", 100, console("ps2"));
+    rebuild("psp/psplink/usbgdb.prx", 70, console("psp"));
+    rebuild("psp/psplink/siokprintf.prx", 10, console("psp"));
 });
 
 // (the Vita's Thumb-2)

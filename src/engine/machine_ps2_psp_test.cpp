@@ -17,8 +17,7 @@
 #include "formats/ps2.hpp"
 #include "formats/psp.hpp"
 #include "source/isa_mips_le.hpp"
-#include "source/ps2_writer.hpp"
-#include "source/psp_writer.hpp"
+#include "source/console_writer.hpp"
 
 using namespace cb;
 namespace stdfs = std::filesystem;
@@ -239,12 +238,12 @@ bool contains(const std::string& text, std::string_view part) { return text.find
 
 }  // namespace
 
-CB_TEST("source.ps2_writer.the_source_builds_back_into_the_elf", [] {
+CB_TEST("source.console_writer.ps2.the_source_builds_back_into_the_elf", [] {
     fs::ScopedTempDir dir("cb_ps2_writer");
     fs::write_file(dir.path() / "game.elf", ps2_elf());
     CB_CHECK(formats::ps2::probe(dir.path() / "game.elf"));
     CB_CHECK(!formats::psp::probe(dir.path() / "game.elf"));
-    const source::image_writer::Written r = source::ps2_writer::reconstruct(dir.path() / "game.elf", dir.path() / "out");
+    const source::image_writer::Written r = source::console_writer::reconstruct("ps2", dir.path() / "game.elf", dir.path() / "out");
     CB_CHECK(r.notes.empty());
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
@@ -259,7 +258,7 @@ CB_TEST("source.ps2_writer.the_source_builds_back_into_the_elf", [] {
     CB_CHECK(contains(text, "beql $a0, $zero, done") || contains(text, "beql $a0, $zero, L_"));
 });
 
-CB_TEST("source.psp_writer.the_source_builds_back_into_the_module_and_the_package", [] {
+CB_TEST("source.console_writer.psp.the_source_builds_back_into_the_module_and_the_package", [] {
     fs::ScopedTempDir dir("cb_psp_writer");
     const Bytes elf = psp_elf();
     fs::write_file(dir.path() / "game.elf", elf);
@@ -274,7 +273,7 @@ CB_TEST("source.psp_writer.the_source_builds_back_into_the_module_and_the_packag
     CB_CHECK_EQ(imports[0].name, std::string("sceDisplaySetMode"));
     CB_CHECK_EQ(imports[0].library, std::string("sceDisplay"));
     for (const char* file : {"game.elf", "EBOOT.PBP"}) {
-        const source::image_writer::Written r = source::psp_writer::reconstruct(dir.path() / file, dir.path() / (std::string("out_") + file));
+        const source::image_writer::Written r = source::console_writer::reconstruct("psp", dir.path() / file, dir.path() / (std::string("out_") + file));
         CB_CHECK(r.notes.empty());
         CB_CHECK(r.linked);
         CB_CHECK(r.same);

@@ -21,6 +21,7 @@ src/source/console_mips.cpp                   the vectored shape's MIPS processo
 src/source/console_arm.cpp                    the vectored shape's ARM7TDMI processor (ARM and Thumb states, literal pools)
 src/source/console_risc.hpp                   what the RISC processors write alike: data rows, a header's fields
 src/source/console_v810.cpp                   the vectored shape's V810 processor (movhi pairs as hi()/lo())
+src/source/console_executable.cpp             the executable shape (a loader-format executable, written by its container's engine)
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -35,7 +36,7 @@ one way a program sits in memory, shared by every platform that sits that way:
 | `cart6502` | a 6502 cartridge's banks, each seen in a window; its last bytes data; the chips' read and write names | Atari 2600, 5200, 7800 |
 | `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx, PC Engine, SNES |
 | `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar, Neo Geo, PlayStation, Nintendo 64, Game Boy Advance, Virtual Boy |
-| `executable` (later) | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections | PS2, PSP, PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
+| `executable` | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections, written by its container's engine | PS2, PSP; next PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
 
 The CPU is not the shape: a shape is written once over `image_writer`'s `CodeModel` / `Listing` and given the processor through its
 source module (`z80_source`, `described_source` with a `processors::Processor`, `m6502_source`, `risc_source`).
@@ -140,3 +141,8 @@ engine.
   Byte-identical on the two P-ROMs and the M-ROM here and the Neo Geo golden.
 - 2026-11-28: the vectored shape's V810 processor (console_v810.cpp): the Virtual Boy, its header's fields relative to the loader's
   `header_at`. Byte-identical on its 4 homebrew programs. The `vectored` row of the table is done; next the `executable` shape.
+- 2026-11-28: `executable` shape (console_executable.cpp): the container's engine (`mips-elf`: source/mips_elf_writer) given the console's
+  facts as data -- the processor and its variant, what the program is (a template), the rebuilt file's extension, the views of memory
+  (`views`: a mask or an offset to the physical address) and the RAM ranges; the loader gives the ELF, the names the container gives
+  (a PSP module's exports and imports' stubs) and the format's hardware table. The PlayStation 2 and the PSP moved; byte-identical on
+  their 15 homebrew programs.

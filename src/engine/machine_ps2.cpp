@@ -13,9 +13,9 @@
 #include "engine/machine_lanes.hpp"
 #include "emulate/cpu/pcode_cpu_ee.hpp"
 #include "formats/read.hpp"
-#include "platforms/ps2.hpp"
 #include "formats/ps2.hpp"
-#include "source/ps2_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -120,7 +120,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::ps2_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("ps2", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -152,7 +152,7 @@ vl::ImageLaneSpec ps2_lane_spec() {
 void register_ps2_lane() {
     register_lane({
         .name = "ps2",
-        .platform = platforms::ps2,
+        .platform = [] { return platforms::described("ps2"); },
         .probe = [](const stdfs::path& p) { return formats::ps2::probe(p); },
         .make_spec = ps2_lane_spec,
     });
