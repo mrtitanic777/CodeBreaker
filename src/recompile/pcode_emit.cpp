@@ -311,6 +311,7 @@ private:
         if (op.op == Op::Branch) return "goto " + label() + ";";
         if (op.op == Op::CBranch) return std::format("if ({}) goto {};", in(1), label());
         if (op.op == Op::Store) {
+            if (const std::string space = reader_.space_name(static_cast<unsigned>(op.inputs.at(0).offset)); space != "ram") throw Decline{"a store to the space " + space};
             const std::string address = in(1);
             const sl::Varnode& v = op.inputs.at(2);
             const std::string value = in(2);
@@ -337,6 +338,12 @@ private:
             case Op::Copy: e = in(0); break;
             case Op::Load: {
                 const std::string address = in(1);
+                const std::string space = reader_.space_name(static_cast<unsigned>(op.inputs.at(0).offset));
+                if (space == "const") {   // (a constant space's cell holds its own address: what a subtable exports as *[const])
+                    e = std::format("{}({})", T, address);
+                    break;
+                }
+                if (space != "ram") throw Decline{"a load from the space " + space};
                 switch (os) {
                     case 1: case 2: case 4: case 8: e = std::format("{}(PPC_LOAD_U{}({}))", T, 8 * os, address); break;
                     case 16: e = std::format("(((__uint128_t)PPC_LOAD_U64({0}) << 64) | PPC_LOAD_U64({0} + 8))", address); break;
@@ -548,13 +555,21 @@ Translator::Translator(const std::filesystem::path& sla) : reader_(sla, {}) {
     add("xer_so", Kind::XerBit, 0, "so");
     add("xer_ov", Kind::XerBit, 0, "ov");
     add("xer_ca", Kind::XerBit, 0, "ca");
-    // written by the description, kept by no context: their writes are dropped, a read declines the instruction
+    // written by the description, kept by no context: their writes are dropped, a read declines the instruction. (The FPSCR's
+    // controls -- the enables, NI and the rounding mode, fp_ve to fp_drn -- are not among them: the context keeps them in ctx.fpscr, so
+    // an instruction that writes them, mtfsf, mtfsfi, mtfsb0/1, is XenonRecomp's.)
     for (const char* name : {"xer_ov32", "xer_ca32", "r2Save", "fp_fx", "fp_fex", "fp_vx", "fp_ox", "fp_ux", "fp_zx", "fp_xx", "fp_vxsnan", "fp_vxisi", "fp_vxidi",
                              "fp_vxzdz", "fp_vximz", "fp_vxvc", "fp_fr", "fp_fi", "fp_c", "fp_cc0", "fp_cc1", "fp_cc2", "fp_cc3", "fp_reserve1", "fp_vxsoft", "fp_vxsqrt",
-                             "fp_vxcvi", "fp_ve", "fp_oe", "fp_ue", "fp_ze", "fp_xe", "fp_ni", "fp_rn0", "fp_rn1", "fp_drn"}) {
+                             "fp_vxcvi"}) {
         add(name, Kind::Dropped, 0);
     }
     std::sort(cells_.begin(), cells_.end(), [](const Cell& a, const Cell& b) { return a.offset < b.offset; });
+}
+
+std::string Translator::mnemonic(std::uint32_t address, std::uint32_t word) const {
+    const std::uint8_t bytes[4] = {static_cast<std::uint8_t>(word >> 24), static_cast<std::uint8_t>(word >> 16), static_cast<std::uint8_t>(word >> 8),
+                                   static_cast<std::uint8_t>(word)};
+    return reader_.at(bytes, sizeof bytes, address, address).mnemonic;
 }
 
 const Translator::Cell* Translator::cell_at(std::uint64_t offset) const {

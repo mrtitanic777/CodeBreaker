@@ -50,6 +50,9 @@ public:
     std::optional<Statements> instruction(std::uint32_t address, std::uint32_t word, std::uint32_t next_word, const Names& names,
                                           std::string* why = nullptr) const;
 
+    // The instruction's mnemonic as the description prints it ("addi", "stwu" ...; empty for no instruction).
+    std::string mnemonic(std::uint32_t address, std::uint32_t word) const;
+
     // A place of the register space the context has (or knows to drop).
     struct Cell {
         enum class Kind : std::uint8_t { Gpr, Fpr, Vector, Cr, Ctr, Lr, XerBit, Dropped };

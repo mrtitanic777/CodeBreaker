@@ -100,8 +100,8 @@ buttons.
 
 0. **Baseline.** From this branch, recompile, build and check Minecraft and Up. Record frames and stops, and a digest of every
    generated file (`src/ppc/*`) as the golden for the byte-identical steps.
-   - Tetris: its package is no longer on this machine. `C:/Nexia360/Games` holds 18 entries, Tetris Splash is not among them,
-     and the settings have no `regress_tetris`. It needs Logan to put it back before any step can be proven on it.
+   - Tetris: its package is no longer on this machine. Logan's answer (2026-11-28): skip Tetris; every step is proven on Minecraft
+     and Up.
 1. **The p-code of one instruction, as data.** The core gains a lift API: the p-code ops of the instruction at an address,
    with their varnodes (space, offset, size) and the user operations' names. The emulator already decodes this internally, but
    nothing outside the core can see it. Proof: unit tests on known PowerPC words (`add`, `lwz`, `stwu`, `bl`, `bctr`, a VMX128
@@ -126,7 +126,9 @@ buttons.
    Tetris once it is back) `--check` as in the baseline, and frame times no worse than the baseline's. Then a person plays each
    title. Where a title differs, the debugging method in docs/RECOMPILE.md applies: swap function bodies between the two
    translations in bulk and bisect.
-4. **The new translator is the default. XenonRecomp's translator, XenonAnalyse and binutils' decoder retire.** Before this:
+4. **The new translator is the default. XenonRecomp's translator, XenonAnalyse and binutils' decoder retire.** Logan's answer
+   (2026-11-28): retire XenonRecomp once the Dashboard, Minecraft and Up build and run identically on the new recompiler, then
+   delete it. So before this:
    `switches` finds every table XenonAnalyse added on the three titles, and `xenon-recompile` is served by the new translator,
    with the Dashboard's 7 modules giving the same `ppc/` as the step 3 build. Proof: the step 3 checks, run again, and Logan's
    go-ahead for the Dashboard. The memory note *xenonrecomp-one-home* says to delete nothing of the Dashboard's line until it
@@ -167,3 +169,26 @@ buttons.
   instructions written by the translator and 1,608 by XenonRecomp (1,279 of them `blr`). On the way: the instruction tests had not
   built since a rename reached the harness's generated `main.cpp` (`xenon_log::println`), and a build failure was reported as a
   skip, so the test passed with nothing checked; both fixed, and the XenonRecomp-only run is 0 mismatches again.
+- 2026-11-28: step 3: `recompile-project --translator pcode` (off by default). Minecraft and Up recompile with the p-code translator
+  writing about 78% of their instructions. The rest stay XenonRecomp's: branches, calls, returns, VMX128's arithmetic, FPSCR
+  reads and writes, MSR, the reservation, fused multiply-adds and MMIO stores. Both build, present 6,600 frames in a 120 s headless
+  check with no stop, and exit 0, as in the baseline:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 1,609,893 | 445,124 | 6,600, no stop |
+  | Up | 1,642,332 | 442,529 | 6,600, no stop |
+
+  Without the switch both titles' generated files are byte-identical to the step 0 digests, and both present 6,600 frames.
+  Running the titles found three faults that the instruction tests did not:
+  - `XENON_EXACT`'s `divw` wrote 0 into D before dividing, so `divw r9,r9,r11` divided 0. Minecraft quit with an XAPI error.
+  - `rldimi`'s mask is a value its subtable exports as a cell of the constant space, and the translator read that cell from guest
+    memory. Minecraft took a null read.
+  - `mtfsf` and the other writes of the FPSCR's controls (the enables, NI, the rounding mode) were dropped, although the context
+    keeps them in `ctx.fpscr`. They are declined now.
+
+  The two faults Minecraft hit were found with `CB_PCODE_ONLY` / `CB_PCODE_EXCEPT` (the mnemonics the translator may write),
+  halving the 193 mnemonics it wrote, about 8 runs each. Each fault now has a test: `ppc_tests/own/instr_divide.s` (a destination
+  that is an operand) and `instr_rldimi.s`, and `recompile.pcode_emit.*` (5 tests). The instruction tests stay at 0 mismatches,
+  2,771 instructions by p-code. Not measured: frame times (the check caps at 60 frames a second). Also open: a person playing
+  each title on the p-code translation.

@@ -74,6 +74,18 @@ CB_TEST("recompile.pcode_emit.what_the_recompiler_writes_itself_is_declined", []
     CB_CHECK_EQ(pe_declined(0xFC22193A), std::string("a fused multiply-add"));                                       // fmadd f1,f2,f4,f3
     CB_CHECK_EQ(pe_declined(0x7FFFFB78), std::string("db16cyc"));
     CB_CHECK(pe_declined(0x7C651828) != std::string("(written)"));                                                   // lwarx r3,r5,r3: the reservation
+    CB_CHECK(pe_declined(0xFDFE0D8E) != std::string("(written)"));   // mtfsf 0xFF,f1: the FPSCR's controls are ctx.fpscr's (the rounding mode)
+    CB_CHECK(pe_declined(0xFC00010C) != std::string("(written)"));   // mtfsfi cr0,0
+});
+
+// rldimi's mask is a value its subtable computes and exports as a cell of the constant space: the cell's value is its address, never a
+// load from guest memory (Minecraft read address 0xFFFFFFFF00000000 for rldimi r24,r9,32,0 until this was so).
+CB_TEST("recompile.pcode_emit.a_cell_of_the_constant_space_is_its_address", [] {
+    const std::optional<std::string> t = pe_text(0x7938000E);   // rldimi r24,r9,32,0
+    CB_CHECK(t.has_value());
+    if (!t) return;
+    CB_CHECK(t->find("PPC_LOAD") == std::string::npos);
+    CB_CHECK(t->find("0xFFFFFFFF00000000") != std::string::npos);
 });
 
 CB_TEST("recompile.pcode_emit.a_store_before_eieio_is_left_to_the_recompiler", [] {

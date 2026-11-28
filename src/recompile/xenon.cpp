@@ -119,17 +119,32 @@ xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::sh
     return [inner = std::move(inner), sla = std::move(sla), counted = std::move(counted)](const std::vector<std::string>& args) {
         *counted = {};
         const pcode_emit::Translator translator(sla);
+        const auto listed = [](const char* name) {
+            std::set<std::string, std::less<>> out;
+            if (const std::optional<std::string> v = fs::get_env(name)) {
+                for (const std::string_view m : text::split(*v, ',')) {
+                    if (!text::trim(m).empty()) out.emplace(text::trim(m));
+                }
+            }
+            return out;
+        };
+        const std::set<std::string, std::less<>> only = listed("CB_PCODE_ONLY"), except = listed("CB_PCODE_EXCEPT");
         xenon_translate::set([&](std::uint32_t address, std::uint32_t word, std::uint32_t next_word, const xenon_translate::Names& names)
                                  -> std::optional<xenon_translate::Translated> {
             const pcode_emit::Names ours{names.r, names.f, names.v, names.cr, names.ctr, names.xer, names.lr};
             std::string why;
-            std::optional<pcode_emit::Statements> s = translator.instruction(address, word, next_word, ours, &why);
+            const std::string mnemonic = translator.mnemonic(address, word);
+            std::optional<pcode_emit::Statements> s;
+            if (!only.empty() && !only.contains(mnemonic)) why = "not in CB_PCODE_ONLY";
+            else if (except.contains(mnemonic)) why = "in CB_PCODE_EXCEPT";
+            else s = translator.instruction(address, word, next_word, ours, &why);
             if (!s) {
                 ++counted->declined;
                 ++counted->why[why];
                 return std::nullopt;
             }
             ++counted->translated;
+            ++counted->written[mnemonic];
             return xenon_translate::Translated{std::move(s->text), s->fpu};
         });
         struct Unset {

@@ -10,6 +10,7 @@
 #include "core/regex.hpp"
 #include "core/text.hpp"
 #include "recompile/gpu.hpp"
+#include "recompile/xenon.hpp"
 
 namespace cb::recompile::project {
 
@@ -21,7 +22,7 @@ namespace stdfs = std::filesystem;
 
 constexpr std::string_view kUsage =
     "codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]] "
-    "[--runtime x360|rexglue] [-j N]\n"
+    "[--runtime x360|rexglue] [--translator xenonrecomp|pcode] [-j N]\n"
     "\n"
     "x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (recompile/x360project), in\n"
     "the binary's project folder (Converted/<name>/) unless -o names another. <title> is a .xex, or\n"
@@ -29,7 +30,9 @@ constexpr std::string_view kUsage =
     "folder of its files, or a folder holding one; its files are unpacked into the project's assets/.\n"
     "--build builds the program (4 compiles at a time); --check builds it and runs it headless for\n"
     "the seconds given (default 60), reporting frames presented, unimplemented imports and any stop.\n"
-    "rexglue: this module's own translation on the rexglue kernel core (scaffold; needs -o).";
+    "rexglue: this module's own translation on the rexglue kernel core (scaffold; needs -o).\n"
+    "--translator pcode: every instruction the p-code translator can write (recompile/pcode_emit, from the\n"
+    "Xenon's SLEIGH description) is its, the rest XenonRecomp's (docs/RECOMPILER.md, step 3).";
 
 
 // A template with its @markers@ filled in.
@@ -515,8 +518,16 @@ int run_command(const CommandHooks& hooks, std::span<const std::string> args, co
             say(std::format("{}: {}", found->name, n ? std::format("{} files unpacked from {}", n, found->source) : "files unpacked before"));
         }
         const std::string scaffold_name = name && !name->empty() ? *name : proj ? proj->name() : std::string();
+        const std::string translator = flag_value(args, "--translator").value_or("xenonrecomp");
+        if (translator != "xenonrecomp" && translator != "pcode") {
+            say("--translator: xenonrecomp or pcode");
+            return 2;
+        }
+        x360project::Recompiler recompiler = hooks.recompiler;
+        const auto counted = std::make_shared<xenon::Translation>();
+        if (translator == "pcode") recompiler.recomp = xenon::with_pcode(recompiler.recomp, hooks.pcode_sla, counted);
         const x360project::ScaffoldInfo info = x360project::scaffold(
-            hooks.recompiler, xex_path, folder, scaffold_name, files ? std::optional<stdfs::path>(fs::from_text(*files)) : std::nullopt);
+            recompiler, xex_path, folder, scaffold_name, files ? std::optional<stdfs::path>(fs::from_text(*files)) : std::nullopt);
         if (proj) {
             proj->record("recompile-project", {proj->root() / "CMakeLists.txt", proj->src(), proj->assets(), proj->reports() / "recompile.log"},
                          std::format("{} functions recompiled to C++ (XenonRecomp) for CodeBreaker's Xbox 360 runtime.\n"
@@ -524,6 +535,16 @@ int run_command(const CommandHooks& hooks, std::span<const std::string> args, co
                                      info.functions, info.name, info.name));
         }
         say(std::format("{}: {} functions, {} switch tables, {} unimplemented instructions", info.name, info.functions, info.switches, info.unimplemented));
+        if (translator == "pcode") {
+            say(std::format("  p-code wrote {} instructions, XenonRecomp {}", counted->translated, counted->declined));
+            std::vector<std::pair<std::size_t, std::string>> why;
+            for (const auto& [reason, n] : counted->why) why.emplace_back(n, reason);
+            std::sort(why.rbegin(), why.rend());
+            for (std::size_t k = 0; k < why.size() && k < 12; ++k) say(std::format("    declined {}: {}", why[k].first, why[k].second));
+            std::string written;
+            for (const auto& [m, n] : counted->written) written += std::format("{} {}\n", m, n);
+            fs::write_text(info.dir / "reports" / "pcode_written.txt", written);   // (every mnemonic it wrote, counted)
+        }
         if (info.modules != 0) say(std::format("  {} other modules translated and linked (reports/modules.txt)", info.modules));
         say("  -> " + native_text(info.dir));
         say("  build: " + native_text(info.dir / ("Build-" + info.name + ".bat")));

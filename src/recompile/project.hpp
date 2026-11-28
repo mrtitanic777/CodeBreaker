@@ -169,10 +169,11 @@ struct CommandHooks {
     x360project::Recompiler recompiler;                                  // for the x360 runtime
     std::function<std::optional<TitleFiles>(const std::filesystem::path&)> locate_title;
     store::converted::Store store;                                        // the projects' folders
+    std::filesystem::path pcode_sla;                                      // the Xenon's description, for --translator pcode
 };
 
 // `codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]]
-// [--runtime x360|rexglue] [-j N]`. `say` gets each line of output. -> the exit code (2: usage, 1: no title found or the
+// [--runtime x360|rexglue] [--translator xenonrecomp|pcode] [-j N]`. `say` gets each line of output. -> the exit code (2: usage, 1: no title found or the
 // build failed). UsageError for a flag without its value.
 int run_command(const CommandHooks& hooks, std::span<const std::string> args, const std::function<void(std::string_view)>& say);
 

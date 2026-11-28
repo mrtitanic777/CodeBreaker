@@ -65,10 +65,12 @@ struct Translation {
     std::size_t translated = 0;                      // instructions it wrote
     std::size_t declined = 0;                        // instructions XenonRecomp wrote
     std::map<std::string, std::size_t> why;          // the reasons it declined, counted
+    std::map<std::string, std::size_t> written;      // the mnemonics it wrote, counted
 };
 
 // `inner` (XenonRecomp) with the p-code translator on the description `sla` asked first for every instruction; what it did goes
-// into `counted` (reset at each run).
+// into `counted` (reset at each run). For finding a translation that differs, CB_PCODE_ONLY (mnemonics, comma-separated) lets it
+// write only those and CB_PCODE_EXCEPT all but those; XenonRecomp writes the rest.
 xenon_engine::Tool with_pcode(xenon_engine::Tool inner, stdfs::path sla, std::shared_ptr<Translation> counted);
 
 // The environment vcvars64.bat sets up (the linker, the SDK's headers and libraries).

@@ -1032,10 +1032,11 @@
 {
 @ifdef XENON_EXACT
 	# (the quotient zero-extended; a zero divisor or the most negative word over -1 gives 0)
-	D = 0;
+	local quotient:4 = 0;
 	if ((B:4 == 0) || ((B:4 == -1) && (A:4 == 0x80000000))) goto <done>;
-	D = zext(A:4 s/ B:4);
+	quotient = A:4 s/ B:4;
 	<done>
+	D = zext(quotient);
 @elif defined(BIT_64)
 	D = sext(A:4 s/ B:4);
 @else
@@ -1049,10 +1050,11 @@
 @ifdef BIT_64
 	divOverflow(A:4,B:4);
 @ifdef XENON_EXACT
-	D = 0;
+	local quotient:4 = 0;
 	if ((B:4 == 0) || ((B:4 == -1) && (A:4 == 0x80000000))) goto <done>;
-	D = zext(A:4 s/ B:4);
+	quotient = A:4 s/ B:4;
 	<done>
+	D = zext(quotient);
 @else
 	D = sext(A:4 s/ B:4);
 @endif
