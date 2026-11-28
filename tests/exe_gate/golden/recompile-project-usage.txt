@@ -1,6 +1,6 @@
 exit: 2
 --- stdout
-codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]] [--runtime x360|rexglue] [-j N]
+codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]] [--runtime x360|rexglue] [--translator xenonrecomp|pcode] [-j N]
 
 x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (recompile/x360project), in
 the binary's project folder (Converted/<name>/) unless -o names another. <title> is a .xex, or
@@ -9,5 +9,7 @@ folder of its files, or a folder holding one; its files are unpacked into the pr
 --build builds the program (4 compiles at a time); --check builds it and runs it headless for
 the seconds given (default 60), reporting frames presented, unimplemented imports and any stop.
 rexglue: this module's own translation on the rexglue kernel core (scaffold; needs -o).
+--translator pcode: every instruction the p-code translator can write (recompile/pcode_emit, from the
+Xenon's SLEIGH description) is its, the rest XenonRecomp's (docs/RECOMPILER.md, step 3).
 --- files
 --- stderr (not compared)
