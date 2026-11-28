@@ -6,6 +6,8 @@
 //
 // --readers prints, per file, one digest of what the pe, ne and le readers answer (run it before and after a reader changes);
 // --readers-text prints the digest's lines themselves (to see what differs).
+// --gen compares, per file, every generated reader (formats/gen, docs/FORMAT_CODEGEN.md) with the engine reading the same
+// description, and ends with a table per format.
 //
 // A folder is searched recursively; a table of agreement per format ends the output. Exit code 0 when every file agrees.
 #include <cstdio>
@@ -19,6 +21,7 @@
 #include "core/fs.hpp"
 #include "formats/format_compare.hpp"
 #include "formats/format_engine.hpp"
+#include "formats/format_gen_check.hpp"
 
 namespace fsys = std::filesystem;
 using namespace cb;
@@ -45,7 +48,7 @@ struct Tally {
 
 int main(int argc, char** argv) {
     fsys::path formats_dir;
-    bool tree = false, quiet = false, readers = false, readers_text = false;
+    bool tree = false, quiet = false, readers = false, readers_text = false, generated = false;
     std::size_t max_elements = 6;
     std::vector<fsys::path> inputs;
     for (int i = 1; i < argc; ++i) {
@@ -55,6 +58,7 @@ int main(int argc, char** argv) {
         else if (a == "--quiet") quiet = true;
         else if (a == "--readers") readers = true;
         else if (a == "--readers-text") readers = readers_text = true;
+        else if (a == "--gen") generated = true;
         else if (a == "--max" && i + 1 < argc) max_elements = static_cast<std::size_t>(std::stoul(argv[++i]));
         else inputs.emplace_back(a);
     }
@@ -85,12 +89,26 @@ int main(int argc, char** argv) {
 
         std::map<std::string, Tally> tally;
         std::size_t failures = 0;
+        std::map<std::string, std::pair<std::size_t, std::size_t>> gen_tally;   // format: files agreeing, disagreeing
         for (const fsys::path& file : files) {
             Bytes data;
             try {
                 data = fs::read_file(file);
             } catch (const Error& e) {
                 std::fprintf(stderr, "%s: %s\n", fs::to_text(file).c_str(), e.what());
+                continue;
+            }
+            if (generated) {   // the generated readers against the engine
+                for (const eng::GenComparison& c : eng::compare_generated(reg, data)) {
+                    auto& [agree, disagree] = gen_tally[c.format];
+                    if (c.agree) {
+                        ++agree;
+                        continue;
+                    }
+                    ++disagree, ++failures;
+                    std::printf("%s: %s: engine %s, generated %s%s%s\n", fs::to_text(file).c_str(), c.format.c_str(), c.engine.c_str(), c.generated.c_str(),
+                                c.difference.empty() ? "" : " -- ", c.difference.c_str());
+                }
                 continue;
             }
             if (readers) {   // the digest of what the readers answer: the same before and after they moved onto the engine
@@ -135,6 +153,11 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (generated) {
+            std::printf("\n%-10s %8s %9s\n", "format", "agree", "disagree");
+            for (const auto& [format, t] : gen_tally) std::printf("%-10s %8zu %9zu\n", format.c_str(), t.first, t.second);
+            return failures == 0 ? 0 : 1;
+        }
         std::printf("\n%-6s %7s %7s %7s %7s %9s %10s %10s %14s\n", "format", "files", "reader", "engine", "agree", "disagree", "round-trip", "values", "bytes described");
         for (const auto& [format, t] : tally)
             std::printf("%-6s %7zu %7zu %7zu %7zu %9zu %5zu/%-4zu %10zu %7llu/%llu\n", format.c_str(), t.files, t.reader, t.engine, t.agree, t.disagree,
