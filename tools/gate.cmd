@@ -1,6 +1,7 @@
 @echo off
-rem gate.cmd [--full] [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
-rem codebreaker.exe, and the window's screenshot step (the window rendered in every state (including the open Language list and a translating run) and both themes, each a non-empty PNG of the size asked).
+rem gate.cmd [--full] [--no-build] [--exe PATH] [--no-unit] [--no-app] [--no-sdk] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
+rem codebreaker.exe, the window's screenshot step (the window rendered in every state (including the open Language list and a translating run) and both themes, each a non-empty PNG of the size asked),
+rem and the SDK's step (tools\sdk\samples.cmd: cbsdk.dll installed, the samples built against the installed SDK and run against their goldens).
 rem
 rem     tools\gate.cmd                 build src and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
 rem                                    (8 jobs) what the change can affect since the last passing gate (cb_exe_gate --changed: gate_changed.hpp):
@@ -11,6 +12,7 @@ rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else build\codebreaker.exe, which this script builds and installs)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone) and the screenshots
 rem     tools\gate.cmd --no-app        skip the screenshot step (--update, --filter likewise skip it)
+rem     tools\gate.cmd --no-sdk        skip the SDK's step (--update, --filter likewise skip it)
 rem     tools\gate.cmd --filter lz32   only the cases whose name contains this (no unit tests)
 rem     tools\gate.cmd --update ...    record goldens of the selected cases from the program's current output (review the diff before committing)
 rem
@@ -22,6 +24,7 @@ set B=%ROOT%\build
 set BUILD=1
 set UNIT=1
 set APP=1
+set SDK=1
 set EXE=
 set PASS=
 set APP_RC=0
@@ -32,9 +35,10 @@ if "%1"=="--full" (set CHANGED=& shift& goto args)
 if "%1"=="--no-build" (set BUILD=0& shift& goto args)
 if "%1"=="--no-unit" (set UNIT=0& shift& goto args)
 if "%1"=="--no-app" (set APP=0& shift& goto args)
+if "%1"=="--no-sdk" (set SDK=0& shift& goto args)
 if "%1"=="--exe" (set EXE=%2& shift& shift& goto args)
-if "%1"=="--update" (set UNIT=0& set APP=0& set PASS=%PASS% --update& shift& goto args)
-if "%1"=="--filter" (set UNIT=0& set APP=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
+if "%1"=="--update" (set UNIT=0& set APP=0& set SDK=0& set PASS=%PASS% --update& shift& goto args)
+if "%1"=="--filter" (set UNIT=0& set APP=0& set SDK=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
 set PASS=%PASS% %1
 shift
 goto args
@@ -64,6 +68,8 @@ if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\cb_tests.exe" %CHANGED%
 set RC=%ERRORLEVEL%
 if "%APP%"=="1" call :app
 if %APP_RC% NEQ 0 set RC=%APP_RC%
+if "%SDK%"=="1" call "%HERE%sdk\samples.cmd"
+if "%SDK%"=="1" if errorlevel 1 set RC=1
 exit /b %RC%
 
 rem The window (codebreaker.exe app) rendered to a PNG in each state and theme: the file must exist, be a PNG, not be empty, and be the size asked.

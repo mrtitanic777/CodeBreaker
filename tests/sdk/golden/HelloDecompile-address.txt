@@ -1,0 +1,29 @@
+// ordinal_13 at 10:0124 in lzexpand.dll (NE, x86-16)
+int2 __cdecl16far sub_10_0124(int2 param_1,int2 param_2)
+
+{
+  xunknown1 xVar1;
+  int2 iVar2;
+  uint2 uVar3;
+  int4 iVar4;
+  xunknown2 xVar5;
+  
+  iVar4 = sub_10_004E(param_1,param_2);
+  xVar5 = (xunknown2)((uint4)iVar4 >> 0x10);
+  if (iVar4 == 0) {
+    xVar5 = 0x76;
+  }
+  else {
+    iVar2 = KERNEL_90(iVar4);
+    if (2 < iVar2) {
+      iVar2 = KERNEL_90(iVar4);
+      xVar1 = *MK_FP(xVar5,(xunknown1 *)((int2)iVar4 + iVar2 + -1));
+      iVar2 = KERNEL_90(iVar4);
+      *MK_FP(xVar5,(xunknown1 *)((int2)iVar4 + iVar2 + -1)) = 0x5f;
+      return CONCAT11((char)((uint2)iVar2 >> 8),xVar1);
+    }
+    xVar5 = 0x74;
+  }
+  uVar3 = KERNEL_89(xVar5);
+  return uVar3 & 0xff00;
+}

@@ -479,6 +479,10 @@ function(cb_copy_prebuilt_dlls target)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_LIBS} "$<TARGET_FILE_DIR:${target}>")
 endfunction()
 
+# The SDK (docs/SDK_DESIGN.md): include/cb implemented in src/sdk (the area cb_sdk), cbsdk.dll, its install layout and find_package config.
+cb_area(sdk)
+include("${CMAKE_CURRENT_LIST_DIR}/sdk/sdk.cmake")
+
 # ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
 # ctypes or LoadLibrary (the Python callers that remain). The same sources as cb_emulate's tracer, exported. It is
 # handed engines made by the caller's own Unicorn and so calls that DLL (tracer/libs.hpp use_libraries). Not built

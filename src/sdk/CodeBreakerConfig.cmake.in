@@ -1,0 +1,34 @@
+# CodeBreakerConfig.cmake -- the installed CodeBreaker SDK for find_package(CodeBreaker) (made by src/sdk/sdk.cmake).
+#
+#   find_package(CodeBreaker 0.1 REQUIRED)
+#   target_link_libraries(my_program PRIVATE CodeBreaker::cbsdk)
+#   codebreaker_runtime(my_program)          # optional: the debugger (and `cmake --build --target run`-style tools) find the DLL
+#
+# The layout beside this file: bin/ (cbsdk.dll, decompiler.exe and the engine libraries), include/cb, lib/ (the import library),
+# share/codebreaker (the data root cb_init finds by itself: the configuration and the processors' descriptions). A program run outside
+# the debugger finds cbsdk.dll on PATH (put CodeBreaker_BIN_DIR there) or copied beside it with the rest of bin/.
+get_filename_component(_cb_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+
+set(CodeBreaker_INCLUDE_DIRS "${_cb_prefix}/include")
+set(CodeBreaker_BIN_DIR "${_cb_prefix}/bin")
+set(CodeBreaker_DATA_DIR "${_cb_prefix}/share/codebreaker")
+
+if(NOT TARGET CodeBreaker::cbsdk)
+  add_library(CodeBreaker::cbsdk SHARED IMPORTED)
+  if(WIN32)
+    set_target_properties(CodeBreaker::cbsdk PROPERTIES
+      IMPORTED_LOCATION "${_cb_prefix}/bin/$<TARGET_FILE_NAME:cbsdk>"
+      IMPORTED_IMPLIB "${_cb_prefix}/lib/$<TARGET_LINKER_FILE_NAME:cbsdk>")
+  else()
+    set_target_properties(CodeBreaker::cbsdk PROPERTIES
+      IMPORTED_LOCATION "${_cb_prefix}/lib/$<TARGET_FILE_NAME:cbsdk>")
+  endif()
+  set_target_properties(CodeBreaker::cbsdk PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_cb_prefix}/include")
+endif()
+
+# The SDK's bin/ on the PATH of a target run from Visual Studio's debugger.
+function(codebreaker_runtime target)
+  set_property(TARGET ${target} PROPERTY VS_DEBUGGER_ENVIRONMENT "PATH=${CodeBreaker_BIN_DIR};$ENV{PATH}")
+endfunction()
+
+unset(_cb_prefix)

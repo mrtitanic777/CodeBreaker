@@ -1,0 +1,62 @@
+file      lz32.dll
+format    PE (pe)
+arch      x86-32
+size      5632 bytes
+base      0xbfea0000
+entry     0xbfea1000
+
+sections (6)
+  .text      0xbfea1000     size     1130  file     1536 at 0x000400  code
+  .data      0xbfea2000     size      138  file      512 at 0x000a00
+  .idata     0xbfea3000     size      382  file      512 at 0x000c00
+  .edata     0xbfea4000     size      289  file      512 at 0x000e00
+  .rsrc      0xbfea5000     size      916  file     1024 at 0x001000
+  .reloc     0xbfea6000     size      138  file      512 at 0x001400
+
+imports (17 from 1 modules)
+  KERNEL32.dll   #21
+  KERNEL32.dll   SMapLS_IP_EBP_12
+  KERNEL32.dll   #89
+  KERNEL32.dll   SMapLS_IP_EBP_8
+  KERNEL32.dll   SUnMapLS_IP_EBP_12
+  KERNEL32.dll   #41
+  KERNEL32.dll   #90
+  KERNEL32.dll   SUnMapLS_IP_EBP_8
+  KERNEL32.dll   #17
+  KERNEL32.dll   DisableThreadLibraryCalls
+  KERNEL32.dll   #22
+  KERNEL32.dll   #20
+  KERNEL32.dll   OpenFile
+  KERNEL32.dll   GlobalFree
+  KERNEL32.dll   GetShortPathNameA
+  KERNEL32.dll   SetLastError
+  KERNEL32.dll   GlobalAlloc
+
+exports (12)
+     1  0xbfea11aa     LZCopy
+     2  0xbfea1238     LZOpenFileA
+     3  0xbfea1201     LZInit
+     4  0xbfea13d4     LZSeek
+     5  0xbfea1363     LZRead
+     6  0xbfea11dd     LZClose
+     7  0xbfea1123     LZStart
+     8  0xbfea1330     CopyLZFile
+     9  0xbfea115b     LZDone
+    10  0xbfea12d8     GetExpandedNameA
+    11  0xbfea11a1     LZOpenFileW
+    12  0xbfea1198     GetExpandedNameW
+
+functions (13)
+  0xbfea1000     entry
+  0xbfea1123     LZStart
+  0xbfea115b     LZDone
+  0xbfea1198     GetExpandedNameW
+  0xbfea11a1     LZOpenFileW
+  0xbfea11aa     LZCopy
+  0xbfea11dd     LZClose
+  0xbfea1201     LZInit
+  0xbfea1238     LZOpenFileA
+  0xbfea12d8     GetExpandedNameA
+  0xbfea1330     CopyLZFile
+  0xbfea1363     LZRead
+  0xbfea13d4     LZSeek

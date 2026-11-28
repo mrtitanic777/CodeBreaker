@@ -1,0 +1,108 @@
+file      lzexpand.dll
+format    NE (ne)
+arch      x86-16
+size      9936 bytes
+base      0x0
+entry     (none)
+
+sections (12)
+  seg 1      1:0000         size      456  file      456 at 0x000300  code
+  seg 2      2:0000         size     1882  file     1882 at 0x0007e0  code
+  seg 3      3:0000         size       24  file       24 at 0x000fd0  code
+  seg 4      4:0000         size      504  file      504 at 0x000ff0  code
+  seg 5      5:0000         size      402  file      402 at 0x001220  code
+  seg 6      6:0000         size      268  file      268 at 0x0013c0  code
+  seg 7      7:0000         size      752  file      752 at 0x0014e0  code
+  seg 8      8:0000         size      584  file      584 at 0x001840  code
+  seg 9      9:0000         size      826  file      826 at 0x001ab0  code
+  seg 10     10:0000        size      760  file      760 at 0x001e10  code
+  seg 11     11:0000        size      882  file      882 at 0x002140  code
+  seg 12     12:0000        size      644  file      644 at 0x000520
+
+imports (22 from 2 modules)
+  KERNEL         #1
+  KERNEL         #15
+  KERNEL         #17
+  KERNEL         #18
+  KERNEL         #19
+  KERNEL         #74
+  KERNEL         #81
+  KERNEL         #82
+  KERNEL         #83
+  KERNEL         #84
+  KERNEL         #85
+  KERNEL         #86
+  KERNEL         #88
+  KERNEL         #89
+  KERNEL         #90
+  KERNEL         #102
+  KERNEL         #115
+  KERNEL         #137
+  KERNEL         #178
+  USER           #430
+  USER           #435
+  USER           #436
+
+exports (30)
+     1  4:015c         LZCOPY
+     2  2:0262         LZOPENFILE
+     3  2:0000         LZINIT
+     4  2:02ee         LZSEEK
+     5  2:03d6         LZREAD
+     6  2:06f0         LZCLOSE
+     7  4:0000         LZSTART
+     8  4:013a         COPYLZFILE
+     9  4:00a6         LZDONE
+    10  2:01bc         GETEXPANDEDNAME
+    11  3:0000         WEP
+    12  11:035e        ___EXPORTEDSTUB
+    13  10:0124        (by ordinal)
+    14  10:01b6        (by ordinal)
+    15  8:01a2         (by ordinal)
+    16  8:00aa         (by ordinal)
+    17  5:0052         (by ordinal)
+    18  5:0000         (by ordinal)
+    19  5:00d0         (by ordinal)
+    20  9:0000         (by ordinal)
+    21  7:00f4         (by ordinal)
+    22  1:00b2         (by ordinal)
+    23  1:0000         (by ordinal)
+    24  1:0116         (by ordinal)
+    25  10:02a8        (by ordinal)
+    26  6:00a4         (by ordinal)
+    27  6:0000         (by ordinal)
+    28  11:0042        (by ordinal)
+    29  11:0010        (by ordinal)
+    30  11:034e        (by ordinal)
+
+functions (30)
+  1:0000         ordinal_23
+  1:00b2         ordinal_22
+  1:0116         ordinal_24
+  2:0000         LZINIT
+  2:01bc         GETEXPANDEDNAME
+  2:0262         LZOPENFILE
+  2:02ee         LZSEEK
+  2:03d6         LZREAD
+  2:06f0         LZCLOSE
+  3:0000         WEP
+  4:0000         LZSTART
+  4:00a6         LZDONE
+  4:013a         COPYLZFILE
+  4:015c         LZCOPY
+  5:0000         ordinal_18
+  5:0052         ordinal_17
+  5:00d0         ordinal_19
+  6:0000         ordinal_27
+  6:00a4         ordinal_26
+  7:00f4         ordinal_21
+  8:00aa         ordinal_16
+  8:01a2         ordinal_15
+  9:0000         ordinal_20
+  10:0124        ordinal_13
+  10:01b6        ordinal_14
+  10:02a8        ordinal_25
+  11:0010        ordinal_29
+  11:0042        ordinal_28
+  11:034e        ordinal_30
+  11:035e        ___EXPORTEDSTUB

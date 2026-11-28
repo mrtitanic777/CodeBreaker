@@ -206,3 +206,23 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
   (ee3aa0c5a), regress a command in app (bbfe805c5), and the one emulator's CPU adapters (engine/pcode_*, 110 files) are
   emulate/cpu (cb::emulate::pcode_*). Every include of product code now points down; app.layers keeps it so. Next: phase 1's
   public faces (one public header set per area).
+- 2026-11-28: phase 2, the first cut. `include/cb`: `cb.h` (version, `cb_init`/`cb_shutdown`, `cb_status`, `cb_last_error`, `cb_string`, the
+  handles), `binary.h` (open any file: format, processor, sections, imports, exports, the functions it names), `disasm.h` (the one
+  disassembler: every processor of source/processors through its SLEIGH description, with length, flow and target), `decompile.h` (a
+  function or a module as C), `version.h`, and `cb.hpp` (RAII, `std::string_view`, `std::span`, exceptions). 35 functions, all `cb_<noun>_<verb>`.
+  `src/sdk` implements them over formats/inspect, source/processors (its pooled SLEIGH readers, now `read_instructions`), decompile/decompiler
+  and engine/lane_kit, and includes nothing else of the engines (test sdk.includes.only_public_faces). Two pieces moved to their one owner on
+  the way: the pooled instruction read (source/processors, which read_described now lists from) and cutting one function out of a module's C
+  (decompile::decompiler::function_in, which the MCP server's decompile_function now calls too). `cbsdk.dll` + `cbsdk.lib` export only the
+  `cb_*` names the headers declare (the export list is read from the headers at configure time; ELF: a version script) and carry the version
+  (resource, `cb_version`). `cmake --install build --component sdk --prefix P`: `bin/` (cbsdk.dll, decompiler.exe, the engine DLLs),
+  `include/cb`, `lib/`, `lib/cmake/CodeBreaker` (`find_package(CodeBreaker 0.1)`, target `CodeBreaker::cbsdk`), `share/codebreaker` (the data
+  root cb_init finds beside bin/: config/ and the processors' compiled descriptions), `share/doc/codebreaker/reference`. Samples 1-3
+  (HelloBinary in C, HelloDecompile in C++, DisasmAnyCpu in C) on `samples/framework`, built against the installed SDK and run against
+  `tests/sdk/golden` in the gate (`tools\sdk\samples.cmd`, the gate's SDK step). The reference (`docs/sdk/reference`: an index, a page per
+  header and per function, with the samples and tests that call it) is made from the headers' comments by `tools\sdk\reference.cmd`; the
+  tests keep it current, keep every function called by a sample or a test, and keep every name of `tools/sdk/abi_baseline.txt` declared.
+  Speed: `cb_sdk_bench` times each call against the one it wraps. Left for later: `cb_function_verdict` (with judge.h, phase 3: it needs the
+  function store and a profile), `cb_cancel` and progress (no sample needs them yet), `cb_binary_open` from bytes (the readers take a path),
+  resources and symbols in binary.h, functions found by analysis (the list is the entry point and the exports), a Debug cbsdk, the Linux
+  build of cbsdk (written, not built).
