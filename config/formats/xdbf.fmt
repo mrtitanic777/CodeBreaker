@@ -1,0 +1,28 @@
+# xdbf.fmt -- an Xbox 360 database (XDBF: a GPD profile or an SPA title file; formats/xbox/xdbf), big-endian: the header,
+# the entry table (namespace, id, where the payload is in the heap after the tables, its length) and the payloads.
+# A table longer than the file is not read (the reader says the file is cut short); a payload outside the file is not in
+# the tree (the reader's error too).
+
+format xdbf
+endian be
+
+struct File {
+    magic           : bytes(4) == "XDBF"
+    version         : u32
+    entry_table_len : u32        # the capacity of the entry table (entries used: entry_count)
+    entry_count     : u32
+    free_table_len  : u32
+    free_count      : u32
+    let heap = 0x18 + entry_table_len * 0x12 + free_table_len * 8
+    entries : Entry[entry_count] if 0x18 + entry_count * 0x12 <= $size
+}
+
+enum Namespace { achievement = 1, image = 2, setting = 3, title = 4, string = 5, avatar_award = 6, avatar_award_1 = 7 }
+
+struct Entry {
+    ns      : u16 as Namespace
+    id      : u64
+    offset  : u32                # in the heap
+    length  : u32
+    payload @ heap + offset : bytes(length) if length != 0 try
+}
