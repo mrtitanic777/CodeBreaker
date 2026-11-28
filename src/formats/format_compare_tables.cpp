@@ -19,6 +19,7 @@
 #include "formats/ne.hpp"
 #include "formats/nes.hpp"
 #include "formats/nro.hpp"
+#include "formats/omf.hpp"
 #include "formats/orbis.hpp"
 #include "formats/pe.hpp"
 #include "formats/ppc_elf.hpp"
@@ -1031,6 +1032,45 @@ void digest_nro(Digest& g, ByteView data) {
     for (const nro::Symbol& s : p.imports) g.line("  import {} {} {} {} {}", s.name, s.value, s.size, s.info, s.section);
 }
 
+void digest_omf_object(Digest& g, ByteView data) {
+    const omf::Object o = omf::read(data);
+    for (const auto& [name, bytes] : o.segments) g.line("  seg {} {} {:x}", name, bytes.size(), dig_hash(bytes));
+    for (const omf::SegDef& s : o.segdefs) g.line("  segdef {} {} {} {}", s.name, s.class_name, s.length, s.alignment);
+    for (const auto& [name, members] : o.groups) {
+        g.line("  group {}", name);
+        for (const std::string& m : members) g.line("    {}", m);
+    }
+    for (const omf::Public& p : o.publics) g.line("  public {} {} {}", p.name, p.segment ? *p.segment : "-", p.offset);
+    for (const std::string& e : o.externals) g.line("  extern {}", e);
+    for (const auto& [name, c] : o.communals) g.line("  communal {} {} {}", name, c.size, c.far_pointer);
+    for (const omf::Fixup& f : o.fixups)
+        g.line("  fixup {} {} {} {} {} {} {} {}", f.segment, f.at, static_cast<int>(f.kind), static_cast<int>(f.target.kind), f.target.name ? *f.target.name : "-",
+               dig_opt(f.target.number), f.displacement, f.location);
+    for (const auto& [name, c] : o.combine) g.line("  combine {} {}", name, c);
+    if (o.start) g.line("  start {} {}", o.start->segment, o.start->offset);
+    for (const auto& [name, n] : o.filled) g.line("  filled {} {}", name, n);
+}
+
+void digest_omf(Digest& g, ByteView data) {
+    g.line("omf aout {}", omf::is_aout(data));
+    for (const omf::Record& r : omf::records(data)) g.line("  record {} {} {:x}", r.type, r.payload.size(), dig_hash(Bytes(r.payload.begin(), r.payload.end())));
+    g.guard("omf_library", [&] {
+        for (const auto& [name, module] : omf::library(data)) {
+            g.line("module {} {}", name, module.size());
+            g.guard("omf_read", [&] { digest_omf_object(g, module); });
+        }
+    });
+    g.guard("omf_publics", [&] {
+        for (const std::string& p : omf::publics(data)) g.line("  pub {}", p);
+    });
+    g.guard("omf_externs", [&] {
+        for (const std::string& e : omf::externs(data)) g.line("  ext {}", e);
+    });
+    const omf::Walk w = omf::walk(data);
+    for (const omf::RawRecord& r : w.records) g.line("  walk {} {} {}", r.offset, r.type, r.payload.size());
+    if (w.error) g.line("  walk error");
+}
+
 }  // namespace
 
 std::string reader_digest(ByteView data, const std::filesystem::path& file, bool text) {
@@ -1052,6 +1092,7 @@ std::string reader_digest(ByteView data, const std::filesystem::path& file, bool
     const bool switch_file = (data.size() >= 0x14 && data[0x10] == 0x4E && data[0x11] == 0x52 && data[0x12] == 0x4F && data[0x13] == 0x30) ||
                              (data.size() >= 4 && ((data[0] == 0x4E && data[1] == 0x53 && data[2] == 0x4F && data[3] == 0x30) || (data[0] == 0x7F && data[1] == 0x45)));
     if (switch_file) g.guard("nro", [&] { digest_nro(g, data); });
+    if (data.size() >= 1 && (data[0] == 0x80 || data[0] == 0xF0)) g.guard("omf", [&] { digest_omf(g, data); });
     if (text) return g.text;
     std::uint64_t hash = 1469598103934665603ull;
     for (char c : g.text) hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
