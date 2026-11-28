@@ -2,7 +2,7 @@
 //
 //     knowledge::Store kb(knowledge::Store::default_path(state), knowledge::DataFolders::from_environment());
 //     store::KnowledgeBodies bodies(kb);
-//     symbols::names::Namer::Services services{.bodies = &bodies};     // the `names` command's shared names
+//     naming::names::Namer::Services services{.bodies = &bodies};     // the `names` command's shared names
 //
 // The knowledge base keeps a row per body per module (`body`) and a name given to a body (`body_name`); this is the interface the name
 // readers use, over them. A module's path is not kept (the knowledge base knows a module by its hash, its name and its kind).

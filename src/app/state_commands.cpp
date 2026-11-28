@@ -27,7 +27,7 @@
 #include "store/functions.hpp"
 #include "symbols/driver_services.hpp"
 #include "symbols/environment.hpp"
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 #include "ui/mcp_server.hpp"
 #include "ui/mcp_wiring.hpp"
 #include "ui/progress_store.hpp"
@@ -121,7 +121,7 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
         symbols::Environment names_environment{corpus.get(), &config};
         names_environment.evidence = [facts](const stdfs::path& module) { return facts->evidence(module); };
         names_environment.decompile = [facts](const stdfs::path& module, std::span<const std::uint64_t> starts) { return facts->decompile(module, starts); };
-        out.push_back(symbols::names::command(names_environment));
+        out.push_back(naming::names::command(names_environment));
     }
 
     // knowledge [platform [kind [key]]]

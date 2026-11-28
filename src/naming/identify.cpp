@@ -1,5 +1,5 @@
-// symbols/identify.cpp -- see identify.hpp.
-#include "symbols/identify.hpp"
+// naming/identify.cpp -- see identify.hpp.
+#include "naming/identify.hpp"
 
 #include <algorithm>
 #include <format>
@@ -19,11 +19,11 @@
 #include "formats/pe_functions.hpp"
 #include "formats/powerpc_image.hpp"
 #include "platforms/decoder.hpp"
-#include "symbols/workbench.hpp"
+#include "naming/workbench.hpp"
 
-namespace cb::symbols::identify {
+namespace cb::naming::identify {
 
-namespace rl = runtime_library;
+namespace rl = symbols::runtime_library;
 namespace describe = decompile::describe;
 namespace pef = formats::pe_functions;
 
@@ -203,7 +203,7 @@ std::vector<rl::LearnSource> learn_sources(const std::vector<std::string>& argum
     return out;
 }
 
-int learn_command(const Environment& environment, const std::vector<std::string>& arguments, bool add) {
+int learn_command(const symbols::Environment& environment, const std::vector<std::string>& arguments, bool add) {
     platforms::DecoderSet decoders;
     const std::vector<rl::LearnSource> sources = learn_sources(arguments);
     rl::Learned learned = rl::learn(sources, decoders, [](const std::string& line) { cb::out("{}\n", line); });
@@ -223,7 +223,7 @@ int learn_command(const Environment& environment, const std::vector<std::string>
 
 }  // namespace
 
-cli::Command command(const Environment& environment) {
+cli::Command command(const symbols::Environment& environment) {
     return cli::Command{
         "identify",
         "which of a module's functions came with the compiler (the C runtime, MFC), and which compiler built it",
@@ -262,4 +262,4 @@ cli::Command command(const Environment& environment) {
         {}, {}, {}};
 }
 
-}  // namespace cb::symbols::identify
+}  // namespace cb::naming::identify

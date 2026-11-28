@@ -1,4 +1,4 @@
-// symbols/identify.hpp -- `identify <module>`: which of a file's functions came with the compiler, and which compiler.
+// naming/identify.hpp -- `identify <module>`: which of a file's functions came with the compiler, and which compiler.
 //
 //     codebreaker identify comctl32.dll                                       its runtime-library functions and its compiler
 //     codebreaker identify --learn "Visual C++ 2.0 C runtime=C:\msvc20\lib\libc.lib" ...    make the signatures from libraries
@@ -30,18 +30,18 @@ namespace cb::formats::pe {
 class Image;
 }
 
-namespace cb::symbols::identify {
+namespace cb::naming::identify {
 
 // A function's address: a 32-bit module's as it is, a 16-bit one's as core16::address lays it out.
 using Address = std::uint64_t;
-using Found = std::map<Address, runtime_library::Identified>;
+using Found = std::map<Address, symbols::runtime_library::Identified>;
 
 class Identifier {
 public:
     struct Sources {
         const base::Corpus& corpus;
         knowledge::Knowledge& knowledge;        // the signatures
-        const ordinals::Ordinals& ordinals;     // the names of a runtime-library module's numbered exports
+        const symbols::ordinals::Ordinals& ordinals;     // the names of a runtime-library module's numbered exports
     };
 
     explicit Identifier(Sources sources);
@@ -54,8 +54,8 @@ public:
     Found identify(const std::filesystem::path& module);
 
     // What built a module, from what the file itself says (see runtime_library::describe_compiler); `found` is identify()'s answer for it.
-    runtime_library::CompilerInfo compiler(const std::filesystem::path& module, const Found& found);
-    runtime_library::CompilerInfo compiler(const std::filesystem::path& module) { return compiler(module, identify(module)); }
+    symbols::runtime_library::CompilerInfo compiler(const std::filesystem::path& module, const Found& found);
+    symbols::runtime_library::CompilerInfo compiler(const std::filesystem::path& module) { return compiler(module, identify(module)); }
 
     // How many functions the module has (the starts the decompiler would describe); 0 for a file of another kind.
     std::size_t function_count(const std::filesystem::path& module);
@@ -68,7 +68,7 @@ private:
 // The functions of an x64 module (`stem`: its file name in capitals, without the extension) that belong to a runtime library: the
 // functions it states (its entry, exports and .pdata) matched against the x64 signatures, each credited to the toolset most of the
 // module's matches are in.
-Found identify_x64(const formats::pe::Image& image, std::string stem, const runtime_library::SignatureTable& table);
+Found identify_x64(const formats::pe::Image& image, std::string stem, const symbols::runtime_library::SignatureTable& table);
 
 using Environment = symbols::Environment;
 
@@ -76,4 +76,4 @@ using Environment = symbols::Environment;
 // when it runs.
 cli::Command command(const Environment& environment);
 
-}  // namespace cb::symbols::identify
+}  // namespace cb::naming::identify

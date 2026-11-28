@@ -72,7 +72,7 @@
 #include "symbols/driver_services.hpp"
 #include "app/analyze_command.hpp"
 #include "app/versions_command.hpp"
-#include "symbols/identify.hpp"
+#include "naming/identify.hpp"
 #include "symbols/program_commands.hpp"
 #include "ui/mcp_command.hpp"
 #include "ui/report.hpp"
@@ -403,7 +403,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // identify <module> | --learn WHAT=FILE...: a module's runtime-library functions and its compiler (it opens the knowledge base and
     // the corpus's modules when it runs)
-    table.set(symbols::identify::command(symbols::Environment{corpus.get(), &config}));
+    table.set(naming::identify::command(symbols::Environment{corpus.get(), &config}));
 
     // versions <old> <new> ...: two builds compared function by function, work carried from the old build's results
     table.set(app::versions_command::command(app::versions_command::Environment{config, corpus}));

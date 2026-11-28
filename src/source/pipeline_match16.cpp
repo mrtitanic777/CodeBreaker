@@ -28,7 +28,7 @@
 #include "symbols/libraries/omf.hpp"
 #include "symbols/libraries/package.hpp"
 #include "symbols/wine16.hpp"
-#include "symbols/workbench.hpp"
+#include "naming/workbench.hpp"
 #include "verify/lanes/win16.hpp"
 #include "source/match_bytes.hpp"
 #include "store/verdicts.hpp"
@@ -327,7 +327,7 @@ Match16Run run_match16(World& world, const stdfs::path& module, const Match16Opt
 
     // the header: a C function imported by number is not pascal; the dialect Microsoft C takes; the pascal order of the arguments; the data segment's
     // variables
-    symbols::Workbench bench(symbols::Environment{&world.corpus(), &config});
+    naming::Workbench bench(symbols::Environment{&world.corpus(), &config});
     const m6::OrdinalName ordinal_name = [&bench](std::string_view module_name, std::uint32_t ordinal) { return bench.ordinals().name(module_name, ordinal); };
     const std::optional<std::string> sdk_text = m6::windows_h(tools);
     const std::string source_header = m6::cdecl_imports(m.header, sdk_text.value_or(""), ordinal_name);

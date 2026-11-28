@@ -1,5 +1,5 @@
 // cb-unity: alone (file-local helpers named for this module)
-#include "symbols/debug_build.hpp"
+#include "naming/debug_build.hpp"
 
 #include <algorithm>
 #include <array>
@@ -15,7 +15,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 
-namespace cb::symbols::debug_build {
+namespace cb::naming::debug_build {
 
 namespace segment = source::ne_asm::segment;
 namespace ne = formats::ne;
@@ -258,4 +258,4 @@ int main(const Environment& env, std::span<const std::string> args) {
     return program.run(line);
 }
 
-}  // namespace cb::symbols::debug_build
+}  // namespace cb::naming::debug_build

@@ -1,4 +1,4 @@
-// symbols/proposals.hpp -- proposed names for the functions nothing names: from rules that need no judgement, and from an assistant that reads
+// naming/proposals.hpp -- proposed names for the functions nothing names: from rules that need no judgement, and from an assistant that reads
 // a function's evidence packet -- kept apart from names until a person accepts them.
 //
 //     names lz32.dll --propose               the rules run over the module; what they find is stored as proposals
@@ -39,11 +39,11 @@
 #include "core/cli.hpp"
 #include "store/proposals.hpp"
 #include "symbols/evidence.hpp"
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 
-namespace cb::symbols::proposals {
+namespace cb::naming::proposals {
 
-using Address = names::Address;
+using Address = symbols::names::Address;
 
 // The percent below which a proposal is shown for a person to accept rather than accepted with the rest (`--accept all`).
 inline constexpr int kReviewBelow = 80;
@@ -52,18 +52,18 @@ inline constexpr int kReviewBelow = 80;
 bool valid_name(std::string_view name);
 
 // ---- the rules (each over one function's evidence; the module, key and body are the caller's to fill in) --------------------------------------
-std::optional<store::Proposal> import_wrapper(const FunctionEvidence& evidence);
-std::optional<store::Proposal> string_reference(const FunctionEvidence& evidence);
+std::optional<store::Proposal> import_wrapper(const symbols::FunctionEvidence& evidence);
+std::optional<store::Proposal> string_reference(const symbols::FunctionEvidence& evidence);
 // A function that only passes its arguments on to one other function of the module, whose name is `target_name`: "<target>_thunk", 70%.
 // (No proposal for a target with no name of its own, or one that is itself a thunk.)
-std::optional<store::Proposal> function_forward(const FunctionEvidence& evidence, std::string_view target_name);
+std::optional<store::Proposal> function_forward(const symbols::FunctionEvidence& evidence, std::string_view target_name);
 // A function whose address the module hands to the Windows API to be called back is what the API calls that argument: `EnumWindowsProc`,
 // `ThreadProc`, a hook's `KeyboardProc`, a WNDCLASS's window procedure by its class (`<Class>WndProc`), a dialog's by its template
 // (`<Template>DlgProc`, `Dialog<id>Proc`). 75-85%. (No proposal when the places that hand it over disagree on what it is.)
-std::optional<store::Proposal> callback_role(const FunctionEvidence& evidence);
+std::optional<store::Proposal> callback_role(const symbols::FunctionEvidence& evidence);
 // The most confident of the rules' proposals (the first, on a tie). `target_name`: what the function it forwards to is called ("" when unknown).
 // `basic`: only the first two rules (import-wrapper, string-reference), as phase 1 had them (the baseline the measurement compares with).
-std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name = {}, bool basic = false);
+std::optional<store::Proposal> by_rules(const symbols::FunctionEvidence& evidence, std::string_view target_name = {}, bool basic = false);
 
 // How well the rules name functions whose names are known: the functions a module's own export table, ordinal table or debug symbols name are
 // hidden from the rules (their evidence goes in, their name stays out) and what the rules say is compared with the truth.
@@ -88,7 +88,7 @@ public:
         store::ProposalStore& store;
         const base::Corpus& corpus;
         // The evidence of every function of a module (analyze/function_evidence).
-        std::function<std::vector<FunctionEvidence>(const std::filesystem::path&)> evidence;
+        std::function<std::vector<symbols::FunctionEvidence>(const std::filesystem::path&)> evidence;
         // The decompiled C of the functions at the addresses, by address (a packet carries it with --c); none given: packets have no C.
         std::function<std::map<Address, std::string>(const std::filesystem::path&, std::span<const Address>)> decompile = {};
     };
@@ -124,4 +124,4 @@ private:
     std::shared_ptr<Impl> impl_;
 };
 
-}  // namespace cb::symbols::proposals
+}  // namespace cb::naming::proposals

@@ -31,7 +31,7 @@ const std::vector<std::vector<std::string_view>>& layers() {
         {"core", "base"},
         {"formats", "platforms", "l2", "symbols", "store", "knowledge", "jobs"},
         {"decompile", "emulate", "analyze", "invert", "exact", "coverage", "compare"},
-        {"translate", "source", "build", "dotnet", "java", "xna", "recompile", "port", "verify"},
+        {"translate", "source", "build", "naming", "dotnet", "java", "xna", "recompile", "port", "verify"},
         {"engine"},
         {"app", "ui", "sdk"},
     };

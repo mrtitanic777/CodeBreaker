@@ -7,7 +7,7 @@
 //
 // The .MAP is read by debug_build::parse_map (by lines); the tier is an enum and the estimates are
 // keyed by (segment, offset); the modules are opened by the caller; the diff has no closing zero-size block (nothing reads it).
-#include "symbols/debug_build_estimate.hpp"
+#include "naming/debug_build_estimate.hpp"
 
 #include <format>
 #include <sstream>
@@ -17,8 +17,8 @@
 #include "core/testing.hpp"
 #include "core/text.hpp"
 
-namespace est = cb::symbols::debug_build_estimate;
-namespace db = cb::symbols::debug_build;
+namespace est = cb::naming::debug_build_estimate;
+namespace db = cb::naming::debug_build;
 namespace sg = cb::source::ne_asm::segment;
 namespace fx = cb::source::ne_asm::fixups;
 namespace ne = cb::formats::ne;
@@ -73,7 +73,7 @@ const est::SegmentNames kDebugNames = {{0x0, "DbgInit"}, {0x90, "DbgNinety"}, {0
 
 }  // namespace
 
-CB_TEST("symbols.debug_build_estimate.tiers_have_their_names", [] {
+CB_TEST("naming.debug_build_estimate.tiers_have_their_names", [] {
     CB_CHECK_EQ(est::tier_name(est::Tier::Exact), "EXACT");
     CB_CHECK_EQ(est::tier_name(est::Tier::High), "HIGH");
     CB_CHECK_EQ(est::tier_name(est::Tier::Aligned), "ALIGNED");
@@ -83,7 +83,7 @@ CB_TEST("symbols.debug_build_estimate.tiers_have_their_names", [] {
     for (const est::Tier t : {est::Tier::Probable, est::Tier::Guess}) CB_CHECK(!est::is_confident(t));
 });
 
-CB_TEST("symbols.debug_build_estimate.the_same_code_is_exact_in_every_gap", [] {
+CB_TEST("naming.debug_build_estimate.the_same_code_is_exact_in_every_gap", [] {
     const ne::Module m = lz_module();
     const Rows a = rows_of("scenario_a.rows"), b = rows_of("scenario_b.rows");
     const sg::Seg retail = segment_with(m, 1, a, b), debug = segment_with(m, 1, a, b);
@@ -99,7 +99,7 @@ CB_TEST("symbols.debug_build_estimate.the_same_code_is_exact_in_every_gap", [] {
     }
 });
 
-CB_TEST("symbols.debug_build_estimate.another_constant_is_high_not_exact", [] {
+CB_TEST("naming.debug_build_estimate.another_constant_is_high_not_exact", [] {
     const ne::Module m = lz_module();
     const Rows a = rows_of("scenario_a.rows"), b = rows_of("scenario_b.rows");
     Rows other = a;
@@ -115,7 +115,7 @@ CB_TEST("symbols.debug_build_estimate.another_constant_is_high_not_exact", [] {
     CB_CHECK(got.at(0xC0).tier == est::Tier::Exact);
 });
 
-CB_TEST("symbols.debug_build_estimate.what_is_left_in_equal_numbers_is_paired_by_position", [] {
+CB_TEST("naming.debug_build_estimate.what_is_left_in_equal_numbers_is_paired_by_position", [] {
     const ne::Module m = lz_module();
     const Rows a = rows_of("scenario_a.rows"), b = rows_of("scenario_b.rows");
     Rows other = a;
@@ -130,7 +130,7 @@ CB_TEST("symbols.debug_build_estimate.what_is_left_in_equal_numbers_is_paired_by
     CB_CHECK_EQ(got.at(0x90).name, "DbgNinety");
 });
 
-CB_TEST("symbols.debug_build_estimate.unequal_numbers_are_matched_by_likeness", [] {
+CB_TEST("naming.debug_build_estimate.unequal_numbers_are_matched_by_likeness", [] {
     const ne::Module m = lz_module();
     const Rows a = rows_of("scenario_a.rows"), b = rows_of("scenario_b.rows");
     const sg::Seg retail = segment_with(m, 1, a, b);
@@ -163,7 +163,7 @@ CB_TEST("symbols.debug_build_estimate.unequal_numbers_are_matched_by_likeness", 
     }
 });
 
-CB_TEST("symbols.debug_build_estimate.anchors_fix_the_gaps_and_are_never_overridden", [] {
+CB_TEST("naming.debug_build_estimate.anchors_fix_the_gaps_and_are_never_overridden", [] {
     const ne::Module m = lz_module();
     const Rows a = rows_of("scenario_a.rows"), b = rows_of("scenario_b.rows");
     const sg::Seg retail = segment_with(m, 1, a, b), debug = segment_with(m, 1, a, b);
@@ -180,7 +180,7 @@ CB_TEST("symbols.debug_build_estimate.anchors_fix_the_gaps_and_are_never_overrid
     CB_CHECK(est::align_segment(1, retail, debug, {}, {}).empty());
 });
 
-CB_TEST("symbols.debug_build_estimate.the_exports_score_the_tiers", [] {
+CB_TEST("naming.debug_build_estimate.the_exports_score_the_tiers", [] {
     // segment 2 of LZEXPAND exports LZINIT at its start; asked to predict the functions that have an export name, the estimate names it from
     // the debug build's map: the same name is a correct prediction
     const ne::Module m = lz_module();
@@ -195,7 +195,7 @@ CB_TEST("symbols.debug_build_estimate.the_exports_score_the_tiers", [] {
     CB_CHECK(!internal.contains(0x0));
 });
 
-CB_TEST("symbols.debug_build_estimate.a_module_is_estimated_from_a_debug_build_of_itself", [] {
+CB_TEST("naming.debug_build_estimate.a_module_is_estimated_from_a_debug_build_of_itself", [] {
     const ne::Module m = lz_module();
     const fx::Objdump dump = objdump_of(rows_of("scenario_a.rows"), rows_of("scenario_b.rows"));
     const std::string map = " 0001:0000  DbgInit\r\n 0001:0090  DbgNinety\r\n 0001:00A0  DbgAye\r\n 0001:00C0  DbgSea\r\n 0002:0000  LZINIT\r\n";
@@ -222,7 +222,7 @@ CB_TEST("symbols.debug_build_estimate.a_module_is_estimated_from_a_debug_build_o
     CB_CHECK_EQ(wrong.of(est::Tier::Probable).total, 0U);
 });
 
-CB_TEST("symbols.debug_build_estimate.confident_names_drop_what_would_clash", [] {
+CB_TEST("naming.debug_build_estimate.confident_names_drop_what_would_clash", [] {
     const ne::Module m = lz_module();
     const fx::Objdump dump = objdump_of(rows_of("scenario_a.rows"), rows_of("scenario_b.rows"));
     est::Estimates tiers;

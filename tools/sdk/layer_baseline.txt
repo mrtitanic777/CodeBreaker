@@ -16,17 +16,5 @@ source/pipeline_module.cpp -> engine/lane_registry.hpp
 source/pipeline_module.cpp -> engine/machine_lanes.hpp
 source/pipeline_world.hpp -> engine/lane_kit.hpp
 store/versions_ledger.hpp -> compare/versions.hpp
-symbols/debug_build.hpp -> source/ne_asm/fixups.hpp
-symbols/debug_build.hpp -> source/ne_asm/segment.hpp
-symbols/debug_build_estimate.hpp -> source/ne_asm/fixups.hpp
-symbols/debug_build_estimate.hpp -> source/ne_asm/segment.hpp
-symbols/identify.cpp -> analyze/dos_functions.hpp
-symbols/identify.cpp -> build/flat_thunk.hpp
-symbols/identify.cpp -> decompile/describe.hpp
-symbols/names.cpp -> analyze/dos_functions.hpp
-symbols/names.cpp -> decompile/describe.hpp
-symbols/ordinal_collect.hpp -> decompile/environment.hpp
-symbols/workbench.cpp -> decompile/environment.hpp
-symbols/workbench.cpp -> source/module_writer.hpp
 verify/lanes/powerpc.cpp -> engine/pcode_cpu_ppc.hpp
 verify/regress.cpp -> engine/lane_kit.hpp

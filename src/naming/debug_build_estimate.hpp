@@ -1,4 +1,4 @@
-// symbols/debug_build_estimate.hpp -- best-effort names for the internal functions a debug build's exact signature match leaves
+// naming/debug_build_estimate.hpp -- best-effort names for the internal functions a debug build's exact signature match leaves
 // anonymous.
 //
 // symbols/debug_build demands byte identity (no false positives, about 46 names for KRNL386). This trades certainty for coverage in graded,
@@ -40,9 +40,9 @@
 #include "formats/ne.hpp"
 #include "source/ne_asm/fixups.hpp"
 #include "source/ne_asm/segment.hpp"
-#include "symbols/debug_build.hpp"
+#include "naming/debug_build.hpp"
 
-namespace cb::symbols::debug_build_estimate {
+namespace cb::naming::debug_build_estimate {
 
 enum class Tier : std::uint8_t { Exact, High, Aligned, Probable, Guess };
 inline constexpr std::array<Tier, 5> kTiers = {Tier::Exact, Tier::High, Tier::Aligned, Tier::Probable, Tier::Guess};
@@ -103,4 +103,4 @@ struct Environment {
 // that are safe to apply are saved, and the tiers and their measured accuracy printed. Returns 0.
 int main(const Environment& env, std::span<const std::string> args);
 
-}  // namespace cb::symbols::debug_build_estimate
+}  // namespace cb::naming::debug_build_estimate

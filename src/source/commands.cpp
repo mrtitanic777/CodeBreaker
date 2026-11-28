@@ -46,8 +46,8 @@
 #include "source/vxd/owbuild.hpp"
 #include "source/vxd/run.hpp"
 #include "source/vxd/tree.hpp"
-#include "symbols/debug_build.hpp"
-#include "symbols/debug_build_estimate.hpp"
+#include "naming/debug_build.hpp"
+#include "naming/debug_build_estimate.hpp"
 #include "symbols/driver_services.hpp"
 #include "verify/lanes/driver.hpp"
 
@@ -228,8 +228,8 @@ struct Production::Impl {
         ne_asm::sweep::Environment sweep;
         ne_asm::recon::Environment recon;
         ne_asm::segdiff::Environment segdiff;
-        symbols::debug_build::Environment debug_names;
-        symbols::debug_build_estimate::Environment debug_estimate;
+        naming::debug_build::Environment debug_names;
+        naming::debug_build_estimate::Environment debug_estimate;
 
         static build::masm::Context masm_context(Impl& impl, Dos& dos) {
             return build::masm::Context{build::masm::Tools::from_config(impl.config), dos.executive, nullptr};
@@ -365,8 +365,8 @@ base::commands::ToolTable Production::ne_asm_tools() const {
     tools["datacode"] = [i](std::span<const std::string> a) { return ne_asm::datacode::main(*i->corpus, a); };
     tools["segment"] = [](std::span<const std::string> a) { return ne_asm::segment::main(a); };
     tools["fixups"] = [](std::span<const std::string> a) { return ne_asm::fixups::main(a); };
-    tools["debug-names"] = [i](std::span<const std::string> a) { return symbols::debug_build::main(i->ne_asm_world().debug_names, a); };
-    tools["debug-names-estimate"] = [i](std::span<const std::string> a) { return symbols::debug_build_estimate::main(i->ne_asm_world().debug_estimate, a); };
+    tools["debug-names"] = [i](std::span<const std::string> a) { return naming::debug_build::main(i->ne_asm_world().debug_names, a); };
+    tools["debug-names-estimate"] = [i](std::span<const std::string> a) { return naming::debug_build_estimate::main(i->ne_asm_world().debug_estimate, a); };
     tools["msvc152"] = [i](std::span<const std::string> a) -> int {
         const cli::Command command{
             "msvc152",

@@ -1,21 +1,21 @@
 // Tests of cb/symbols/proposals (the rules, over evidence made here) and of the proposal store over the knowledge base.
-#include "symbols/proposals.hpp"
+#include "naming/proposals.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "store/knowledge_proposals.hpp"
 
-namespace sp = cb::symbols::proposals;
+namespace sp = cb::naming::proposals;
 namespace stdfs = std::filesystem;
 using cb::symbols::CallEvidence;
 using cb::symbols::FunctionEvidence;
 
 namespace {
 
-FunctionEvidence forwarding(std::string import, bool purely) {
-    FunctionEvidence e;
+symbols::FunctionEvidence forwarding(std::string import, bool purely) {
+    symbols::FunctionEvidence e;
     e.address = 0x1000;
-    e.calls.push_back({CallEvidence::Kind::Import, std::move(import), 0, 1});
+    e.calls.push_back({symbols::CallEvidence::Kind::Import, std::move(import), 0, 1});
     e.forwards_to_import = true;
     e.forwards_purely = purely;
     return e;
@@ -23,7 +23,7 @@ FunctionEvidence forwarding(std::string import, bool purely) {
 
 }  // namespace
 
-CB_TEST("symbols.proposals.a_name_is_letters_digits_underscores_and_scopes", [] {
+CB_TEST("naming.proposals.a_name_is_letters_digits_underscores_and_scopes", [] {
     CB_CHECK(sp::valid_name("CloseHandle_thunk"));
     CB_CHECK(sp::valid_name("_lclose"));
     CB_CHECK(sp::valid_name("CWnd::OnPaint"));
@@ -34,7 +34,7 @@ CB_TEST("symbols.proposals.a_name_is_letters_digits_underscores_and_scopes", [] 
     CB_CHECK(!sp::valid_name("Trailing::"));
 });
 
-CB_TEST("symbols.proposals.a_function_that_only_wraps_an_import_is_named_for_it", [] {
+CB_TEST("naming.proposals.a_function_that_only_wraps_an_import_is_named_for_it", [] {
     const auto pure = sp::import_wrapper(forwarding("KERNEL32!CloseHandle", true));
     CB_CHECK(pure.has_value());
     CB_CHECK_EQ(pure->name, "CloseHandle_thunk");
@@ -49,12 +49,12 @@ CB_TEST("symbols.proposals.a_function_that_only_wraps_an_import_is_named_for_it"
     CB_CHECK_EQ(sp::import_wrapper(forwarding("KERNEL32!_Sleep@4", true))->name, "Sleep_thunk");
     // an import by number no table names gives no name, and neither does a function with more to it
     CB_CHECK(!sp::import_wrapper(forwarding("KERNEL32!#17", true)).has_value());
-    FunctionEvidence more = forwarding("KERNEL32!CloseHandle", true);
+    symbols::FunctionEvidence more = forwarding("KERNEL32!CloseHandle", true);
     more.forwards_to_import = false;
     CB_CHECK(!sp::import_wrapper(more).has_value());
 });
 
-CB_TEST("symbols.proposals.a_message_that_opens_with_a_name_names_the_function_that_uses_it", [] {
+CB_TEST("naming.proposals.a_message_that_opens_with_a_name_names_the_function_that_uses_it", [] {
     CB_CHECK_EQ(sp::name_in_message("LZInit: bad header"), "LZInit");
     CB_CHECK_EQ(sp::name_in_message("  [ReadBlock] short read"), "ReadBlock");
     CB_CHECK_EQ(sp::name_in_message("WriteBlock() failed"), "WriteBlock");
@@ -66,7 +66,7 @@ CB_TEST("symbols.proposals.a_message_that_opens_with_a_name_names_the_function_t
     CB_CHECK_EQ(sp::name_in_message("LZInit failed"), "");   // (could be the callee's name)
     CB_CHECK_EQ(sp::name_in_message("%s: %d"), "");
 
-    FunctionEvidence e;
+    symbols::FunctionEvidence e;
     e.strings = {"LZInit: bad header", "LZInit: no memory"};
     const auto p = sp::string_reference(e);
     CB_CHECK(p.has_value());
@@ -78,17 +78,17 @@ CB_TEST("symbols.proposals.a_message_that_opens_with_a_name_names_the_function_t
     CB_CHECK(!sp::string_reference(e).has_value());
     // a function that calls the import of that name is reporting on it
     e.strings = {"CloseHandle: failed"};
-    e.calls.push_back({CallEvidence::Kind::Import, "KERNEL32!CloseHandle", 0, 1});
+    e.calls.push_back({symbols::CallEvidence::Kind::Import, "KERNEL32!CloseHandle", 0, 1});
     CB_CHECK(!sp::string_reference(e).has_value());
 });
 
-CB_TEST("symbols.proposals.the_most_confident_rule_wins", [] {
-    FunctionEvidence e = forwarding("KERNEL32!CloseHandle", true);
+CB_TEST("naming.proposals.the_most_confident_rule_wins", [] {
+    symbols::FunctionEvidence e = forwarding("KERNEL32!CloseHandle", true);
     e.strings = {"WidgetClose: failed"};
     const auto p = sp::by_rules(e);
     CB_CHECK(p.has_value());
     CB_CHECK_EQ(p->rule, "import-wrapper");
-    CB_CHECK(!sp::by_rules(FunctionEvidence{}).has_value());
+    CB_CHECK(!sp::by_rules(symbols::FunctionEvidence{}).has_value());
 });
 
 namespace {
@@ -114,7 +114,7 @@ struct ProposalWorld {
 
 }  // namespace
 
-CB_TEST("symbols.proposals.a_proposal_is_kept_apart_from_the_names_and_reads_back", [] {
+CB_TEST("naming.proposals.a_proposal_is_kept_apart_from_the_names_and_reads_back", [] {
     ProposalWorld w;
     CB_CHECK(w.proposals.of_module("sha-a").empty());
     w.proposals.put(ProposalWorld::make("sha-a", "1:0116", "Close_thunk"));
@@ -134,7 +134,7 @@ CB_TEST("symbols.proposals.a_proposal_is_kept_apart_from_the_names_and_reads_bac
     CB_CHECK(!w.kb.name("0123456789abcdef").has_value());
 });
 
-CB_TEST("symbols.proposals.a_decision_is_kept_with_where_the_name_came_from", [] {
+CB_TEST("naming.proposals.a_decision_is_kept_with_where_the_name_came_from", [] {
     ProposalWorld w;
     w.proposals.put(ProposalWorld::make("sha-a", "1:0116", "Close_thunk"));
     CB_CHECK(!w.proposals.set_state("sha-a", "9:9999", cb::store::ProposalState::Accepted));   // none there
@@ -150,8 +150,8 @@ CB_TEST("symbols.proposals.a_decision_is_kept_with_where_the_name_came_from", []
     CB_CHECK(!cb::store::parse_state("maybe").has_value());
 });
 
-CB_TEST("symbols.proposals.a_function_that_only_forwards_to_a_named_function_is_its_thunk", [] {
-    FunctionEvidence e;
+CB_TEST("naming.proposals.a_function_that_only_forwards_to_a_named_function_is_its_thunk", [] {
+    symbols::FunctionEvidence e;
     e.address = 0x2000;
     e.forwards_to_function = 0x3000;
     const auto p = sp::function_forward(e, "ReadBlock");
@@ -170,7 +170,7 @@ CB_TEST("symbols.proposals.a_function_that_only_forwards_to_a_named_function_is_
     CB_CHECK(!sp::function_forward(e, "ReadBlock").has_value());
 });
 
-CB_TEST("symbols.proposals.names_compare_without_suffix_decoration_or_case", [] {
+CB_TEST("naming.proposals.names_compare_without_suffix_decoration_or_case", [] {
     CB_CHECK_EQ(sp::comparable("_Sleep@4"), "sleep");
     CB_CHECK_EQ(sp::comparable("CloseHandle_thunk"), "closehandle");
     CB_CHECK_EQ(sp::comparable("Sleep_thunk"), "sleep");
@@ -178,8 +178,8 @@ CB_TEST("symbols.proposals.names_compare_without_suffix_decoration_or_case", [] 
 
 namespace {
 
-FunctionEvidence handed(std::string import, int argument, std::map<int, std::int64_t> numbers = {}, std::map<int, std::string> texts = {}) {
-    FunctionEvidence e;
+symbols::FunctionEvidence handed(std::string import, int argument, std::map<int, std::int64_t> numbers = {}, std::map<int, std::string> texts = {}) {
+    symbols::FunctionEvidence e;
     e.address = 0x4000;
     cb::symbols::HandedEvidence h;
     h.import_name = std::move(import);
@@ -193,7 +193,7 @@ FunctionEvidence handed(std::string import, int argument, std::map<int, std::int
 
 }  // namespace
 
-CB_TEST("symbols.proposals.a_function_the_api_calls_back_is_what_the_api_calls_that_argument", [] {
+CB_TEST("naming.proposals.a_function_the_api_calls_back_is_what_the_api_calls_that_argument", [] {
     const auto thread = sp::callback_role(handed("KERNEL32!CreateThread", 3));
     CB_CHECK(thread.has_value());
     CB_CHECK_EQ(thread->name, "ThreadProc");
@@ -217,7 +217,7 @@ CB_TEST("symbols.proposals.a_function_the_api_calls_back_is_what_the_api_calls_t
     CB_CHECK_EQ(sp::callback_role(handed("USER32!DialogBoxParamW", 4, {}, {{2, "about box"}}))->name, "aboutBoxDlgProc");
     CB_CHECK_EQ(sp::callback_role(handed("USER32!CreateDialogIndirectParamA", 4))->name, "DialogProc");
     // ... and by the title of the template the module carries, when it has one
-    FunctionEvidence run = handed("USER32!DialogBoxParamA", 4, {{2, 1003}});
+    symbols::FunctionEvidence run = handed("USER32!DialogBoxParamA", 4, {{2, 1003}});
     run.handed_to[0].caption = "Run";
     CB_CHECK_EQ(sp::callback_role(run)->name, "RunDlgProc");
     run.handed_to[0].caption = "&Shut down Windows";
@@ -228,8 +228,8 @@ CB_TEST("symbols.proposals.a_function_the_api_calls_back_is_what_the_api_calls_t
     CB_CHECK_EQ(sp::callback_role(run)->name, "Dialog1003Proc");
 });
 
-CB_TEST("symbols.proposals.a_window_procedure_is_named_for_its_class", [] {
-    FunctionEvidence e = handed("USER32!RegisterClassA", 0, {}, {{0, "Shell_TrayWnd"}});
+CB_TEST("naming.proposals.a_window_procedure_is_named_for_its_class", [] {
+    symbols::FunctionEvidence e = handed("USER32!RegisterClassA", 0, {}, {{0, "Shell_TrayWnd"}});
     e.handed_to[0].field = "lpfnWndProc";
     const auto p = sp::callback_role(e);
     CB_CHECK(p.has_value());
@@ -241,7 +241,7 @@ CB_TEST("symbols.proposals.a_window_procedure_is_named_for_its_class", [] {
     CB_CHECK_EQ(sp::callback_role(e)->name, "WndProc");
     CB_CHECK_EQ(sp::callback_role(e)->confidence, 75);
     // two places that disagree on what it is say nothing; two that agree are one
-    FunctionEvidence both = e;
+    symbols::FunctionEvidence both = e;
     both.handed_to.push_back(handed("KERNEL32!CreateThread", 3).handed_to[0]);
     CB_CHECK(!sp::callback_role(both).has_value());
     both.handed_to[1] = e.handed_to[0];

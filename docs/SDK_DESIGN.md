@@ -194,3 +194,8 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
   analyze, emulate, knowledge. The identification and naming pipeline (identify, names, names_bodies, workbench, debug_build,
   debug_build_estimate, ordinal_collect) uses decompile, analyze, build and source, and accounts for 14 of the 32. Next: split the
   pipeline into its own layer-3 area (`naming`), leaving `symbols` as the data.
+- 2026-11-27: phase 1: symbols split. symbols/name_data.hpp holds the names as data (7811f5f69); the naming pipeline (the Namer,
+  identify, the workbench, the debug build and its estimate, ordinal collection, the proposals) is its own area, naming (layer 3,
+  cb::naming::...). symbols no longer includes anything above it. Upward includes 31 -> 19: what is left is decompile reaching
+  translate's C back end (6) and build's data and Watcom helpers (2), exact's DOS runner (3), source and verify reaching the lane
+  kit (7), store's versions ledger (1).

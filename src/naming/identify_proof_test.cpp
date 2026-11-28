@@ -14,8 +14,8 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/detect.hpp"
-#include "symbols/identify.hpp"
-#include "symbols/names.hpp"
+#include "naming/identify.hpp"
+#include "naming/names.hpp"
 
 namespace stdfs = std::filesystem;
 
@@ -52,7 +52,7 @@ CB_TEST("symbols.proof.run_the_commands_listed_in_the_work_folder", [] {
         if (!(words >> file >> command)) continue;
         std::vector<std::string> args{command};
         while (words >> word) args.push_back(word);
-        const cb::cli::Command declared = command == "identify" ? cb::symbols::identify::command(environment) : cb::symbols::names::command(environment);
+        const cb::cli::Command declared = command == "identify" ? cb::naming::identify::command(environment) : cb::naming::names::command(environment);
         const cb::cli::Cli program("codebreaker", {declared});
         std::string out;
         int code = 0;

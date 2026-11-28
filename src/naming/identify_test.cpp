@@ -17,10 +17,10 @@
 #include "core/text.hpp"
 #include "decompile/describe.hpp"
 #include "formats/detect.hpp"
-#include "symbols/identify.hpp"
-#include "symbols/names.hpp"
+#include "naming/identify.hpp"
+#include "naming/names.hpp"
 #include "symbols/ordinals.hpp"
-#include "symbols/workbench.hpp"
+#include "naming/workbench.hpp"
 
 namespace sy = cb::symbols;
 namespace stdfs = std::filesystem;
@@ -109,48 +109,48 @@ bool idn_import_line(const std::string& line) { return line.starts_with("import 
 
 // ---- identify ---------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.identify.a_flat_thunk_is_identified_stub_by_stub_and_its_compiler_named", [] {
+CB_TEST("naming.identify.a_flat_thunk_is_identified_stub_by_stub_and_its_compiler_named", [] {
     IdnWorld w;
     int code = -1;
-    const std::string text = w.run(sy::identify::command(w.environment), {"lz32.dll"}, &code);
+    const std::string text = w.run(cb::naming::identify::command(w.environment), {"lz32.dll"}, &code);
     CB_CHECK_EQ(code, 0);
     CB_CHECK_EQ(text, idn_golden("identify_lz32.dll.txt"));   // (19 of 39 functions, all the thunk compiler's)
 });
 
-CB_TEST("symbols.identify.a_16_bit_module_is_identified_by_signature_with_segment_and_offset_addresses", [] {
+CB_TEST("naming.identify.a_16_bit_module_is_identified_by_signature_with_segment_and_offset_addresses", [] {
     IdnWorld w;
     int code = -1;
-    const std::string text = w.run(sy::identify::command(w.environment), {"lzexpand.dll"}, &code);
+    const std::string text = w.run(cb::naming::identify::command(w.environment), {"lzexpand.dll"}, &code);
     CB_CHECK_EQ(code, 0);
     CB_CHECK_EQ(text, idn_golden("identify_lzexpand.dll.txt"));   // (four functions of the C runtime, MLIBCEW.LIB)
 });
 
-CB_TEST("symbols.identify.a_console_image_has_no_library_but_says_what_its_tool_block_says", [] {
+CB_TEST("naming.identify.a_console_image_has_no_library_but_says_what_its_tool_block_says", [] {
     IdnWorld w;
-    CB_CHECK_EQ(w.run(sy::identify::command(w.environment), {"natalsu.exe"}), idn_golden("identify_natalsu.exe.txt"));
+    CB_CHECK_EQ(w.run(cb::naming::identify::command(w.environment), {"natalsu.exe"}), idn_golden("identify_natalsu.exe.txt"));
 });
 
-CB_TEST("symbols.identify.a_dos_program_is_matched_in_its_image", [] {
+CB_TEST("naming.identify.a_dos_program_is_matched_in_its_image", [] {
     IdnWorld w;
     // (a DOS program of Windows 95 holds none of a period library's functions, but its functions are found and counted: they are matched)
-    const std::string text = w.run(sy::identify::command(w.environment), {"find.exe"});
+    const std::string text = w.run(cb::naming::identify::command(w.environment), {"find.exe"});
     CB_CHECK(text.starts_with("find.exe: 0 of "));
     CB_CHECK(!text.starts_with("find.exe: 0 of 0 functions"));
     CB_CHECK(text.ends_with("built with: not established (linker ?)\n"));
 });
 
-CB_TEST("symbols.identify.the_identifier_answers_in_the_addresses_the_decompiler_uses", [] {
+CB_TEST("naming.identify.the_identifier_answers_in_the_addresses_the_decompiler_uses", [] {
     IdnWorld w;
-    sy::Workbench bench(w.environment);
-    sy::identify::Identifier& identifier = bench.identifier();
-    const sy::identify::Found lz32 = identifier.identify(w.dir.path() / "corpus" / "lz32.dll");
+    cb::naming::Workbench bench(w.environment);
+    cb::naming::identify::Identifier& identifier = bench.identifier();
+    const cb::naming::identify::Found lz32 = identifier.identify(w.dir.path() / "corpus" / "lz32.dll");
     CB_CHECK_EQ(lz32.size(), 19U);
     CB_CHECK_EQ(lz32.begin()->first, 0xBFEA1075ULL);
     CB_CHECK_EQ(lz32.begin()->second.name, "thunk stub");
     CB_CHECK_EQ(identifier.function_count(w.dir.path() / "corpus" / "lz32.dll"), 39U);
-    const sy::identify::Found lzexpand = identifier.identify(w.dir.path() / "corpus" / "lzexpand.dll");
+    const cb::naming::identify::Found lzexpand = identifier.identify(w.dir.path() / "corpus" / "lzexpand.dll");
     CB_CHECK_EQ(lzexpand.size(), 4U);
-    const sy::identify::Address first = static_cast<sy::identify::Address>(cb::core16::address(11, 0x10));
+    const cb::naming::identify::Address first = static_cast<cb::naming::identify::Address>(cb::core16::address(11, 0x10));
     CB_CHECK(lzexpand.contains(first));
     CB_CHECK_EQ(lzexpand.at(first).name, "_dos_getftime");
     const cb::symbols::runtime_library::CompilerInfo info = identifier.compiler(w.dir.path() / "corpus" / "lz32.dll", lz32);
@@ -158,20 +158,20 @@ CB_TEST("symbols.identify.the_identifier_answers_in_the_addresses_the_decompiler
     CB_CHECK_EQ(info.linker, "2.50");
 });
 
-CB_TEST("symbols.identify.the_command_refuses_what_it_cannot_do", [] {
+CB_TEST("naming.identify.the_command_refuses_what_it_cannot_do", [] {
     IdnWorld w;
     cb::testing::CapturedStd captured;
-    const cb::cli::Command command = sy::identify::command(w.environment);
+    const cb::cli::Command command = cb::naming::identify::command(w.environment);
     const cb::cli::Cli program("codebreaker", {command});
     CB_CHECK_THROWS_AS(cb::UsageError, (void)program.run(std::vector<std::string>{"identify"}));
     CB_CHECK_THROWS_AS(cb::NotFoundError, (void)program.run(std::vector<std::string>{"identify", "nosuchmodule.dll"}));
 });
 
-CB_TEST("symbols.identify.learn_makes_the_signature_file_from_a_library", [] {
+CB_TEST("naming.identify.learn_makes_the_signature_file_from_a_library", [] {
     IdnWorld w;
     const stdfs::path library = cb::testing::data_path("symbols/libraries/testdata/atof.obj");
     int code = -1;
-    const std::string text = w.run(sy::identify::command(w.environment), {"--learn", "A test object=" + cb::fs::to_text(library), "not a source"}, &code);
+    const std::string text = w.run(cb::naming::identify::command(w.environment), {"--learn", "A test object=" + cb::fs::to_text(library), "not a source"}, &code);
     CB_CHECK_EQ(code, 0);
     CB_CHECK(text.find("A test object (ATOF.OBJ)") != std::string::npos);
     CB_CHECK(text.find(" 32-bit, ") != std::string::npos);
@@ -183,33 +183,33 @@ CB_TEST("symbols.identify.learn_makes_the_signature_file_from_a_library", [] {
 
 // ---- names ---------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.the_command_names_a_32_bit_module", [] {
+CB_TEST("naming.names.the_command_names_a_32_bit_module", [] {
     IdnWorld w;
     int code = -1;
-    CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"lz32.dll"}, &code), idn_golden("names_lz32.dll.txt"));
+    CB_CHECK_EQ(w.run(cb::naming::names::command(w.environment), {"lz32.dll"}, &code), idn_golden("names_lz32.dll.txt"));
     CB_CHECK_EQ(code, 0);
 });
 
-CB_TEST("symbols.names.the_command_names_a_16_bit_modules_functions", [] {
+CB_TEST("naming.names.the_command_names_a_16_bit_modules_functions", [] {
     IdnWorld w;
-    const std::string text = w.run(cb::symbols::names::command(w.environment), {"lzexpand.dll"});
+    const std::string text = w.run(cb::naming::names::command(w.environment), {"lzexpand.dll"});
     CB_CHECK_EQ(idn_without(text, idn_import_line), idn_without(idn_golden("names_lzexpand.dll.txt"), idn_import_line));
     CB_CHECK(text.find("import USER") != std::string::npos);   // (the imports are listed: named only where the corpus holds USER)
 });
 
-CB_TEST("symbols.names.a_console_images_functions_and_imports_are_named", [] {
+CB_TEST("naming.names.a_console_images_functions_and_imports_are_named", [] {
     IdnWorld w;
-    CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"natalsu.exe"}), idn_golden("names_natalsu.exe.txt"));
+    CB_CHECK_EQ(w.run(cb::naming::names::command(w.environment), {"natalsu.exe"}), idn_golden("names_natalsu.exe.txt"));
 });
 
-CB_TEST("symbols.names.a_dos_programs_functions_are_listed_and_the_report_ends_with_an_empty_line", [] {
+CB_TEST("naming.names.a_dos_programs_functions_are_listed_and_the_report_ends_with_an_empty_line", [] {
     IdnWorld w;
-    CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"find.exe"}), idn_golden("names_find.exe.txt"));
+    CB_CHECK_EQ(w.run(cb::naming::names::command(w.environment), {"find.exe"}), idn_golden("names_find.exe.txt"));
 });
 
-CB_TEST("symbols.names.naming_a_body_is_kept_in_the_knowledge_base_and_counted", [] {
+CB_TEST("naming.names.naming_a_body_is_kept_in_the_knowledge_base_and_counted", [] {
     IdnWorld w;
-    const cb::cli::Command command = cb::symbols::names::command(w.environment);
+    const cb::cli::Command command = cb::naming::names::command(w.environment);
     CB_CHECK_EQ(w.run(command, {"--shared"}), "0 bodies recorded, 0 distinct; 0 bodies are in two or more modules (0 functions are such copies)\n");
     int code = -1;
     const std::string first = w.run(command, {"lzexpand.dll", "--set", "2:0000", "InitTheExpander"}, &code);
@@ -227,24 +227,24 @@ CB_TEST("symbols.names.naming_a_body_is_kept_in_the_knowledge_base_and_counted",
     CB_CHECK_EQ(none, 1);
 });
 
-CB_TEST("symbols.names.the_command_refuses_what_it_cannot_do", [] {
+CB_TEST("naming.names.the_command_refuses_what_it_cannot_do", [] {
     IdnWorld w;
     cb::testing::CapturedStd captured;
-    const cb::cli::Command command = cb::symbols::names::command(w.environment);
+    const cb::cli::Command command = cb::naming::names::command(w.environment);
     const cb::cli::Cli program("codebreaker", {command});
     CB_CHECK_THROWS_AS(cb::UsageError, (void)program.run(std::vector<std::string>{"names"}));
     CB_CHECK_THROWS_AS(cb::NotFoundError, (void)program.run(std::vector<std::string>{"names", "nosuchmodule.dll"}));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)program.run(std::vector<std::string>{"names", "lz32.dll", "--set", "zz", "Name"}));
 });
 
-CB_TEST("symbols.names.the_ordinal_table_is_remade_from_a_definition_file_the_corpus_bears_out", [] {
+CB_TEST("naming.names.the_ordinal_table_is_remade_from_a_definition_file_the_corpus_bears_out", [] {
     IdnWorld w;
     // LZEXPAND imports USER by number (and the test's corpus holds no USER), so a definition file for USER is kept: its names stand for numbers
     // something imports. LZEXPAND's own exports are all named by the module itself, so a file naming them gives nothing.
     idn_write_text(w.dir.path() / "user.def", "LIBRARY USER\nEXPORTS\n    Foo    @7\n    IsCharLower   @436\n");
     idn_write_text(w.dir.path() / "lzexpand.def", "LIBRARY LZEXPAND\nEXPORTS\n    Spare   @1\n");
     int code = -1;
-    const std::string text = w.run(cb::symbols::names::command(w.environment),
+    const std::string text = w.run(cb::naming::names::command(w.environment),
                                    {"--ordinals", cb::fs::to_text(w.dir.path() / "user.def"), cb::fs::to_text(w.dir.path() / "lzexpand.def")}, &code);
     CB_CHECK_EQ(code, 0);
     CB_CHECK_EQ(text, "USER           2 names from user.def       (0 checked against the code, 0 dropped)\n");

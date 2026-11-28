@@ -1,4 +1,4 @@
-// symbols/names.hpp -- the best name for every function and import of a module, and where it came from.
+// naming/names.hpp -- the best name for every function and import of a module, and where it came from.
 //
 //     codebreaker names comctl32.dll                         every function and import, named
 //     codebreaker names comctl32.dll --set 7fe0183a StrChrHelper
@@ -65,7 +65,7 @@
 #include "symbols/name_data.hpp"
 #include "symbols/runtime_library.hpp"
 
-namespace cb::symbols::names {
+namespace cb::naming::names {
 
 using symbols::Environment;
 
@@ -75,13 +75,13 @@ class Namer {
 public:
     struct Services {
         const base::Corpus& corpus;
-        const ordinals::Ordinals& ordinals;
+        const symbols::ordinals::Ordinals& ordinals;
         store::BodyStore* bodies = nullptr;   // not owned; none: no body is recorded and no name is shared
         // Each of these is optional; see the top of this file for what a module goes without.
-        std::function<std::optional<PowerPcNames>(const std::filesystem::path&)> powerpc = {};
+        std::function<std::optional<symbols::names::PowerPcNames>(const std::filesystem::path&)> powerpc = {};
         std::function<std::map<std::string, std::string>(const std::filesystem::path&)> console_import_names = {};   // {import symbol: name}
-        std::function<std::map<Address, runtime_library::Identified>(const std::filesystem::path&)> runtime_library = {};
-        std::function<runtime_library::CompilerInfo(const std::filesystem::path&)> compiler = {};
+        std::function<std::map<symbols::names::Address, symbols::runtime_library::Identified>(const std::filesystem::path&)> runtime_library = {};
+        std::function<symbols::runtime_library::CompilerInfo(const std::filesystem::path&)> compiler = {};
         // `names --ordinals FILE...`: make the table of names for numbered exports from definition files and import libraries (ordinals::collect and
         // where it is saved are the caller's: they need the whole corpus).
         std::function<void(std::span<const std::filesystem::path>)> collect_ordinals = {};
@@ -98,35 +98,35 @@ public:
     ~Namer();
 
     // {address: digest} for the functions of a module that have a body worth telling apart. NotFoundError / FormatError for a file that cannot be read.
-    std::map<Address, std::string> bodies(const std::filesystem::path& module);
+    std::map<symbols::names::Address, std::string> bodies(const std::filesystem::path& module);
 
     // {address: (name, where it is from)} from debug symbols that are shown to be for this very build: a symbol file is from some build of the
     // module, and offsets move between builds, so a segment's names are used only where the file's own exports sit at the offsets the symbols give
     // them (at least two, and two in three of those the symbol file names). Remembered per module for the life of the Namer.
-    const Named& debug_names(const std::filesystem::path& module);
+    const symbols::names::Named& debug_names(const std::filesystem::path& module);
     // {address: name of the object file the function was linked from}, for the functions the module's .SYM file places in a segment named after an
     // object -- and only where that file is shown to be for this build (see debug_names).
-    const std::map<Address, std::string>& source_files(const std::filesystem::path& module);
+    const std::map<symbols::names::Address, std::string>& source_files(const std::filesystem::path& module);
 
     // {address: (name, source)} from what the module and its symbol files say themselves: exports, debug symbols, the ordinal table.
-    Named own_names(const std::filesystem::path& module);
+    symbols::names::Named own_names(const std::filesystem::path& module);
     // For a PowerPC image: what names a function for certain is its run-time type information -- a virtual function of a named class -- and the entry
     // point. Empty without a PowerPC reader (Services::powerpc).
-    Named powerpc_names(const std::filesystem::path& module);
+    symbols::names::Named powerpc_names(const std::filesystem::path& module);
 
     // Record a module's bodies in the body store, each with the name the module itself gives it. -> the number of bodies. UsageError without a body store.
-    std::size_t index(const std::filesystem::path& module, const std::optional<Named>& own = std::nullopt);
+    std::size_t index(const std::filesystem::path& module, const std::optional<symbols::names::Named>& own = std::nullopt);
     // Name the body of the function at `address`; every module holding that body then has the name. -> the body's digest, or nullopt when the function
     // has no body worth naming. UsageError without a body store.
     // `source` is where the name is from, as `names` shows it ("named body (<source>)"): by hand, or an accepted proposal.
-    std::optional<std::string> set_name(const std::filesystem::path& module, Address address, std::string_view name, std::string_view source = "named by hand");
+    std::optional<std::string> set_name(const std::filesystem::path& module, symbols::names::Address address, std::string_view name, std::string_view source = "named by hand");
     // The module's content hash as the body store and the proposals know it ("" for a file the corpus does not know), and the store's key for a
     // function of it.
     std::string module_sha(const std::filesystem::path& module) const;
-    std::string key_of(const std::filesystem::path& module, Address address) const;
+    std::string key_of(const std::filesystem::path& module, symbols::names::Address address) const;
 
     // Every function and import of a module with its best name and where the name is from.
-    ModuleNames of_module(const std::filesystem::path& module);
+    symbols::names::ModuleNames of_module(const std::filesystem::path& module);
 
     // `codebreaker names ...`: the command line after the command name. Returns the exit code.
     int run(std::span<const std::string> args);
@@ -143,6 +143,6 @@ cli::Command declare_command(std::function<int(const cli::Args&)> run);
 
 // The command as the program registers it: the objects it works over (the knowledge base, the corpus's modules) are made when it runs.
 // Defined in names_command.cpp.
-cli::Command command(const Environment& environment);
+cli::Command command(const symbols::Environment& environment);
 
-}  // namespace cb::symbols::names
+}  // namespace cb::naming::names

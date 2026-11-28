@@ -1,5 +1,5 @@
 // cb-unity: alone (file-local helpers named for this module)
-#include "symbols/debug_build_estimate.hpp"
+#include "naming/debug_build_estimate.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -13,7 +13,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 
-namespace cb::symbols::debug_build_estimate {
+namespace cb::naming::debug_build_estimate {
 
 namespace segment = source::ne_asm::segment;
 namespace ne = formats::ne;
@@ -394,4 +394,4 @@ int main(const Environment& env, std::span<const std::string> args) {
     return program.run(line);
 }
 
-}  // namespace cb::symbols::debug_build_estimate
+}  // namespace cb::naming::debug_build_estimate

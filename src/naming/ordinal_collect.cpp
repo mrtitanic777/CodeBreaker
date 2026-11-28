@@ -1,5 +1,5 @@
-// symbols/ordinal_collect.cpp -- see ordinal_collect.hpp.
-#include "symbols/ordinal_collect.hpp"
+// naming/ordinal_collect.cpp -- see ordinal_collect.hpp.
+#include "naming/ordinal_collect.hpp"
 
 #include <algorithm>
 #include <map>
@@ -15,7 +15,7 @@
 #include "formats/pe.hpp"
 #include "symbols/api_arguments.hpp"
 
-namespace cb::symbols {
+namespace cb::naming {
 
 namespace {
 
@@ -32,7 +32,7 @@ std::vector<std::string> oc_files_of_module(std::string_view upper_name) {
     return {};
 }
 
-class CorpusExportCheck final : public ordinals::ExportCheck {
+class CorpusExportCheck final : public symbols::ordinals::ExportCheck {
 public:
     CorpusExportCheck(const base::Corpus& corpus, decompile::environment::CorpusModules& modules) : corpus_(corpus), modules_(modules) {}
 
@@ -85,7 +85,7 @@ public:
             try {
                 for (const formats::pe::Import& i : formats::pe::Image::open(path).imports())
                     if (i.name.size() > 1 && i.name[0] == '#' && std::all_of(i.name.begin() + 1, i.name.end(), [](char c) { return c >= '0' && c <= '9'; }))
-                        out.insert(ordinals::module_stem(i.dll));
+                        out.insert(symbols::ordinals::module_stem(i.dll));
             } catch (const Error&) {
             }
         }
@@ -152,10 +152,10 @@ private:
 
 }  // namespace
 
-ordinals::ShippedTables remake_ordinal_table(const base::Corpus& corpus, decompile::environment::CorpusModules& modules,
+symbols::ordinals::ShippedTables remake_ordinal_table(const base::Corpus& corpus, decompile::environment::CorpusModules& modules,
                                              std::span<const std::filesystem::path> paths, const std::function<void(std::string_view)>& log) {
     const CorpusExportCheck check(corpus, modules);
-    return ordinals::collect(paths, modules, check, log);
+    return symbols::ordinals::collect(paths, modules, check, log);
 }
 
-}  // namespace cb::symbols
+}  // namespace cb::naming

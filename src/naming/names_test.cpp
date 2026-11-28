@@ -5,13 +5,13 @@
 //
 // Addresses are unsigned 64-bit and records are structs; the caches (the .SYM index, the debug names of each module) belong to the
 // Namer; the .SYM files of a name are tried in the order of their paths; a damaged .SYM or CodeView block gives no names.
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 
 #include "analyze/function_evidence.hpp"
 #include "knowledge/store.hpp"
 #include "store/knowledge_bodies.hpp"
 #include "store/knowledge_proposals.hpp"
-#include "symbols/proposals.hpp"
+#include "naming/proposals.hpp"
 
 #include <algorithm>
 #include <format>
@@ -192,8 +192,8 @@ struct World {
         cb::fs::write_file(lz16, cb::fs::read_file(testdata("lzexpand.dll")));
         cb::fs::write_file(lz32, cb::fs::read_file(testdata("lz32.dll")));
     }
-    nm::Namer::Services services(bool with_bodies = true) {
-        nm::Namer::Services s{*corpus, *ordinals};
+    cb::naming::names::Namer::Services services(bool with_bodies = true) {
+        cb::naming::names::Namer::Services s{*corpus, *ordinals};
         if (with_bodies) s.bodies = &bodies;
         return s;
     }
@@ -204,7 +204,7 @@ struct World {
 
 // ---- keys and digests ----------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.a_function_is_keyed_as_the_store_keys_it", [] {
+CB_TEST("naming.names.a_function_is_keyed_as_the_store_keys_it", [] {
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Pe, 0x7FE0183A), "7fe0183a");
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Pe, 0x10A3C), "10a3c");
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Ne, static_cast<nm::Address>(cb::core16::address(1, 0x4A2))), "1:04a2");
@@ -212,7 +212,7 @@ CB_TEST("symbols.names.a_function_is_keyed_as_the_store_keys_it", [] {
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Le, 0x400), "400");
 });
 
-CB_TEST("symbols.names.a_body_is_digested_without_what_the_linker_fills_in", [] {
+CB_TEST("naming.names.a_body_is_digested_without_what_the_linker_fills_in", [] {
     Bytes code(40);
     for (std::size_t i = 0; i < code.size(); ++i) code[i] = static_cast<std::uint8_t>(i);
     // expected from the definition: sha1 of "<last>:" and the bytes up to last with the masked ones zeroed, its first 16 hex digits
@@ -231,7 +231,7 @@ CB_TEST("symbols.names.a_body_is_digested_without_what_the_linker_fills_in", [] 
 
 // ---- debug symbols -------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.codeview_symbols_are_read_from_the_end_of_an_executable", [] {
+CB_TEST("naming.names.codeview_symbols_are_read_from_the_end_of_an_executable", [] {
     const Bytes block = codeview_block(10, {{1, 0x10, "_Alpha"}, {2, 0x20, "Beta"}, {1, 0x10, "Again"}, {0, 0x30, "NoSegment"}, {3, 0x40, ""}, {3, 0x44, "Last"}});
     const auto got = nm::codeview(block);
     CB_CHECK_EQ(got.size(), 3U);
@@ -261,7 +261,7 @@ CB_TEST("symbols.names.codeview_symbols_are_read_from_the_end_of_an_executable",
     CB_CHECK_EQ(second.at({2, 0x22}), "Good");
 });
 
-CB_TEST("symbols.names.a_sym_file_lists_the_names_of_each_segment", [] {
+CB_TEST("naming.names.a_sym_file_lists_the_names_of_each_segment", [] {
     const Bytes file = sym_file({{1, "_MSGBOX", {{0x10, "Alpha"}, {0x2E0, "Beta"}}, false}, {2, "_TEXT", {{0x70000, "Wide"}}, true}, {3, "", {}, false}});
     const auto segments = nm::read_sym(file);
     CB_CHECK(segments.has_value());
@@ -296,9 +296,9 @@ CB_TEST("symbols.names.a_sym_file_lists_the_names_of_each_segment", [] {
 
 // ---- the bodies of real modules --------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.the_bodies_of_a_32_bit_module", [] {
+CB_TEST("naming.names.the_bodies_of_a_32_bit_module", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto bodies = namer.bodies(w.lz32);
     CB_CHECK(!bodies.empty());
     const auto carve = cb::formats::pe_functions::PeCarve::open(w.lz32);
@@ -312,9 +312,9 @@ CB_TEST("symbols.names.the_bodies_of_a_32_bit_module", [] {
     CB_CHECK(bodies.size() <= carve.functions().size());
 });
 
-CB_TEST("symbols.names.the_bodies_of_a_16_bit_module", [] {
+CB_TEST("naming.names.the_bodies_of_a_16_bit_module", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto bodies = namer.bodies(w.lz16);
     CB_CHECK(!bodies.empty());
     for (const auto& [address, digest] : bodies) {
@@ -328,11 +328,11 @@ CB_TEST("symbols.names.the_bodies_of_a_16_bit_module", [] {
     CB_CHECK(namer.bodies(other).empty());
 });
 
-CB_TEST("symbols.names.the_digests_are_the_ones_the_original_module_made", [] {
+CB_TEST("naming.names.the_digests_are_the_ones_the_original_module_made", [] {
     // Golden: the recorded digests over the same two files (39 bodies of LZEXPAND, 15 of
     // LZ32), checked here for their count and for the first and last of each.
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto sixteen = namer.bodies(w.lz16);
     CB_CHECK_EQ(sixteen.size(), 39U);
     CB_CHECK_EQ(sixteen.at(0x10000000), "781e270f7e8b9f48");   // segment 1, offset 0 (selector 0x1000)
@@ -352,9 +352,9 @@ CB_TEST("symbols.names.the_digests_are_the_ones_the_original_module_made", [] {
 
 // ---- names -----------------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.a_16_bit_module_names_what_it_exports", [] {
+CB_TEST("naming.names.a_16_bit_module_names_what_it_exports", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto own = namer.own_names(w.lz16);
     const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     CB_CHECK_EQ(own.size(), 12U);   // the twelve exports that have names (the other eighteen are by number only)
@@ -365,11 +365,11 @@ CB_TEST("symbols.names.a_16_bit_module_names_what_it_exports", [] {
     CB_CHECK(own.at(at(11, 0x35E)) == (nm::NameSource{"___EXPORTEDSTUB", "export"}));
 });
 
-CB_TEST("symbols.names.an_export_the_module_leaves_unnamed_is_named_by_the_ordinal_table", [] {
+CB_TEST("naming.names.an_export_the_module_leaves_unnamed_is_named_by_the_ordinal_table", [] {
     ord::ShippedTables shipped;
     shipped["LZEXPAND"] = {"lzexpand.def", 2, 0, {{3, "NotLzinit"}, {13, "Thirteen"}, {14, "Fourteen"}, {99, "NoSuchExport"}}};
     World w(shipped);
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto own = namer.own_names(w.lz16);
     const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     CB_CHECK_EQ(own.size(), 14U);
@@ -378,14 +378,14 @@ CB_TEST("symbols.names.an_export_the_module_leaves_unnamed_is_named_by_the_ordin
     CB_CHECK(own.at(at(2, 0)).name == "LZINIT");   // the module's own name for @3 stands
 });
 
-CB_TEST("symbols.names.debug_symbols_are_used_only_for_the_build_they_are_of", [] {
+CB_TEST("naming.names.debug_symbols_are_used_only_for_the_build_they_are_of", [] {
     World w;
     const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     // LZEXPAND.SYM, as the linker would have written it for this build: its exports sit where the module's own table puts them (LZINIT 2:0000, LZSEEK
     // 2:02ee, LZREAD 2:03d6), and the build's internal functions are named too
     w.put_reference("LZEXPAND.SYM", sym_file({{2, "_LZCODE", {{0x0, "LZINIT"}, {0x2EE, "LZSEEK"}, {0x3D6, "LZREAD"}, {0x100, "_Helper"}, {0x180, "_Other"}}, false},
                                               {4, "_TEXT", {{0x0, "LZSTART"}, {0x40, "_Stub"}}, false}}));
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto& debug = namer.debug_names(w.lz16);
     CB_CHECK_EQ(debug.at(at(2, 0x100)).name, "Helper");   // (the C decoration of a linker name is taken off)
     CB_CHECK_EQ(debug.at(at(2, 0x100)).source, "LZEXPAND.SYM");
@@ -402,26 +402,26 @@ CB_TEST("symbols.names.debug_symbols_are_used_only_for_the_build_they_are_of", [
     CB_CHECK(own.at(at(2, 0x100)) == (nm::NameSource{"Helper", "debug symbols (LZEXPAND.SYM)"}));
 });
 
-CB_TEST("symbols.names.symbols_of_another_build_name_nothing", [] {
+CB_TEST("naming.names.symbols_of_another_build_name_nothing", [] {
     World w;
     const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     // the same exports at other places: another build of the module (offsets move between builds)
     w.put_reference("LZEXPAND.SYM", sym_file({{2, "_LZCODE", {{0x10, "LZINIT"}, {0x300, "LZSEEK"}, {0x3E0, "LZREAD"}, {0x100, "_Helper"}}, false}}));
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     CB_CHECK(namer.debug_names(w.lz16).empty());
     CB_CHECK(namer.source_files(w.lz16).empty());
     CB_CHECK(!namer.own_names(w.lz16).contains(at(2, 0x100)));
     // two thirds agree and no fewer than two: the build's (one in three may be elsewhere)
     w.put_reference("LZEXPAND.SYM", sym_file({{2, "_LZCODE", {{0x0, "LZINIT"}, {0x2EE, "LZSEEK"}, {0x3E0, "LZREAD"}, {0x100, "_Helper"}}, false}}));
-    nm::Namer another(w.services());
+    cb::naming::names::Namer another(w.services());
     CB_CHECK(another.debug_names(w.lz16).contains(at(2, 0x100)));
     // a damaged symbol file is passed over
     w.put_reference("LZEXPAND.SYM", Bytes(30, 0xFF));
-    nm::Namer damaged(w.services());
+    cb::naming::names::Namer damaged(w.services());
     CB_CHECK(damaged.debug_names(w.lz16).empty());
 });
 
-CB_TEST("symbols.names.codeview_symbols_in_the_file_name_a_module", [] {
+CB_TEST("naming.names.codeview_symbols_in_the_file_name_a_module", [] {
     // a 32-bit module with CodeView symbols appended: the module's exports are where they say, so the rest are named
     World w;
     const cb::formats::pe::Image image = cb::formats::pe::Image::open(w.lz32);
@@ -444,7 +444,7 @@ CB_TEST("symbols.names.codeview_symbols_in_the_file_name_a_module", [] {
     const Bytes block = codeview_block(0, symbols);
     file.insert(file.end(), block.begin(), block.end());
     cb::fs::write_file(w.lz32, file);
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto& debug = namer.debug_names(w.lz32);
     const nm::Address internal = image.header().image_base + sections[0].virtual_address + 4;
     CB_CHECK_EQ(debug.at(internal).name, "InternalOne");   // (the C decoration of the linker name is taken off)
@@ -452,7 +452,7 @@ CB_TEST("symbols.names.codeview_symbols_in_the_file_name_a_module", [] {
     CB_CHECK_EQ(namer.own_names(w.lz32).at(internal).source, "debug symbols (CodeView symbols in the file)");
 });
 
-CB_TEST("symbols.names.a_powerpc_image_is_named_by_its_run_time_type_information", [] {
+CB_TEST("naming.names.a_powerpc_image_is_named_by_its_run_time_type_information", [] {
     World w;
     auto services = w.services();
     services.powerpc = [](const stdfs::path&) -> std::optional<nm::PowerPcNames> {
@@ -468,7 +468,7 @@ CB_TEST("symbols.names.a_powerpc_image_is_named_by_its_run_time_type_information
     bytes[lfanew + 5] = 0x01;
     const stdfs::path ppc = w.dir.path() / "corpus" / "lz32.dll";
     cb::fs::write_file(ppc, bytes);
-    nm::Namer namer(services);
+    cb::naming::names::Namer namer(services);
     const auto got = namer.own_names(ppc);
     CB_CHECK_EQ(got.size(), 4U);
     CB_CHECK(got.at(0x82000100) == (nm::NameSource{"entry", "entry point"}));   // the entry point keeps the entry's name over a virtual function's
@@ -477,14 +477,14 @@ CB_TEST("symbols.names.a_powerpc_image_is_named_by_its_run_time_type_information
     CB_CHECK(got.at(0x82001018) == (nm::NameSource{"ns_CBar_int__vf3", "run-time type information (ns::CBar<int>, virtual function 3)"}));   // each run of odd characters is one underscore
     CB_CHECK(!got.contains(0x82002000));   // CFoo_vf0 is taken
     // without a reader for such images nothing is named, and no function is found
-    nm::Namer without(w.services());
+    cb::naming::names::Namer without(w.services());
     CB_CHECK(without.own_names(ppc).empty());
     CB_CHECK(without.of_module(ppc).functions.empty());
 });
 
 // ---- the best name of each function ----------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.every_function_has_a_name_from_the_best_source_that_has_one", [] {
+CB_TEST("naming.names.every_function_has_a_name_from_the_best_source_that_has_one", [] {
     ord::ShippedTables shipped;
     shipped["LZEXPAND"] = {"lzexpand.def", 2, 0, {{13, "Thirteen"}}};
     World w(shipped);
@@ -495,7 +495,7 @@ CB_TEST("symbols.names.every_function_has_a_name_from_the_best_source_that_has_o
     w.bodies.shared = {{key(2, 0), {"FromBody", "named by hand"}},
                        {key(10, 0x124), {"HandNamed", "named by hand"}},
                        {key(8, 0xAA), {"SameBodyName", "the same body in other.dll"}}};
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const nm::ModuleNames got = namer.of_module(w.lz16);
     CB_CHECK(!got.functions.empty());
     const auto find = [&](const std::string& k) -> const nm::FunctionName* {
@@ -533,9 +533,9 @@ CB_TEST("symbols.names.every_function_has_a_name_from_the_best_source_that_has_o
     for (std::size_t i = 1; i < got.functions.size(); ++i) CB_CHECK(got.functions[i - 1].address < got.functions[i].address);
 });
 
-CB_TEST("symbols.names.a_runtime_library_function_is_named_for_its_library", [] {
+CB_TEST("naming.names.a_runtime_library_function_is_named_for_its_library", [] {
     World w;
-    nm::Namer first(w.services());
+    cb::naming::names::Namer first(w.services());
     const auto functions = first.of_module(w.lz16).functions;
     const auto target = std::find_if(functions.begin(), functions.end(), [](const nm::FunctionName& f) { return f.source == "(none)"; });
     CB_CHECK(target != functions.end());
@@ -544,7 +544,7 @@ CB_TEST("symbols.names.a_runtime_library_function_is_named_for_its_library", [] 
     services.runtime_library = [address](const stdfs::path&) {
         return std::map<nm::Address, cb::symbols::runtime_library::Identified>{{address, {"_memcpy", "Microsoft C 6.0: SLIBCE"}}};
     };
-    nm::Namer namer(services);
+    cb::naming::names::Namer namer(services);
     for (const nm::FunctionName& f : namer.of_module(w.lz16).functions)
         if (f.address == address) {
             CB_CHECK_EQ(f.name, "_memcpy");
@@ -552,11 +552,11 @@ CB_TEST("symbols.names.a_runtime_library_function_is_named_for_its_library", [] 
         }
 });
 
-CB_TEST("symbols.names.imports_by_name_and_by_number", [] {
+CB_TEST("naming.names.imports_by_name_and_by_number", [] {
     ord::ShippedTables shipped;
     shipped["KERNEL"] = {"kernel.def", 2, 0, {{91, "GetVersion"}}};
     World w(shipped);
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const nm::ModuleNames got = namer.of_module(w.lz16);
     CB_CHECK(!got.imports.empty());
     bool by_number = false;
@@ -584,9 +584,9 @@ CB_TEST("symbols.names.imports_by_name_and_by_number", [] {
     }
 });
 
-CB_TEST("symbols.names.a_32_bit_module_names_its_exports_and_its_imports", [] {
+CB_TEST("naming.names.a_32_bit_module_names_its_exports_and_its_imports", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const nm::ModuleNames got = namer.of_module(w.lz32);
     CB_CHECK(!got.functions.empty());
     const cb::formats::pe::Image image = cb::formats::pe::Image::open(w.lz32);
@@ -611,7 +611,7 @@ CB_TEST("symbols.names.a_32_bit_module_names_its_exports_and_its_imports", [] {
     for (std::size_t k = 1; k < got.imports.size(); ++k) CB_CHECK(!(got.imports[k - 1].module == got.imports[k].module && got.imports[k - 1].name == got.imports[k].name));
 });
 
-CB_TEST("symbols.names.a_console_images_imports_are_named_by_the_hook", [] {
+CB_TEST("naming.names.a_console_images_imports_are_named_by_the_hook", [] {
     World w;
     auto services = w.services();
     services.console_import_names = [](const stdfs::path&) {
@@ -623,7 +623,7 @@ CB_TEST("symbols.names.a_console_images_imports_are_named_by_the_hook", [] {
     bytes[lfanew + 4] = 0xF2;
     bytes[lfanew + 5] = 0x01;
     cb::fs::write_file(w.lz32, bytes);
-    nm::Namer namer(services);
+    cb::naming::names::Namer namer(services);
     const nm::ModuleNames got = namer.of_module(w.lz32);
     CB_CHECK_EQ(got.imports.size(), 3U);
     CB_CHECK_EQ(got.imports[0].module, "library 12");   // by symbol: import12_ord_5 sorts before import3_ord_17 as text
@@ -638,9 +638,9 @@ CB_TEST("symbols.names.a_console_images_imports_are_named_by_the_hook", [] {
 
 // ---- the body store --------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.a_modules_bodies_are_recorded_with_the_names_it_gives_them", [] {
+CB_TEST("naming.names.a_modules_bodies_are_recorded_with_the_names_it_gives_them", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const std::size_t n = namer.index(w.lz16);
     CB_CHECK(n > 0);
     CB_CHECK_EQ(w.bodies.modules.size(), 1U);
@@ -659,20 +659,20 @@ CB_TEST("symbols.names.a_modules_bodies_are_recorded_with_the_names_it_gives_the
     for (const auto& [key, body] : rows)
         if (body.name) CB_CHECK(body.source.has_value());
     // asking for the names of the module records them when none are there, and not again
-    nm::Namer second(w.services());
+    cb::naming::names::Namer second(w.services());
     w.bodies.modules.clear();
     (void)second.of_module(w.lz16);
     CB_CHECK(w.bodies.modules.empty());   // already recorded
     // without a body store there is nothing to record
-    nm::Namer without(w.services(false));
+    cb::naming::names::Namer without(w.services(false));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)without.index(w.lz16));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)without.set_name(w.lz16, 0, "X"));
     CB_CHECK(!without.of_module(w.lz16).functions.empty());   // but the names are still found
 });
 
-CB_TEST("symbols.names.naming_a_body_names_it_everywhere", [] {
+CB_TEST("naming.names.naming_a_body_names_it_everywhere", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     const auto bodies = namer.bodies(w.lz16);
     CB_CHECK(!bodies.empty());
     const auto& [address, digest] = *bodies.begin();
@@ -689,11 +689,11 @@ CB_TEST("symbols.names.naming_a_body_names_it_everywhere", [] {
 
 // ---- the command -----------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.the_command_lists_every_function_and_import", [] {
+CB_TEST("naming.names.the_command_lists_every_function_and_import", [] {
     World w;
     auto services = w.services();
     services.compiler = [](const stdfs::path&) { return cb::symbols::runtime_library::CompilerInfo{"1.0", "Microsoft C 6.0", {}}; };
-    nm::Namer namer(services);
+    cb::naming::names::Namer namer(services);
     cb::testing::CapturedStd out;
     CB_CHECK_EQ(namer.run(std::vector<std::string>{"lzexpand.dll"}), 0);
     const std::string text = out.out();
@@ -706,9 +706,9 @@ CB_TEST("symbols.names.the_command_lists_every_function_and_import", [] {
     CB_CHECK(text.find("import ") != std::string::npos);
 });
 
-CB_TEST("symbols.names.the_command_names_a_body_and_counts_the_shared_ones", [] {
+CB_TEST("naming.names.the_command_names_a_body_and_counts_the_shared_ones", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     cb::testing::CapturedStd out;
     CB_CHECK_EQ(namer.run(std::vector<std::string>{"--shared"}), 0);
     CB_CHECK_EQ(out.out(), "7 bodies recorded, 5 distinct; 2 bodies are in two or more modules (4 functions are such copies)\n");
@@ -724,9 +724,9 @@ CB_TEST("symbols.names.the_command_names_a_body_and_counts_the_shared_ones", [] 
     CB_CHECK_EQ(none.out(), "that function has no body worth naming\n");
 });
 
-CB_TEST("symbols.names.the_command_refuses_what_it_cannot_do", [] {
+CB_TEST("naming.names.the_command_refuses_what_it_cannot_do", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     cb::testing::CapturedStd out;
     CB_CHECK_THROWS_AS(cb::UsageError, (void)namer.run(std::vector<std::string>{}));
     CB_CHECK_THROWS_AS(cb::NotFoundError, (void)namer.run(std::vector<std::string>{"nosuchmodule.dll"}));
@@ -737,7 +737,7 @@ CB_TEST("symbols.names.the_command_refuses_what_it_cannot_do", [] {
     std::vector<stdfs::path> got;
     auto services = w.services();
     services.collect_ordinals = [&](std::span<const stdfs::path> files) { got.assign(files.begin(), files.end()); };
-    nm::Namer with(services);
+    cb::naming::names::Namer with(services);
     CB_CHECK_EQ(with.run(std::vector<std::string>{"--ordinals", "a.def", "b.lib"}), 0);
     CB_CHECK_EQ(got.size(), 2U);
     CB_CHECK(got[1] == stdfs::path("b.lib"));
@@ -754,8 +754,8 @@ struct ProposingWorld {
     cb::store::KnowledgeBodies bodies{kb};
     cb::store::KnowledgeProposals proposals{kb};
 
-    nm::Namer::Services services(bool shared = true) {
-        nm::Namer::Services s = w.services(false);
+    cb::naming::names::Namer::Services services(bool shared = true) {
+        cb::naming::names::Namer::Services s = w.services(false);
         if (shared) {
             s.bodies = &bodies;
             s.proposals = &proposals;
@@ -768,7 +768,7 @@ struct ProposingWorld {
         environment.state = state.path();
         return cb::analyze::function_evidence::of_module(module, environment);
     }
-    cb::symbols::proposals::Proposals::Services proposing(nm::Namer& namer) {
+    cb::naming::proposals::Proposals::Services proposing(cb::naming::names::Namer& namer) {
         return {namer, proposals, *w.corpus, [](const stdfs::path& module) { return evidence(module); }};
     }
 };
@@ -781,16 +781,16 @@ std::set<std::string> names_of(const nm::ModuleNames& m) {
 
 }  // namespace
 
-CB_TEST("symbols.names.proposals_over_the_real_modules_are_valid_unique_and_not_names", [] {
+CB_TEST("naming.names.proposals_over_the_real_modules_are_valid_unique_and_not_names", [] {
     ProposingWorld p;
-    nm::Namer namer(p.services());
-    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    cb::naming::names::Namer namer(p.services());
+    cb::naming::proposals::Proposals proposing(p.proposing(namer));
     for (const stdfs::path& module : {p.w.lz16, p.w.lz32}) {
         const nm::ModuleNames before = namer.of_module(module);
         const auto made = proposing.propose(module);
         std::set<std::string> seen;
         for (const auto& proposal : made) {
-            CB_CHECK(cb::symbols::proposals::valid_name(proposal.name));
+            CB_CHECK(cb::naming::proposals::valid_name(proposal.name));
             CB_CHECK(seen.insert(proposal.name).second);              // one name to a function
             CB_CHECK(!names_of(before).contains(proposal.name));      // and not one a function has
             CB_CHECK_EQ(proposal.source, "proposal");
@@ -812,12 +812,12 @@ CB_TEST("symbols.names.proposals_over_the_real_modules_are_valid_unique_and_not_
     }
 });
 
-CB_TEST("symbols.names.accepting_a_name_changes_what_names_shows_and_nothing_the_judge_reads", [] {
+CB_TEST("naming.names.accepting_a_name_changes_what_names_shows_and_nothing_the_judge_reads", [] {
     ProposingWorld p;
-    nm::Namer namer(p.services());
-    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    cb::naming::names::Namer namer(p.services());
+    cb::naming::proposals::Proposals proposing(p.proposing(namer));
     // What the judge's side reads: the decompiler's namer has no body store (decompile/environment.cpp), and the facts the analyses read of the code.
-    nm::Namer decompilers(p.services(false));
+    cb::naming::names::Namer decompilers(p.services(false));
     for (const stdfs::path& module : {p.w.lz16, p.w.lz32}) {
         const nm::ModuleNames judge_before = decompilers.of_module(module);
         const auto evidence_before = ProposingWorld::evidence(module);
@@ -859,10 +859,10 @@ CB_TEST("symbols.names.accepting_a_name_changes_what_names_shows_and_nothing_the
     }
 });
 
-CB_TEST("symbols.names.a_rejected_proposal_stays_rejected_and_is_not_made_again", [] {
+CB_TEST("naming.names.a_rejected_proposal_stays_rejected_and_is_not_made_again", [] {
     ProposingWorld p;
-    nm::Namer namer(p.services());
-    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    cb::naming::names::Namer namer(p.services());
+    cb::naming::proposals::Proposals proposing(p.proposing(namer));
     const auto made = proposing.propose(p.w.lz32);
     CB_CHECK(!made.empty());
     const std::string key = made.front().key;
@@ -874,10 +874,10 @@ CB_TEST("symbols.names.a_rejected_proposal_stays_rejected_and_is_not_made_again"
     CB_CHECK(p.proposals.get(namer.module_sha(p.w.lz32), key)->state == cb::store::ProposalState::Rejected);
 });
 
-CB_TEST("symbols.names.an_assistants_suggestion_is_stored_apart_and_checked", [] {
+CB_TEST("naming.names.an_assistants_suggestion_is_stored_apart_and_checked", [] {
     ProposingWorld p;
-    nm::Namer namer(p.services());
-    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    cb::naming::names::Namer namer(p.services());
+    cb::naming::proposals::Proposals proposing(p.proposing(namer));
     // a function nothing names (LZEXPAND's 1:0000)
     const auto address = static_cast<nm::Address>(cb::core16::address(1, 0));
     const auto stored = proposing.suggest(p.w.lz16, address, "InitHeader", "Reads the file header.", 70);
@@ -899,9 +899,9 @@ CB_TEST("symbols.names.an_assistants_suggestion_is_stored_apart_and_checked", []
     CB_CHECK_EQ(namer.of_module(p.w.lz16).functions.front().name, "InitHeader");
 });
 
-CB_TEST("symbols.names.the_proposal_options_need_what_they_are_given", [] {
+CB_TEST("naming.names.the_proposal_options_need_what_they_are_given", [] {
     World w;
-    nm::Namer namer(w.services());
+    cb::naming::names::Namer namer(w.services());
     cb::testing::CapturedStd out;
     CB_CHECK_THROWS_AS(cb::UsageError, (void)namer.run(std::vector<std::string>{"lzexpand.dll", "--propose"}));
 });

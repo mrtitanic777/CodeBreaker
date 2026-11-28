@@ -1,4 +1,4 @@
-// symbols/workbench.hpp -- the objects `identify` and `names` work over, made when a command runs.
+// naming/workbench.hpp -- the objects `identify` and `names` work over, made when a command runs.
 //
 //     Workbench bench(environment);
 //     bench.identifier().identify(path)          the runtime library's functions of a module
@@ -17,24 +17,24 @@
 #include "store/knowledge_bodies.hpp"
 #include "store/knowledge_proposals.hpp"
 #include "symbols/environment.hpp"
-#include "symbols/identify.hpp"
-#include "symbols/names.hpp"
+#include "naming/identify.hpp"
+#include "naming/names.hpp"
 #include "symbols/ordinals.hpp"
-#include "symbols/proposals.hpp"
+#include "naming/proposals.hpp"
 
-namespace cb::symbols {
+namespace cb::naming {
 
 class Workbench {
 public:
-    explicit Workbench(const Environment& environment);
+    explicit Workbench(const symbols::Environment& environment);
     Workbench(const Workbench&) = delete;
     Workbench& operator=(const Workbench&) = delete;
     ~Workbench();
 
-    const Environment& environment() const { return environment_; }
+    const symbols::Environment& environment() const { return environment_; }
     knowledge::Store& store();
     knowledge::Knowledge& knowledge();
-    const ordinals::Ordinals& ordinals();
+    const symbols::ordinals::Ordinals& ordinals();
     identify::Identifier& identifier();
     store::BodyStore& bodies();
     store::ProposalStore& proposal_store();
@@ -43,8 +43,8 @@ public:
 
 private:
     struct Parts;
-    Environment environment_;
+    symbols::Environment environment_;
     std::unique_ptr<Parts> parts_;
 };
 
-}  // namespace cb::symbols
+}  // namespace cb::naming

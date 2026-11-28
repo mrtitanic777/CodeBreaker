@@ -16,7 +16,7 @@
 #include "decompile/describe.hpp"
 #include "decompile/environment.hpp"
 #include "formats/powerpc_image.hpp"
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 #include "symbols/ordinals.hpp"
 #include "engine/lane_kit_internal.hpp"
 #include "formats/detect.hpp"
@@ -24,7 +24,7 @@
 #include "formats/omf.hpp"
 #include "formats/pe_functions.hpp"
 #include "platforms/decoder.hpp"
-#include "symbols/identify.hpp"
+#include "naming/identify.hpp"
 #include "symbols/runtime_library.hpp"
 
 namespace cb::engine::kit_detail {
@@ -355,7 +355,7 @@ struct KitEnvironment::Impl {
     std::map<stdfs::path, std::shared_ptr<const formats::powerpc_image::Image>> ppc_images;
     std::shared_ptr<decompile::environment::CorpusModules> ppc_modules;
     std::unique_ptr<symbols::ordinals::Ordinals> ppc_ordinals;
-    std::unique_ptr<symbols::names::Namer> ppc_namer;
+    std::unique_ptr<naming::names::Namer> ppc_namer;
 
     std::shared_ptr<const formats::powerpc_image::Image> ppc_image(const stdfs::path& module) {
         std::lock_guard hold(ppc_lock);
@@ -370,14 +370,14 @@ struct KitEnvironment::Impl {
     }
 
     // The namer, made when first asked (naming a PowerPC image's functions needs no ordinal table, but the namer holds one).
-    symbols::names::Namer& namer() {
+    naming::names::Namer& namer() {
         std::lock_guard hold(ppc_lock);
         if (!ppc_namer) {
             ppc_modules = std::make_shared<decompile::environment::CorpusModules>(corpus);
             knowledge::Knowledge& base = kb;
             ppc_ordinals = std::make_unique<symbols::ordinals::Ordinals>(*ppc_modules, decompile::environment::shipped_tables(base),
                                                                          [&base](std::string_view name) { return base.spelling(name); });
-            symbols::names::Namer::Services services{corpus, *ppc_ordinals, nullptr};
+            naming::names::Namer::Services services{corpus, *ppc_ordinals, nullptr};
             services.powerpc = [this](const stdfs::path& module) -> std::optional<symbols::names::PowerPcNames> {
                 const std::shared_ptr<const formats::powerpc_image::Image> image = ppc_image(module);   // (ppc_lock is not held when the namer asks)
                 symbols::names::PowerPcNames out;
@@ -387,7 +387,7 @@ struct KitEnvironment::Impl {
                     out.methods.push_back({m.address, m.class_name, m.slot});
                 return out;
             };
-            ppc_namer = std::make_unique<symbols::names::Namer>(std::move(services));
+            ppc_namer = std::make_unique<naming::names::Namer>(std::move(services));
         }
         return *ppc_namer;
     }
@@ -537,7 +537,7 @@ std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitE
         if (image.header().machine != formats::pe::kMachineX64) return out;
         std::lock_guard hold(impl_->lock);
         if (!impl_->signatures64) impl_->signatures64 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win64"));
-        for (const auto& [va, found] : symbols::identify::identify_x64(image, aa::stem(fs::to_text(module.filename())), *impl_->signatures64))
+        for (const auto& [va, found] : naming::identify::identify_x64(image, aa::stem(fs::to_text(module.filename())), *impl_->signatures64))
             out[static_cast<decompile::decompiler::Va>(va)] = {found.name, found.library, found.bytes};
     } catch (const Error&) {   // (a module that does not read as a PE has nothing identified)
         out.clear();

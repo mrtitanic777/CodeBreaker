@@ -1,5 +1,5 @@
 // cb-unity: alone (file-local helpers named for this module)
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 
 #include <algorithm>
 #include <format>
@@ -18,7 +18,7 @@
 #include "formats/pe.hpp"
 #include "symbols/demangle.hpp"
 
-namespace cb::symbols::names {
+namespace cb::naming::names {
 
 namespace describe = decompile::describe;
 namespace ne = formats::ne;
@@ -36,7 +36,7 @@ bool is_plain_segment(std::string_view name) {
     return plain.contains(text::upper(name));
 }
 
-std::string plain_upper(std::string_view name) { return text::upper(demangle::plain(name).name); }
+std::string plain_upper(std::string_view name) { return text::upper(symbols::demangle::plain(name).name); }
 
 std::string_view first_part(std::string_view text, std::string_view separator) { return text.substr(0, text.find(separator)); }
 
@@ -50,8 +50,8 @@ struct Namer::Impl {
     pef::CarveCache carves;
     std::optional<std::map<std::string, std::vector<std::filesystem::path>>> sym_files;   // by stem in capitals; lookup only
     struct Debugged {
-        Named names;
-        std::map<Address, std::string> files;
+        symbols::names::Named names;
+        std::map<symbols::names::Address, std::string> files;
     };
     std::map<std::string, Debugged> debugged;   // by absolute path; lookup only
 
@@ -69,16 +69,16 @@ struct Namer::Impl {
     bool is_powerpc(const std::filesystem::path& module) const { return machine(module) == kMachinePowerPc; }
 
     // ---- bodies ----
-    std::map<Address, std::string> bodies(const std::filesystem::path& module) {
+    std::map<symbols::names::Address, std::string> bodies(const std::filesystem::path& module) {
         const auto l = lane(module);
         if (l == base::Lane::Pe) {
-            return machine(module) == kMachineI386 ? bodies32(*carves.get(module)) : std::map<Address, std::string>{};
+            return machine(module) == kMachineI386 ? symbols::names::bodies32(*carves.get(module)) : std::map<symbols::names::Address, std::string>{};
         }
         if (l == base::Lane::Ne) {
             const ne::Module m = ne::Module::open_file(module);
             std::vector<core16::SegOff> starts;
             for (const auto& [place, distance] : describe::find_functions(m)) starts.push_back(place);
-            return bodies16(m, starts, decoders);
+            return symbols::names::bodies16(m, starts, decoders);
         }
         return {};
     }
@@ -139,21 +139,21 @@ struct Namer::Impl {
         } else {
             return out;
         }
-        const auto place = [&](std::uint32_t segment, std::uint32_t offset) -> std::optional<Address> {
-            if (is_ne) return static_cast<Address>(core16::address(segment, offset));
+        const auto place = [&](std::uint32_t segment, std::uint32_t offset) -> std::optional<symbols::names::Address> {
+            if (is_ne) return static_cast<symbols::names::Address>(core16::address(segment, offset));
             if (0 < segment && segment <= sections.size()) return image_base + sections[segment - 1] + offset;
             return std::nullopt;
         };
 
         struct Table {
             std::string where;
-            std::vector<SymSegment> segments;
+            std::vector<symbols::names::SymSegment> segments;
             std::map<std::uint32_t, std::string> objects;
         };
         std::vector<Table> tables;
         {
             Table codeview_table{"CodeView symbols in the file", {}, {}};
-            for (const auto& [at, name] : codeview(data)) {   // by segment, ascending
+            for (const auto& [at, name] : symbols::names::codeview(data)) {   // by segment, ascending
                 if (codeview_table.segments.empty() || codeview_table.segments.back().number != at.seg) codeview_table.segments.push_back({at.seg, {}});
                 codeview_table.segments.back().symbols[at.off] = name;
             }
@@ -163,10 +163,10 @@ struct Namer::Impl {
             std::error_code ec;
             if (!std::filesystem::is_regular_file(p, ec)) continue;
             const Bytes file = fs::read_file(p);
-            tables.push_back({fs::to_text(p.filename()), read_sym(file).value_or(std::vector<SymSegment>{}), sym_objects(file)});
+            tables.push_back({fs::to_text(p.filename()), symbols::names::read_sym(file).value_or(std::vector<symbols::names::SymSegment>{}), symbols::names::sym_objects(file)});
         }
         for (const Table& table : tables) {
-            for (const SymSegment& segment : table.segments) {
+            for (const symbols::names::SymSegment& segment : table.segments) {
                 // the symbols are for this build only where its own exports sit where the symbols put them
                 std::size_t agree = 0, named = 0;
                 for (const auto& [offset, name] : segment.symbols) {
@@ -187,7 +187,7 @@ struct Namer::Impl {
                 for (const auto& [offset, name] : segment.symbols) {
                     const auto address = place(segment.number, is_ne ? (offset & 0xFFFFu) : offset);
                     if (!address) continue;
-                    out.names.try_emplace(*address, NameSource{demangle::plain(name).name, table.where});
+                    out.names.try_emplace(*address, symbols::names::NameSource{symbols::demangle::plain(name).name, table.where});
                     const auto object = table.objects.find(segment.number);
                     if (object != table.objects.end() && !object->second.empty() && !is_plain_segment(object->second)) {
                         const std::string_view trimmed = std::string_view(object->second).substr(std::min(object->second.find_first_not_of('_'), object->second.size()));
@@ -208,31 +208,31 @@ struct Namer::Impl {
     }
 
     // ---- the names of a module ----
-    std::vector<Address> starts(const std::filesystem::path& module) {
+    std::vector<symbols::names::Address> starts(const std::filesystem::path& module) {
         const auto l = lane(module);
         if (l == base::Lane::Ne) {
-            std::vector<Address> out;
+            std::vector<symbols::names::Address> out;
             for (const auto& [place, distance] : describe::find_functions(ne::Module::open_file(module)))
-                out.push_back(static_cast<Address>(core16::address(place.seg, place.off)));
+                out.push_back(static_cast<symbols::names::Address>(core16::address(place.seg, place.off)));
             std::sort(out.begin(), out.end());
             return out;
         }
         if (l == base::Lane::Pe) {
             if (is_powerpc(module)) {
                 const auto facts = s.powerpc ? s.powerpc(module) : std::nullopt;
-                return facts ? facts->functions : std::vector<Address>{};
+                return facts ? facts->functions : std::vector<symbols::names::Address>{};
             }
-            std::vector<Address> out;   // the functions the carve finds, in address order
+            std::vector<symbols::names::Address> out;   // the functions the carve finds, in address order
             for (const auto& [start, function] : carves.get(module)->functions()) out.push_back(start);
             return out;
         }
         // a real-mode program (the file says so itself: a PE or NE outside the corpus has no lane here, and its DOS stub is not
         // the program): the functions its analysis follows, by linear address (as identify has them)
         if ((!l || *l == base::Lane::Dos) && formats::detect::lane(module) == formats::detect::Lane::Dos) {
-            std::vector<Address> out;
+            std::vector<symbols::names::Address> out;
             try {
                 const formats::dos::Program program = formats::dos::read_program(fs::read_file(module), fs::to_text(module.filename()));
-                for (const auto& [va, fn] : analyze::dos_functions::discover(program).functions) out.push_back(static_cast<Address>(va));
+                for (const auto& [va, fn] : analyze::dos_functions::discover(program).functions) out.push_back(static_cast<symbols::names::Address>(va));
             } catch (const Error&) {   // (not a program the DOS reader knows: no functions)
             }
             return out;
@@ -240,20 +240,20 @@ struct Namer::Impl {
         return {};
     }
 
-    Named own(const std::filesystem::path& module) {
+    symbols::names::Named own(const std::filesystem::path& module) {
         const auto l = lane(module);
-        Named out;
+        symbols::names::Named out;
         std::string stem;
-        std::map<std::uint32_t, Address> numbered;   // ordinal -> address: what the ordinal table can name
+        std::map<std::uint32_t, symbols::names::Address> numbered;   // ordinal -> address: what the ordinal table can name
         if (l == base::Lane::Ne) {
             const ne::Module m = ne::Module::open_file(module);
-            std::map<std::uint32_t, Address> entries;
+            std::map<std::uint32_t, symbols::names::Address> entries;
             for (const ne::Entry& e : m.entries())
-                if (e.kind != ne::Entry::Kind::Unused) entries[e.ordinal] = static_cast<Address>(core16::address(e.segment, e.offset));
+                if (e.kind != ne::Entry::Kind::Unused) entries[e.ordinal] = static_cast<symbols::names::Address>(core16::address(e.segment, e.offset));
             const std::vector<ne::Name> nonresident = m.nonresident_names(), resident = m.resident_names();
             for (const auto* names : {&nonresident, &resident})   // (the module's own name, the first of each, is not an export)
                 for (std::size_t i = 1; i < names->size(); ++i)
-                    if (const auto at = entries.find((*names)[i].ordinal); at != entries.end()) out.try_emplace(at->second, NameSource{(*names)[i].name, "export"});
+                    if (const auto at = entries.find((*names)[i].ordinal); at != entries.end()) out.try_emplace(at->second, symbols::names::NameSource{(*names)[i].name, "export"});
             stem = text::upper(m.module_name());
             numbered = std::move(entries);
         } else if (l == base::Lane::Pe && is_powerpc(module)) {
@@ -261,15 +261,15 @@ struct Namer::Impl {
         } else if (l == base::Lane::Pe) {
             const formats::pe::Image image = formats::pe::Image::open(module);
             for (const formats::pe::Export& e : image.exports()) {
-                const Address va = image.header().image_base + e.rva;
+                const symbols::names::Address va = image.header().image_base + e.rva;
                 numbered[static_cast<std::uint32_t>(e.ordinal)] = va;
-                if (e.name && !e.name->empty()) out.try_emplace(va, NameSource{*e.name, "export"});
+                if (e.name && !e.name->empty()) out.try_emplace(va, symbols::names::NameSource{*e.name, "export"});
             }
             stem = text::upper(fs::to_text(module.stem()));
         } else {
             return out;
         }
-        for (const auto& [address, found] : debug(module).names) out.try_emplace(address, NameSource{found.name, "debug symbols (" + found.source + ")"});
+        for (const auto& [address, found] : debug(module).names) out.try_emplace(address, symbols::names::NameSource{found.name, "debug symbols (" + found.source + ")"});
         for (const auto& [ordinal, address] : numbered) {
             if (out.contains(address)) continue;
             const auto linker = s.ordinals.linker_name(stem, ordinal);
@@ -278,20 +278,20 @@ struct Namer::Impl {
         return out;
     }
 
-    Named powerpc(const std::filesystem::path& module) {
+    symbols::names::Named powerpc(const std::filesystem::path& module) {
         const auto facts = s.powerpc ? s.powerpc(module) : std::nullopt;
-        return facts ? names::powerpc_names(*facts) : Named{};
+        return facts ? symbols::names::powerpc_names(*facts) : symbols::names::Named{};
     }
 
-    std::size_t index(const std::filesystem::path& module, const std::optional<Named>& own_names_given) {
+    std::size_t index(const std::filesystem::path& module, const std::optional<symbols::names::Named>& own_names_given) {
         if (!s.bodies) throw UsageError("there is no body store to record bodies in");
         const auto l = lane(module);
         const base::Lane lane_of = l.value_or(base::Lane::Dos);
-        const Named names = own_names_given ? *own_names_given : own(module);
+        const symbols::names::Named names = own_names_given ? *own_names_given : own(module);
         std::map<std::string, store::Body> rows;
         for (const auto& [address, digest] : bodies(module)) {
             const auto found = names.find(address);
-            rows[function_key(lane_of, address)] = {digest, found == names.end() ? std::nullopt : std::optional<std::string>(found->second.name),
+            rows[symbols::names::function_key(lane_of, address)] = {digest, found == names.end() ? std::nullopt : std::optional<std::string>(found->second.name),
                                                      found == names.end() ? std::nullopt : std::optional<std::string>(found->second.source)};
         }
         s.bodies->set_bodies({sha(module), fs::to_text(module.filename()), fs::to_text(module), lane_text(module)}, rows);
@@ -300,12 +300,12 @@ struct Namer::Impl {
 
     base::Lane lane_or_dos(const std::filesystem::path& module) const { return lane(module).value_or(base::Lane::Dos); }
 
-    ModuleNames of_module(const std::filesystem::path& module) {
+    symbols::names::ModuleNames of_module(const std::filesystem::path& module) {
         const auto l = lane(module);
         const std::string sha_text = sha(module);
-        const Named own_found = own(module);
+        const symbols::names::Named own_found = own(module);
         if (s.bodies && s.bodies->bodies(sha_text).empty()) index(module, own_found);
-        const std::map<Address, runtime_library::Identified> library = s.runtime_library ? s.runtime_library(module) : std::map<Address, runtime_library::Identified>{};
+        const std::map<symbols::names::Address, symbols::runtime_library::Identified> library = s.runtime_library ? s.runtime_library(module) : std::map<symbols::names::Address, symbols::runtime_library::Identified>{};
         const std::map<std::string, store::SharedName> from_bodies = s.bodies ? s.bodies->names_from_bodies(sha_text) : std::map<std::string, store::SharedName>{};
         std::map<std::string, store::Proposal> accepted_here, proposed_here;   // by function key: the proposals of this module not carried by a body
         if (s.proposals) {
@@ -315,13 +315,13 @@ struct Namer::Impl {
             }
         }
 
-        ModuleNames result;
+        symbols::names::ModuleNames result;
         const base::Lane lane_of = lane_or_dos(module);
-        for (const Address address : starts(module)) {
-            const std::string key = function_key(lane_of, address);
+        for (const symbols::names::Address address : starts(module)) {
+            const std::string key = symbols::names::function_key(lane_of, address);
             const auto shared = from_bodies.find(key);
             const auto mine = own_found.find(address);
-            FunctionName f{address, key, {}, {}};
+            symbols::names::FunctionName f{address, key, {}, {}};
             if (mine != own_found.end() && mine->second.source == "export") {
                 f.name = mine->second.name;
                 f.source = mine->second.source;
@@ -344,7 +344,7 @@ struct Namer::Impl {
                 f.name = "sub_" + text::replace_all(key, ":", "_");
                 f.source = "(none)";
                 if (const auto proposal = proposed_here.find(key); proposal != proposed_here.end())
-                    f.proposed = ProposedName{proposal->second.name, proposal->second.description, proposal->second.rule, proposal->second.confidence};
+                    f.proposed = symbols::names::ProposedName{proposal->second.name, proposal->second.description, proposal->second.rule, proposal->second.confidence};
             }
             result.functions.push_back(std::move(f));
         }
@@ -370,7 +370,7 @@ struct Namer::Impl {
             if (s.console_import_names) {
                 for (const auto& [symbol, name] : s.console_import_names(module)) {
                     // `import<library>_ord_<number>`: the library and the ordinal the console's system libraries number it by
-                    ImportName item{"?", std::nullopt, name, "the console's system libraries (config/knowledge/xbox360/ordinals.json)"};
+                    symbols::names::ImportName item{"?", std::nullopt, name, "the console's system libraries (config/knowledge/xbox360/ordinals.json)"};
                     if (symbol.starts_with("import")) {
                         const std::size_t middle = symbol.find("_ord_");
                         const std::string_view number_of_library = middle == std::string::npos ? std::string_view() : std::string_view(symbol).substr(6, middle - 6);
@@ -399,7 +399,7 @@ struct Namer::Impl {
     }
 
     // A function imported by number: the name the tables give it and where they have it from, else "MODULE.number" and "(none)".
-    ImportName numbered_import(const std::string& imported, std::uint32_t ordinal) {
+    symbols::names::ImportName numbered_import(const std::string& imported, std::uint32_t ordinal) {
         const auto real = s.ordinals.name(imported, ordinal);
         if (real && !real->empty()) return {imported, ordinal, *real, std::format("{}'s exports ({})", imported, s.ordinals.source(imported, ordinal))};
         return {imported, ordinal, std::format("{}.{}", imported, ordinal), "(none)"};
@@ -409,23 +409,23 @@ struct Namer::Impl {
 Namer::Namer(Services services) : impl_(std::make_unique<Impl>(std::move(services))) {}
 Namer::~Namer() = default;
 
-std::map<Address, std::string> Namer::bodies(const std::filesystem::path& module) { return impl_->bodies(module); }
-const Named& Namer::debug_names(const std::filesystem::path& module) { return impl_->debug(module).names; }
-const std::map<Address, std::string>& Namer::source_files(const std::filesystem::path& module) { return impl_->debug(module).files; }
-Named Namer::own_names(const std::filesystem::path& module) { return impl_->own(module); }
-Named Namer::powerpc_names(const std::filesystem::path& module) { return impl_->powerpc(module); }
-std::size_t Namer::index(const std::filesystem::path& module, const std::optional<Named>& own) { return impl_->index(module, own); }
-ModuleNames Namer::of_module(const std::filesystem::path& module) { return impl_->of_module(module); }
+std::map<symbols::names::Address, std::string> Namer::bodies(const std::filesystem::path& module) { return impl_->bodies(module); }
+const symbols::names::Named& Namer::debug_names(const std::filesystem::path& module) { return impl_->debug(module).names; }
+const std::map<symbols::names::Address, std::string>& Namer::source_files(const std::filesystem::path& module) { return impl_->debug(module).files; }
+symbols::names::Named Namer::own_names(const std::filesystem::path& module) { return impl_->own(module); }
+symbols::names::Named Namer::powerpc_names(const std::filesystem::path& module) { return impl_->powerpc(module); }
+std::size_t Namer::index(const std::filesystem::path& module, const std::optional<symbols::names::Named>& own) { return impl_->index(module, own); }
+symbols::names::ModuleNames Namer::of_module(const std::filesystem::path& module) { return impl_->of_module(module); }
 
 std::string Namer::module_sha(const std::filesystem::path& module) const { return impl_->sha(module); }
-std::string Namer::key_of(const std::filesystem::path& module, Address address) const { return function_key(impl_->lane_or_dos(module), address); }
+std::string Namer::key_of(const std::filesystem::path& module, symbols::names::Address address) const { return symbols::names::function_key(impl_->lane_or_dos(module), address); }
 
-std::optional<std::string> Namer::set_name(const std::filesystem::path& module, Address address, std::string_view name, std::string_view source) {
+std::optional<std::string> Namer::set_name(const std::filesystem::path& module, symbols::names::Address address, std::string_view name, std::string_view source) {
     if (!impl_->s.bodies) throw UsageError("there is no body store to name a body in");
     const std::string sha = impl_->sha(module);
     if (impl_->s.bodies->bodies(sha).empty()) impl_->index(module, std::nullopt);
     const auto rows = impl_->s.bodies->bodies(sha);
-    const auto row = rows.find(function_key(impl_->lane_or_dos(module), address));
+    const auto row = rows.find(symbols::names::function_key(impl_->lane_or_dos(module), address));
     if (row == rows.end()) return std::nullopt;
     impl_->s.bodies->name_body(row->second.digest, name, source);
     return row->second.digest;
@@ -510,22 +510,22 @@ int Namer::execute(const cli::Args& a) {
     const std::filesystem::path path = *found;
     if (const auto address_text = a.value("--set")) {
         if (arguments.size() < 2) throw UsageError("--set needs the address and then the name");
-        const auto address = parse_address(*address_text);
+        const auto address = symbols::names::parse_address(*address_text);
         if (!address) throw UsageError("'" + *address_text + "' is not an address (hex, or segment:offset)");
         const auto digest = set_name(path, *address, arguments[1]);
         cb::out("{}\n", digest ? std::format("body {} is now {}", *digest, arguments[1]) : "that function has no body worth naming");
         return digest ? 0 : 1;
     }
-    const ModuleNames names = of_module(path);
+    const symbols::names::ModuleNames names = of_module(path);
     Counts by_source;
-    for (const FunctionName& f : names.functions) {
-        const std::string shown = f.name.starts_with('?') ? demangle::readable(f.name) : f.name;
+    for (const symbols::names::FunctionName& f : names.functions) {
+        const std::string shown = f.name.starts_with('?') ? symbols::demangle::readable(f.name) : f.name;
         cb::out("{:<10} {:<48} {}\n", f.key, shown.substr(0, 48), f.source);
         bump(by_source, std::string(first_part(first_part(f.source, " ("), ":")));
     }
     Counts by_kind;
-    for (const ImportName& i : names.imports) {
-        const std::string shown = i.name.starts_with('?') ? demangle::readable(i.name) : i.name;
+    for (const symbols::names::ImportName& i : names.imports) {
+        const std::string shown = i.name.starts_with('?') ? symbols::demangle::readable(i.name) : i.name;
         cb::out("import {:<12} {:<6} {:<40} {}\n", i.module, i.ordinal ? std::to_string(*i.ordinal) : std::string(), shown.substr(0, 40), i.source);
         bump(by_kind, !i.ordinal ? "by name" : i.source != "(none)" ? "by number, named" : "by number, no name");
     }
@@ -535,7 +535,7 @@ int Namer::execute(const cli::Args& a) {
     cb::out("{} imports -- {}\n", names.imports.size(), joined(by_kind));
     const auto l = self.lane(path);
     if ((l == base::Lane::Pe || l == base::Lane::Ne) && self.s.compiler) {
-        const runtime_library::CompilerInfo info = self.s.compiler(path);
+        const symbols::runtime_library::CompilerInfo info = self.s.compiler(path);
         cb::out("built with: {} (linker {})\n", info.compiler, info.linker.empty() ? "?" : info.linker);
     } else if (l != base::Lane::Pe && l != base::Lane::Ne) {
         cb::out("\n");   // (a file of another kind has no "built with" line, and the report ends with an empty one)
@@ -550,4 +550,4 @@ int Namer::run(std::span<const std::string> args) {
     return program.run(line);
 }
 
-}  // namespace cb::symbols::names
+}  // namespace cb::naming::names

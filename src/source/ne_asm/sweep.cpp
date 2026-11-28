@@ -15,7 +15,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 #include "formats/detect.hpp"
-#include "symbols/debug_build.hpp"
+#include "naming/debug_build.hpp"
 
 namespace cb::source::ne_asm::sweep {
 
@@ -55,7 +55,7 @@ ModuleRecord sweep_module(const std::string& module, const stdfs::path& path, co
     std::map<std::size_t, segment::NameOverrides> overrides;
     const stdfs::path names_json = state / "idiomatic" / tag / "names.json";
     std::error_code ec;
-    if (stdfs::is_regular_file(names_json, ec)) overrides = symbols::debug_build::parse_overrides(fs::read_text(names_json));
+    if (stdfs::is_regular_file(names_json, ec)) overrides = naming::debug_build::parse_overrides(fs::read_text(names_json));
     ModuleRecord record;
     record.module = module;
     for (const formats::ne::Segment& s : ne.segments()) {

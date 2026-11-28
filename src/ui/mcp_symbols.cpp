@@ -29,7 +29,7 @@
 #include "source/placement.hpp"
 #include "store/functions.hpp"
 #include "store/proposals.hpp"
-#include "symbols/proposals.hpp"
+#include "naming/proposals.hpp"
 #include "ui/mcp_wiring.hpp"
 #include "ui/progress.hpp"
 
@@ -134,8 +134,8 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
     // the functions a runtime library made, and what built the module
     services.identified = [context](const std::filesystem::path& p) {
         std::lock_guard hold(context->lock());
-        sym::identify::Identifier& identifier = context->bench().identifier();
-        const sym::identify::Found found = identifier.identify(p);
+        naming::identify::Identifier& identifier = context->bench().identifier();
+        const naming::identify::Found found = identifier.identify(p);
         Json rows = Json::array();
         for (const auto& [address, what] : found) rows.push_back(Json::array({address, what.name, what.library}));
         Json out = Json::object();

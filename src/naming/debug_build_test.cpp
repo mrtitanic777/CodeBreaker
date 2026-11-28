@@ -12,7 +12,7 @@
 //
 // Known limitation, as it decides which functions match: a far call `call 0x1:0x20` is masked by the branch rule first, to `call X:0x20`, so
 // the offset of a far call target stays in the signature and a function that makes one is matched only where the offset happens to agree.
-#include "symbols/debug_build.hpp"
+#include "naming/debug_build.hpp"
 
 #include <format>
 #include <sstream>
@@ -22,7 +22,7 @@
 #include "core/testing.hpp"
 #include "core/text.hpp"
 
-namespace db = cb::symbols::debug_build;
+namespace db = cb::naming::debug_build;
 namespace sg = cb::source::ne_asm::segment;
 namespace fx = cb::source::ne_asm::fixups;
 namespace ne = cb::formats::ne;
@@ -74,7 +74,7 @@ db::Signature of(const ne::Module& m, std::uint32_t segment, std::uint32_t start
 
 }  // namespace
 
-CB_TEST("symbols.debug_build.a_signature_masks_what_depends_on_the_offset", [] {
+CB_TEST("naming.debug_build.a_signature_masks_what_depends_on_the_offset", [] {
     const ne::Module module = lz();
     const fx::Objdump dump = objdump();
     // sub_0090 as the listing has it: whitespace collapsed, nothing offset-dependent in it (a [bp+..] operand is not an absolute address)
@@ -97,7 +97,7 @@ CB_TEST("symbols.debug_build.a_signature_masks_what_depends_on_the_offset", [] {
     CB_CHECK(of(module, 3, 0, dump).empty());
 });
 
-CB_TEST("symbols.debug_build.a_map_lists_the_names_at_their_places", [] {
+CB_TEST("naming.debug_build.a_map_lists_the_names_at_their_places", [] {
     const auto names = db::parse_map(
         " Address         Publics by Value\r\n"
         "\r\n"
@@ -120,7 +120,7 @@ CB_TEST("symbols.debug_build.a_map_lists_the_names_at_their_places", [] {
     CB_CHECK(db::parse_map("").empty());
 });
 
-CB_TEST("symbols.debug_build.the_index_names_the_signatures_of_a_debug_build", [] {
+CB_TEST("naming.debug_build.the_index_names_the_signatures_of_a_debug_build", [] {
     const ne::Module module = lz();
     const fx::Objdump dump = objdump();
     const std::string map = " 0001:0090  DebugNinety\r\n 0001:00C0  DebugC0\r\n 0001:00A0  Short\r\n"
@@ -135,7 +135,7 @@ CB_TEST("symbols.debug_build.the_index_names_the_signatures_of_a_debug_build", [
     CB_CHECK_THROWS_AS(cb::FormatError, (void)db::build_index(ne::Module::open(cb::fs::read_file(cb::testing::data_path("formats/testdata/splitter.vxd"))), map, ordinals(), dump));
 });
 
-CB_TEST("symbols.debug_build.a_module_is_named_from_a_debug_build_of_itself", [] {
+CB_TEST("naming.debug_build.a_module_is_named_from_a_debug_build_of_itself", [] {
     const ne::Module module = lz();
     const fx::Objdump dump = objdump();
     const std::string map = " 0001:0090  DebugNinety\r\n 0001:00C0  DebugC0\r\n 0001:00A0  Short\r\n";
@@ -152,7 +152,7 @@ CB_TEST("symbols.debug_build.a_module_is_named_from_a_debug_build_of_itself", []
     CB_CHECK_EQ(db::match_module(module, index, ordinals(), 7, dump).names.size(), 0U);
 });
 
-CB_TEST("symbols.debug_build.a_name_that_lives_at_two_addresses_is_dropped", [] {
+CB_TEST("naming.debug_build.a_name_that_lives_at_two_addresses_is_dropped", [] {
     const ne::Module module = lz();
     const fx::Objdump dump = objdump();
     // two functions (sub_0000 of 32 instructions, sub_0090 of six) with different signatures named the same: a symbol lives at one address, so
@@ -162,7 +162,7 @@ CB_TEST("symbols.debug_build.a_name_that_lives_at_two_addresses_is_dropped", [] 
     CB_CHECK_EQ(db::recover(module, module, " 0001:0000  One\r\n 0001:0090  Two\r\n", ordinals(), dump).names.size(), 2U);
 });
 
-CB_TEST("symbols.debug_build.an_export_keeps_its_own_signature", [] {
+CB_TEST("naming.debug_build.an_export_keeps_its_own_signature", [] {
     const ne::Module module = lz();
     const fx::Objdump dump = objdump();
     const db::Signature init = of(module, 2, 0, dump);   // LZINIT, the first export, at the start of segment 2
@@ -184,7 +184,7 @@ CB_TEST("symbols.debug_build.an_export_keeps_its_own_signature", [] {
     CB_CHECK(lower.names.empty());
 });
 
-CB_TEST("symbols.debug_build.names_json_round_trips", [] {
+CB_TEST("naming.debug_build.names_json_round_trips", [] {
     const db::Names names = {{{1, 0x90}, "A"}, {{10, 0x10}, "B"}, {{2, 0xFE}, "C\"q"}};
     const std::string text = db::to_json(names);
     CB_CHECK_EQ(text, "{\n\"10:0010\": \"B\",\n\"1:0090\": \"A\",\n\"2:00fe\": \"C\\\"q\"\n}");   // keys sorted as text ('0' sorts before ':')
@@ -205,7 +205,7 @@ CB_TEST("symbols.debug_build.names_json_round_trips", [] {
     CB_CHECK_THROWS_AS(cb::ParseError, (void)db::parse_overrides("{\"1:0010\": 7}"));
 });
 
-CB_TEST("symbols.debug_build.the_overrides_name_the_functions_of_a_segment", [] {
+CB_TEST("naming.debug_build.the_overrides_name_the_functions_of_a_segment", [] {
     // what the file feeds the disassembler: the segment's own names for its anonymous functions
     const ne::Module module = lz();
     const auto overrides = db::parse_overrides("{\n\"1:0090\": \"Renamed\"\n}");
@@ -235,7 +235,7 @@ struct World {
 
 }  // namespace
 
-CB_TEST("symbols.debug_build.the_command_needs_the_corpus_and_the_sdk", [] {
+CB_TEST("naming.debug_build.the_command_needs_the_corpus_and_the_sdk", [] {
     World world;
     const db::Environment env{*world.corpus, world.dir.path() / "state", objdump()};
     // an empty corpus has no retail KRNL386

@@ -30,7 +30,7 @@
 #include "source/pipeline_world.hpp"
 #include "source/placement.hpp"
 #include "source/readable.hpp"
-#include "symbols/workbench.hpp"
+#include "naming/workbench.hpp"
 
 namespace cb::source::pipeline {
 
@@ -177,8 +177,8 @@ struct ModuleRun {
     bool build_whole = false;
 
     // The symbol tables of the run (the knowledge base, the ordinals, the namer): opened when first asked for.
-    std::shared_ptr<symbols::Workbench> workbench() {
-        if (!bench_) bench_ = std::make_shared<symbols::Workbench>(symbols::Environment{&world.corpus(), &world.config()});
+    std::shared_ptr<naming::Workbench> workbench() {
+        if (!bench_) bench_ = std::make_shared<naming::Workbench>(symbols::Environment{&world.corpus(), &world.config()});
         return bench_;
     }
 
@@ -224,7 +224,7 @@ struct ModuleRun {
 
         // The symbol tables of this run: the names the shipped tables and the corpus's own exports give a function by its number, the names of
         // functions that are the same body in another module.
-        const std::shared_ptr<symbols::Workbench> bench = workbench();
+        const std::shared_ptr<naming::Workbench> bench = workbench();
 
         // imports by number that can be written by their real name (a 32-bit module's are already named in the decompiled text)
         try {
@@ -315,7 +315,7 @@ struct ModuleRun {
     stdfs::path out_dir;
 
     std::shared_ptr<readable::Sdk> sdk_;
-    std::shared_ptr<symbols::Workbench> bench_;
+    std::shared_ptr<naming::Workbench> bench_;
     std::vector<std::shared_ptr<void>> keep_;
 };
 

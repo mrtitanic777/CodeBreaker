@@ -26,13 +26,13 @@ namespace wiring {
 
 Context::Context(const config::Config& config, const base::Corpus& corpus) : config_(&config), corpus_(&corpus), profiles_(verifier_profiles(config)) {}
 
-symbols::Workbench& Context::bench() {
+naming::Workbench& Context::bench() {
     std::lock_guard hold(make_);
     if (!bench_) {
         symbols::Environment environment;
         environment.corpus = corpus_;
         environment.config = config_;
-        bench_ = std::make_unique<symbols::Workbench>(environment);
+        bench_ = std::make_unique<naming::Workbench>(environment);
     }
     return *bench_;
 }

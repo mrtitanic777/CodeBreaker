@@ -22,7 +22,7 @@
 #include "base/corpus.hpp"
 #include "decompile/environment.hpp"
 #include "engine/lane_kit.hpp"
-#include "symbols/workbench.hpp"
+#include "naming/workbench.hpp"
 #include "ui/mcp_server.hpp"
 
 namespace cb::ui::mcp::wiring {
@@ -37,7 +37,7 @@ public:
     const config::Config& config() const { return *config_; }
     const base::Corpus& corpus() const { return *corpus_; }
     // The symbols' workbench: the names of a module, the runtime libraries it holds, the ordinals' names, the body store.
-    symbols::Workbench& bench();
+    naming::Workbench& bench();
     // The corpus's modules as the symbol readers ask for them (the names a 16-bit module's own tables give its exports).
     decompile::environment::CorpusModules& modules();
     // The decompiler and what it reads (its own knowledge base, cache and surroundings).
@@ -51,7 +51,7 @@ private:
     const config::Config* config_;
     const base::Corpus* corpus_;
     std::mutex lock_, make_;
-    std::unique_ptr<symbols::Workbench> bench_;
+    std::unique_ptr<naming::Workbench> bench_;
     std::unique_ptr<engine::LaneKit> kit_;
     std::unique_ptr<decompile::environment::CorpusModules> modules_;
     std::function<std::map<std::string, std::optional<std::string>>()> profiles_;

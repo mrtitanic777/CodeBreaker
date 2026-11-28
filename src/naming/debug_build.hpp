@@ -1,4 +1,4 @@
-// symbols/debug_build.hpp -- real internal function names for a shipped NE module, from a debug build of the same version.
+// naming/debug_build.hpp -- real internal function names for a shipped NE module, from a debug build of the same version.
 //
 // The retail export table names only about a quarter of a system module's functions; the rest carve as anonymous `sub_XXXX`. A debug build
 // of the identical Windows version carries the true names (debug builds declare internals PUBLIC and the linker's .MAP lists every one), but at
@@ -39,7 +39,7 @@
 #include "source/ne_asm/fixups.hpp"
 #include "source/ne_asm/segment.hpp"
 
-namespace cb::symbols::debug_build {
+namespace cb::naming::debug_build {
 
 // Functions shorter than this share skeletons and are collision-prone.
 inline constexpr std::size_t kMinLength = 5;
@@ -100,4 +100,4 @@ struct Environment {
 // export validation. Returns 0 when every known export agrees with its own signature, else 1.
 int main(const Environment& env, std::span<const std::string> args);
 
-}  // namespace cb::symbols::debug_build
+}  // namespace cb::naming::debug_build

@@ -29,7 +29,7 @@
 #include "store/functions.hpp"
 #include "symbols/driver_services.hpp"
 #include "symbols/environment.hpp"
-#include "symbols/names.hpp"
+#include "naming/names.hpp"
 #include "ui/mcp_server.hpp"
 #include "ui/mcp_wiring.hpp"
 #include "ui/progress_store.hpp"

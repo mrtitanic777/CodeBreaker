@@ -20,7 +20,7 @@
 #include "core/text.hpp"
 #include "formats/omf.hpp"
 #include "source/ne_asm/reachability.hpp"
-#include "symbols/debug_build.hpp"
+#include "naming/debug_build.hpp"
 
 namespace cb::source::ne_asm::idiom {
 
@@ -394,7 +394,7 @@ int main(const Environment& env, std::span<const std::string> args) {
             const stdfs::path names_json = env.state / "idiomatic" / tag / "names.json";
             std::error_code ec;
             if (stdfs::is_regular_file(names_json, ec)) {
-                overrides = symbols::debug_build::parse_overrides(fs::read_text(names_json));
+                overrides = naming::debug_build::parse_overrides(fs::read_text(names_json));
                 std::size_t count = 0;
                 for (const auto& [seg, names] : overrides) count += names.size();
                 out("applying {} recovered real names from {}\n", count, fs::to_text(names_json));

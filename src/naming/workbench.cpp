@@ -1,5 +1,5 @@
-// symbols/workbench.cpp -- see workbench.hpp.
-#include "symbols/workbench.hpp"
+// naming/workbench.cpp -- see workbench.hpp.
+#include "naming/workbench.hpp"
 
 #include <set>
 
@@ -12,10 +12,10 @@
 #include "formats/powerpc_image.hpp"
 #include "formats/xex.hpp"
 #include "source/module_writer.hpp"
-#include "symbols/ordinal_collect.hpp"
+#include "naming/ordinal_collect.hpp"
 #include "symbols/prototypes.hpp"
 
-namespace cb::symbols {
+namespace cb::naming {
 
 namespace ppc = formats::powerpc_image;
 
@@ -23,7 +23,7 @@ struct Workbench::Parts {
     std::unique_ptr<knowledge::Store> store;
     std::unique_ptr<knowledge::Knowledge> knowledge;
     std::shared_ptr<decompile::environment::CorpusModules> modules;
-    std::unique_ptr<ordinals::Ordinals> ordinals;
+    std::unique_ptr<symbols::ordinals::Ordinals> ordinals;
     std::unique_ptr<identify::Identifier> identifier;
     std::unique_ptr<store::KnowledgeBodies> bodies;
     std::unique_ptr<store::KnowledgeProposals> proposals;
@@ -31,7 +31,7 @@ struct Workbench::Parts {
     std::unique_ptr<names::Namer> namer;
 };
 
-Workbench::Workbench(const Environment& environment) : environment_(environment), parts_(std::make_unique<Parts>()) {
+Workbench::Workbench(const symbols::Environment& environment) : environment_(environment), parts_(std::make_unique<Parts>()) {
     if (environment_.corpus == nullptr || environment_.config == nullptr) throw UsageError("the symbols commands need a corpus and a configuration");
 }
 Workbench::~Workbench() = default;
@@ -53,16 +53,16 @@ knowledge::Knowledge& Workbench::knowledge() {
         } catch (const Error&) {   // (no reference folder: the headers of the compiler alone spell the names)
         }
         const std::filesystem::path openwatcom = base::watcom::OpenWatcom::from_settings(environment_.config->text("openwatcom")).root();
-        parts_->knowledge = std::make_unique<knowledge::Knowledge>(store(), prototypes::HeaderFolders::standard(openwatcom, reference));
+        parts_->knowledge = std::make_unique<knowledge::Knowledge>(store(), symbols::prototypes::HeaderFolders::standard(openwatcom, reference));
     }
     return *parts_->knowledge;
 }
 
-const ordinals::Ordinals& Workbench::ordinals() {
+const symbols::ordinals::Ordinals& Workbench::ordinals() {
     if (!parts_->ordinals) {
         if (!parts_->modules) parts_->modules = std::make_shared<decompile::environment::CorpusModules>(*environment_.corpus);
         knowledge::Knowledge& kb = knowledge();
-        parts_->ordinals = std::make_unique<ordinals::Ordinals>(*parts_->modules, decompile::environment::shipped_tables(kb),
+        parts_->ordinals = std::make_unique<symbols::ordinals::Ordinals>(*parts_->modules, decompile::environment::shipped_tables(kb),
                                                                 [&kb](std::string_view name) { return kb.spelling(name); });
     }
     return *parts_->ordinals;
@@ -87,7 +87,7 @@ store::ProposalStore& Workbench::proposal_store() {
 proposals::Proposals& Workbench::proposer() {
     if (!parts_->proposer) {
         proposals::Proposals::Services services{namer(), proposal_store(), *environment_.corpus, environment_.evidence, environment_.decompile};
-        if (!services.evidence) services.evidence = [](const std::filesystem::path&) -> std::vector<FunctionEvidence> { throw UsageError("the facts that name a function are not available here"); };
+        if (!services.evidence) services.evidence = [](const std::filesystem::path&) -> std::vector<symbols::FunctionEvidence> { throw UsageError("the facts that name a function are not available here"); };
         parts_->proposer = std::make_unique<proposals::Proposals>(std::move(services));
     }
     return *parts_->proposer;
@@ -96,9 +96,9 @@ proposals::Proposals& Workbench::proposer() {
 namespace {
 
 // What a PowerPC image says that names or finds functions.
-names::PowerPcNames wb_powerpc_names(const std::filesystem::path& module) {
+symbols::names::PowerPcNames wb_powerpc_names(const std::filesystem::path& module) {
     const ppc::Image image = ppc::Image::read(module);
-    names::PowerPcNames out;
+    symbols::names::PowerPcNames out;
     if (image.entry() != 0) out.entry = image.entry();
     out.functions.assign(image.functions().begin(), image.functions().end());
     for (const ppc::VirtualMethod& m : ppc::virtual_methods(image)) out.methods.push_back({m.address, m.class_name, m.slot});
@@ -126,15 +126,15 @@ names::Namer& Workbench::namer() {
         // (each of the services is made when the Namer first asks: opening the base, the corpus's modules and the headers costs, and a
         // module with nothing to name by them does not pay)
         names::Namer::Services services{*environment_.corpus, ordinals(), &bodies()};
-        services.powerpc = [](const std::filesystem::path& module) -> std::optional<names::PowerPcNames> { return wb_powerpc_names(module); };
+        services.powerpc = [](const std::filesystem::path& module) -> std::optional<symbols::names::PowerPcNames> { return wb_powerpc_names(module); };
         services.console_import_names = [this](const std::filesystem::path& module) { return wb_console_import_names(knowledge(), module); };
         services.runtime_library = [this](const std::filesystem::path& module) { return identifier().identify(module); };
         services.compiler = [this](const std::filesystem::path& module) { return identifier().compiler(module); };
         services.collect_ordinals = [this](std::span<const std::filesystem::path> files) {
-            const ordinals::ShippedTables tables = remake_ordinal_table(*environment_.corpus, *parts_->modules, files, [](std::string_view line) { cb::out("{}\n", line); });
+            const symbols::ordinals::ShippedTables tables = remake_ordinal_table(*environment_.corpus, *parts_->modules, files, [](std::string_view line) { cb::out("{}\n", line); });
             std::filesystem::path file = environment_.ordinal_file;
             if (file.empty()) file = environment_.config->checkout_root() / "config" / "symbols" / "ordinal_names.json";
-            const std::string text = ordinals::format_shipped(tables);
+            const std::string text = symbols::ordinals::format_shipped(tables);
             fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
         };
         services.proposals = &proposal_store();
@@ -144,4 +144,4 @@ names::Namer& Workbench::namer() {
     return *parts_->namer;
 }
 
-}  // namespace cb::symbols
+}  // namespace cb::naming

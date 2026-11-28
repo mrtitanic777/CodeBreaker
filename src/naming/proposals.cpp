@@ -1,5 +1,5 @@
-// symbols/proposals.cpp -- see proposals.hpp.
-#include "symbols/proposals.hpp"
+// naming/proposals.cpp -- see proposals.hpp.
+#include "naming/proposals.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -13,7 +13,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 
-namespace cb::symbols::proposals {
+namespace cb::naming::proposals {
 
 namespace {
 
@@ -87,9 +87,9 @@ std::string name_in_message(std::string_view message) {
     return opens_a_message ? std::string(word) : std::string();
 }
 
-std::optional<store::Proposal> import_wrapper(const FunctionEvidence& e) {
+std::optional<store::Proposal> import_wrapper(const symbols::FunctionEvidence& e) {
     if (!e.forwards_to_import) return std::nullopt;
-    const auto call = std::find_if(e.calls.begin(), e.calls.end(), [](const CallEvidence& c) { return c.kind == CallEvidence::Kind::Import; });
+    const auto call = std::find_if(e.calls.begin(), e.calls.end(), [](const symbols::CallEvidence& c) { return c.kind == symbols::CallEvidence::Kind::Import; });
     if (call == e.calls.end()) return std::nullopt;
     const std::string name = undecorated(last_part(call->import_name));
     if (!plain_identifier(name)) return std::nullopt;   // (an import by number no table names, or a C++ name)
@@ -102,7 +102,7 @@ std::optional<store::Proposal> import_wrapper(const FunctionEvidence& e) {
     return p;
 }
 
-std::optional<store::Proposal> string_reference(const FunctionEvidence& e) {
+std::optional<store::Proposal> string_reference(const symbols::FunctionEvidence& e) {
     std::string name, message;
     for (const std::string& s : e.strings) {
         const std::string found = name_in_message(s);
@@ -113,8 +113,8 @@ std::optional<store::Proposal> string_reference(const FunctionEvidence& e) {
     }
     if (name.empty()) return std::nullopt;
     // a function that calls the import of that name is reporting on it, not being it
-    for (const CallEvidence& c : e.calls)
-        if (c.kind == CallEvidence::Kind::Import && text::lower(undecorated(last_part(c.import_name))) == text::lower(name)) return std::nullopt;
+    for (const symbols::CallEvidence& c : e.calls)
+        if (c.kind == symbols::CallEvidence::Kind::Import && text::lower(undecorated(last_part(c.import_name))) == text::lower(name)) return std::nullopt;
     store::Proposal p;
     p.name = name;
     p.rule = "string-reference";
@@ -124,7 +124,7 @@ std::optional<store::Proposal> string_reference(const FunctionEvidence& e) {
     return p;
 }
 
-std::optional<store::Proposal> function_forward(const FunctionEvidence& e, std::string_view target_name) {
+std::optional<store::Proposal> function_forward(const symbols::FunctionEvidence& e, std::string_view target_name) {
     if (!e.forwards_to_function || target_name.empty() || !valid_name(target_name) || target_name.starts_with("sub_") || target_name.ends_with("_thunk"))
         return std::nullopt;
     store::Proposal p;
@@ -240,7 +240,7 @@ struct Role {
 };
 
 // What one place that hands the function over says it is, or nothing when the call is not a callback's.
-std::optional<Role> role_of(const HandedEvidence& h) {
+std::optional<Role> role_of(const symbols::HandedEvidence& h) {
     const std::string api = api_base(h.import_name);
     const auto number = [&](int k) -> std::optional<std::int64_t> {
         const auto at = h.numbers.find(k);
@@ -309,9 +309,9 @@ std::optional<Role> role_of(const HandedEvidence& h) {
 
 }  // namespace
 
-std::optional<store::Proposal> callback_role(const FunctionEvidence& e) {
+std::optional<store::Proposal> callback_role(const symbols::FunctionEvidence& e) {
     std::optional<Role> one;
-    for (const HandedEvidence& h : e.handed_to) {
+    for (const symbols::HandedEvidence& h : e.handed_to) {
         std::optional<Role> r = role_of(h);
         if (!r) continue;
         if (one && one->name != r->name) return std::nullopt;   // two roles: say nothing
@@ -327,7 +327,7 @@ std::optional<store::Proposal> callback_role(const FunctionEvidence& e) {
     return p;
 }
 
-std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name, bool basic) {
+std::optional<store::Proposal> by_rules(const symbols::FunctionEvidence& evidence, std::string_view target_name, bool basic) {
     std::optional<store::Proposal> best;
     const auto consider = [&](std::optional<store::Proposal> p) {
         if (p && (!best || p->confidence > best->confidence)) best = std::move(p);
@@ -358,30 +358,30 @@ struct Proposals::Impl {
     // What the module's functions are called now: by address, and the names in use.
     struct Known {
         std::string sha;
-        names::ModuleNames names;
-        std::map<Address, const names::FunctionName*> by_address;
+        symbols::names::ModuleNames names;
+        std::map<Address, const symbols::names::FunctionName*> by_address;
         std::set<std::string> used;
     };
     Known known(const std::filesystem::path& module) {
         Known k;
         k.sha = s.namer.module_sha(module);
         k.names = s.namer.of_module(module);
-        for (const names::FunctionName& f : k.names.functions) {
+        for (const symbols::names::FunctionName& f : k.names.functions) {
             k.by_address[f.address] = &f;
             if (f.source != "(none)") k.used.insert(f.name);
         }
         return k;
     }
-    static bool unnamed(const names::FunctionName& f) { return f.source == "(none)"; }
+    static bool unnamed(const symbols::names::FunctionName& f) { return f.source == "(none)"; }
 
-    static const names::FunctionName& function(const Known& k, Address address) {
+    static const symbols::names::FunctionName& function(const Known& k, Address address) {
         const auto at = k.by_address.find(address);
         if (at == k.by_address.end()) throw UsageError("there is no function at that address");
         return *at->second;
     }
 
     // What the function a function forwards to is called, when it has a name (a placeholder is not one); "" otherwise.
-    static std::string target_name(const Known& k, const FunctionEvidence& e) {
+    static std::string target_name(const Known& k, const symbols::FunctionEvidence& e) {
         if (!e.forwards_to_function) return {};
         const auto at = k.by_address.find(*e.forwards_to_function);
         return at == k.by_address.end() || unnamed(*at->second) ? std::string() : at->second->name;
@@ -405,7 +405,7 @@ std::vector<store::Proposal> Proposals::propose(const std::filesystem::path& mod
     }
     const std::map<Address, std::string> digests = self.s.namer.bodies(module);
     std::vector<store::Proposal> made;
-    for (const FunctionEvidence& e : self.s.evidence(module)) {
+    for (const symbols::FunctionEvidence& e : self.s.evidence(module)) {
         const auto at = k.by_address.find(e.address);
         if (at == k.by_address.end() || !Impl::unnamed(*at->second)) continue;
         const std::string& key = at->second->key;
@@ -430,10 +430,10 @@ Measure Proposals::measure(const std::filesystem::path& module, bool basic) {
     Impl& self = *impl_;
     const Impl::Known k = self.known(module);
     Measure m;
-    for (const FunctionEvidence& e : self.s.evidence(module)) {
+    for (const symbols::FunctionEvidence& e : self.s.evidence(module)) {
         const auto at = k.by_address.find(e.address);
         if (at == k.by_address.end()) continue;
-        const names::FunctionName& truth = *at->second;
+        const symbols::names::FunctionName& truth = *at->second;
         // ground truth: what the module itself says (its exports, its ordinal table, its debug symbols), not what a person or a rule gave
         const bool known_by_module = truth.source == "export" || truth.source.starts_with("debug symbols") || truth.source.starts_with("ordinal table");
         if (!known_by_module) continue;
@@ -457,7 +457,7 @@ store::Proposal Proposals::suggest(const std::filesystem::path& module, Address 
     Impl& self = *impl_;
     Impl::check_name(name, confidence);
     Impl::Known k = self.known(module);
-    const names::FunctionName& f = Impl::function(k, address);
+    const symbols::names::FunctionName& f = Impl::function(k, address);
     if (!Impl::unnamed(f)) throw UsageError(std::format("{} is already named {} (from {})", f.key, f.name, f.source));
     for (const store::Proposal& p : self.s.store.of_module(k.sha))
         if (p.key != f.key && p.state != store::ProposalState::Rejected) k.used.insert(p.name);
@@ -482,7 +482,7 @@ std::vector<store::Proposal> Proposals::list(const std::filesystem::path& module
     std::map<std::string, store::Proposal> by_key;
     for (store::Proposal& p : self.s.store.of_module(k.sha)) by_key[p.key] = std::move(p);
     std::vector<store::Proposal> out;
-    for (const names::FunctionName& f : k.names.functions)
+    for (const symbols::names::FunctionName& f : k.names.functions)
         if (const auto at = by_key.find(f.key); at != by_key.end()) out.push_back(std::move(at->second));
     return out;
 }
@@ -490,7 +490,7 @@ std::vector<store::Proposal> Proposals::list(const std::filesystem::path& module
 bool Proposals::accept(const std::filesystem::path& module, Address address) {
     Impl& self = *impl_;
     const Impl::Known k = self.known(module);
-    const names::FunctionName& f = Impl::function(k, address);
+    const symbols::names::FunctionName& f = Impl::function(k, address);
     std::optional<store::Proposal> p = self.s.store.get(k.sha, f.key);
     if (!p || p->state != store::ProposalState::Proposed) return false;
     if (k.used.contains(p->name)) throw UsageError(std::format("another function of the module is already called {}", p->name));
@@ -509,7 +509,7 @@ std::size_t Proposals::accept_all(const std::filesystem::path& module, int least
     Impl& self = *impl_;
     const Impl::Known k = self.known(module);
     std::size_t taken = 0;
-    for (const names::FunctionName& f : k.names.functions) {
+    for (const symbols::names::FunctionName& f : k.names.functions) {
         const std::optional<store::Proposal> p = self.s.store.get(k.sha, f.key);
         if (!p || p->state != store::ProposalState::Proposed || p->confidence < least) continue;
         try {
@@ -524,7 +524,7 @@ std::size_t Proposals::accept_all(const std::filesystem::path& module, int least
 bool Proposals::reject(const std::filesystem::path& module, Address address) {
     Impl& self = *impl_;
     const Impl::Known k = self.known(module);
-    const names::FunctionName& f = Impl::function(k, address);
+    const symbols::names::FunctionName& f = Impl::function(k, address);
     const std::optional<store::Proposal> p = self.s.store.get(k.sha, f.key);
     if (!p || p->state != store::ProposalState::Proposed) return false;
     return self.s.store.set_state(k.sha, f.key, store::ProposalState::Rejected);
@@ -533,14 +533,14 @@ bool Proposals::reject(const std::filesystem::path& module, Address address) {
 std::string Proposals::packets(const std::filesystem::path& module, bool with_c, std::size_t limit) {
     Impl& self = *impl_;
     const Impl::Known k = self.known(module);
-    std::map<Address, FunctionEvidence> evidence;
-    for (FunctionEvidence& e : self.s.evidence(module)) evidence[e.address] = std::move(e);
+    std::map<Address, symbols::FunctionEvidence> evidence;
+    for (symbols::FunctionEvidence& e : self.s.evidence(module)) evidence[e.address] = std::move(e);
     const std::map<Address, std::string> digests = self.s.namer.bodies(module);
     std::map<std::string, store::Proposal> proposals;
     for (store::Proposal& p : self.s.store.of_module(k.sha)) proposals[p.key] = std::move(p);
 
     std::vector<Address> wanted;
-    for (const names::FunctionName& f : k.names.functions)
+    for (const symbols::names::FunctionName& f : k.names.functions)
         if (Impl::unnamed(f) && evidence.contains(f.address) && (limit == 0 || wanted.size() < limit)) wanted.push_back(f.address);
     std::map<Address, std::string> c;
     if (with_c && self.s.decompile) c = self.s.decompile(module, wanted);
@@ -551,8 +551,8 @@ std::string Proposals::packets(const std::filesystem::path& module, bool with_c,
     };
     std::string out;
     for (const Address address : wanted) {
-        const FunctionEvidence& e = evidence.at(address);
-        const names::FunctionName& f = *k.by_address.at(address);
+        const symbols::FunctionEvidence& e = evidence.at(address);
+        const symbols::names::FunctionName& f = *k.by_address.at(address);
         Json packet = Json::object();
         packet["module"] = fs::to_text(module.filename());
         packet["address"] = f.key;
@@ -562,12 +562,12 @@ std::string Proposals::packets(const std::filesystem::path& module, bool with_c,
         packet["bytes"] = e.bytes;
         packet["instructions"] = e.instructions;
         Json calls = Json::array();
-        for (const CallEvidence& call : e.calls) {
+        for (const symbols::CallEvidence& call : e.calls) {
             Json one = Json::object();
-            if (call.kind == CallEvidence::Kind::Import) {
+            if (call.kind == symbols::CallEvidence::Kind::Import) {
                 one["kind"] = "import";
                 one["target"] = call.import_name;
-            } else if (call.kind == CallEvidence::Kind::Function) {
+            } else if (call.kind == symbols::CallEvidence::Kind::Function) {
                 one["kind"] = "function";
                 one["target"] = name_of(call.target);
             } else {
@@ -583,7 +583,7 @@ std::string Proposals::packets(const std::filesystem::path& module, bool with_c,
         packet["strings"] = e.strings;
         if (!e.handed_to.empty()) {
             Json handed = Json::array();
-            for (const HandedEvidence& h : e.handed_to) {
+            for (const symbols::HandedEvidence& h : e.handed_to) {
                 Json one = Json::object();
                 one["import"] = h.import_name;
                 if (h.argument > 0) one["argument"] = h.argument;
@@ -635,12 +635,12 @@ int Proposals::execute(const cli::Args& a) {
     if (!found) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no such module in the corpus");
     const std::filesystem::path module = *found;
     const auto address_of = [](const std::string& text_in) {
-        const auto address = names::parse_address(text_in);
+        const auto address = symbols::names::parse_address(text_in);
         if (!address) throw UsageError("'" + text_in + "' is not an address (hex, or segment:offset)");
         return *address;
     };
     if (a.flag("--propose")) {
-        const names::ModuleNames all = self.s.namer.of_module(module);
+        const symbols::names::ModuleNames all = self.s.namer.of_module(module);
         const std::size_t unnamed = static_cast<std::size_t>(std::count_if(all.functions.begin(), all.functions.end(), Impl::unnamed));
         const std::vector<store::Proposal> fresh = propose(module);
         show(fresh);
@@ -737,4 +737,4 @@ int Proposals::execute(const cli::Args& a) {
     return 0;
 }
 
-}  // namespace cb::symbols::proposals
+}  // namespace cb::naming::proposals
