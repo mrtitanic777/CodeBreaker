@@ -1,11 +1,10 @@
-#include "store/versions_ledger.hpp"
+#include "compare/versions_ledger.hpp"
 
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 
-namespace cb::store {
+namespace cb::compare {
 
-namespace versions = compare::versions;
 
 std::optional<std::string> VersionsLedger::sha(const std::filesystem::path& module) { return services_.corpus.sha(module); }
 
@@ -56,4 +55,4 @@ void VersionsLedger::file_carried(const Identity& identity, const std::string& m
     store.record_many(identity.sha, kCarriedEngine, rev, identity.profile, records);
 }
 
-}  // namespace cb::store
+}  // namespace cb::compare

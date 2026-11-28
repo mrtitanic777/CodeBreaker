@@ -7,7 +7,7 @@
 #include "engine/lane_kit.hpp"
 #include "knowledge/package.hpp"
 #include "store/knowledge_bodies.hpp"
-#include "store/versions_ledger.hpp"
+#include "compare/versions_ledger.hpp"
 #include "verify/reconstruct.hpp"
 
 namespace cb::app::versions_command {
@@ -27,8 +27,8 @@ public:
 
     base::Corpus& corpus() { return kit_.corpus(); }
 
-    store::VersionsLedger ledger() {
-        return store::VersionsLedger({.corpus = kit_.corpus(),
+    compare::VersionsLedger ledger() {
+        return compare::VersionsLedger({.corpus = kit_.corpus(),
                                .store = store_,
                                .identity = verify::reconstruct::identity_hook<compare::versions::Ledger::Identity>(*reconstructor_),
                                .bodies = &*bodies_});
@@ -48,7 +48,7 @@ cli::Command command(const Environment& environment) {
     cli::Command declared = compare::versions::declaration();
     declared.handler = [environment](const cli::Args& args) {
         Surroundings world(environment, args.flag("carry"));
-        store::VersionsLedger ledger = world.ledger();
+        compare::VersionsLedger ledger = world.ledger();
         return compare::versions::run(args, world.corpus(), ledger);
     };
     return declared;

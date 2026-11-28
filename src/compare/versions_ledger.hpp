@@ -1,10 +1,10 @@
-// store/versions_ledger.hpp -- what `codebreaker versions` asks of the rest of CodeBreaker, answered from the corpus, the function store and the
+// compare/versions_ledger.hpp -- what `codebreaker versions` asks of the rest of CodeBreaker, answered from the corpus, the function store and the
 // body store.
 //
-//     store::VersionsLedger ledger({.corpus = corpus, .store = *store, .identity = identity_of, .bodies = &bodies});
+//     compare::VersionsLedger ledger({.corpus = corpus, .store = *store, .identity = identity_of, .bodies = &bodies});
 //     compare::versions::run(args, corpus, ledger);
 //
-// compare/versions matches the functions of two builds of a module; to carry work across it asks (compare::versions::Ledger) which product a file is
+// compare/versions matches the functions of two builds of a module; to carry work across it asks (versions::Ledger) which product a file is
 // in and its content hash (the corpus), what is already reconstructed of the old build and where the new build's results are filed (the function
 // store), and the names its bodies carry (the body store). This is the implementation over the pieces that exist in this tree:
 //
@@ -30,16 +30,16 @@
 #include "store/function_store.hpp"
 #include "store/bodies.hpp"
 
-namespace cb::store {
+namespace cb::compare {
 
-class VersionsLedger final : public compare::versions::Ledger {
+class VersionsLedger final : public versions::Ledger {
 public:
     struct Services {
         const base::Corpus& corpus;
         store::FunctionStore& store;
         // What results for a module are filed under: (content hash, verifier profile digest); nullopt when nothing reconstructs that kind of file.
         std::function<std::optional<Identity>(const std::filesystem::path&)> identity = {};
-        BodyStore* bodies = nullptr;   // not owned; null: no bodies are known
+        store::BodyStore* bodies = nullptr;   // not owned; null: no bodies are known
     };
     explicit VersionsLedger(Services services) : services_(std::move(services)) {}
 
@@ -59,4 +59,4 @@ private:
     Services services_;
 };
 
-}  // namespace cb::store
+}  // namespace cb::compare

@@ -12,7 +12,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "store/bodies.hpp"
-#include "store/versions_ledger.hpp"
+#include "compare/versions_ledger.hpp"
 
 namespace fn = cb::store::functions;
 namespace ve = cb::compare::versions;
@@ -172,8 +172,8 @@ struct LedgerWorld {
         corpus = std::make_unique<cb::base::Corpus>(products);
         store = fn::open(dir.path() / "state");
     }
-    cb::store::VersionsLedger::Services services(cb::store::BodyStore* bodies = nullptr, bool with_identity = true) {
-        cb::store::VersionsLedger::Services s{*corpus, *store};
+    cb::compare::VersionsLedger::Services services(cb::store::BodyStore* bodies = nullptr, bool with_identity = true) {
+        cb::compare::VersionsLedger::Services s{*corpus, *store};
         if (with_identity)
             s.identity = [this](const stdfs::path& p) -> std::optional<ve::Ledger::Identity> {
                 return ve::Ledger::Identity{corpus->sha(p).value_or(""), "profile-1"};
@@ -187,7 +187,7 @@ struct LedgerWorld {
 
 CB_TEST("store.versions_ledger.the_corpus_says_what_a_file_is", [] {
     LedgerWorld w;
-    cb::store::VersionsLedger ledger(w.services());
+    cb::compare::VersionsLedger ledger(w.services());
     const auto sha = ledger.sha(w.old_build);
     CB_CHECK(sha && sha->size() == 64);
     CB_CHECK(ledger.sha(w.old_build) == w.corpus->sha(w.old_build));
@@ -200,16 +200,16 @@ CB_TEST("store.versions_ledger.the_corpus_says_what_a_file_is", [] {
 
 CB_TEST("store.versions_ledger.without_the_verifiers_settings_nothing_has_an_identity", [] {
     LedgerWorld w;
-    cb::store::VersionsLedger without(w.services(nullptr, /*with_identity=*/false));
+    cb::compare::VersionsLedger without(w.services(nullptr, /*with_identity=*/false));
     CB_CHECK(!without.identity(w.old_build));
-    cb::store::VersionsLedger with(w.services());
+    cb::compare::VersionsLedger with(w.services());
     const auto id = with.identity(w.old_build);
     CB_CHECK(id && id->sha == w.corpus->sha(w.old_build) && id->profile == "profile-1");
 });
 
 CB_TEST("store.versions_ledger.the_best_candidate_comes_with_the_class_its_verdict_makes_it", [] {
     LedgerWorld w;
-    cb::store::VersionsLedger ledger(w.services());
+    cb::compare::VersionsLedger ledger(w.services());
     const auto id = *ledger.identity(w.old_build);
     w.store->add_module(id.sha, "tool.exe", cb::fs::to_text(w.old_build), "pe");
     w.store->add_profile(id.profile, "{}");
@@ -232,7 +232,7 @@ CB_TEST("store.versions_ledger.the_best_candidate_comes_with_the_class_its_verdi
 
 CB_TEST("store.versions_ledger.carried_reconstructions_are_filed_to_be_judged_in_the_new_build", [] {
     LedgerWorld w;
-    cb::store::VersionsLedger ledger(w.services());
+    cb::compare::VersionsLedger ledger(w.services());
     const auto id = *ledger.identity(w.new_build);
     const std::vector<std::string> addresses = {"2000", "2010", "2020"};
     const std::vector<ve::Ledger::Carried> rows = {
@@ -270,13 +270,13 @@ CB_TEST("store.versions_ledger.bodies_and_their_names_go_through_the_body_store"
     LedgerWorld w;
     {
         // no body store: no bodies, and naming does nothing
-        cb::store::VersionsLedger ledger(w.services());
+        cb::compare::VersionsLedger ledger(w.services());
         CB_CHECK(ledger.bodies("any").empty());
         ledger.name_body("digest", "name", "why");
     }
     MapBodies bodies;
     bodies.by_module["sha-new"] = {{"3000", {"d1", std::nullopt, std::nullopt}}, {"3010", {"d2", std::string("Named"), std::string("export")}}};
-    cb::store::VersionsLedger ledger(w.services(&bodies));
+    cb::compare::VersionsLedger ledger(w.services(&bodies));
     const auto got = ledger.bodies("sha-new");
     CB_CHECK_EQ(got.size(), 2U);
     CB_CHECK_EQ(got.at("3000"), "d1");
@@ -297,7 +297,7 @@ CB_TEST("store.versions_ledger.a_build_carries_its_reconstructions_to_the_next_t
     second.push_back(0);   // another build as far as its hash goes, the same code
     cb::fs::write_file(w.old_build, lz32);
     cb::fs::write_file(w.new_build, second);
-    cb::store::VersionsLedger ledger(w.services());
+    cb::compare::VersionsLedger ledger(w.services());
     const ve::Comparison c = ve::compare(w.old_build, w.new_build);
     CB_CHECK(c.counts().identical > 3);
     CB_CHECK_EQ(c.counts().changed, 0);
@@ -335,7 +335,7 @@ CB_TEST("store.versions_ledger.a_build_carries_its_reconstructions_to_the_next_t
     CB_CHECK(!c.carry_names(ledger).has_value());
     MapBodies bodies;
     bodies.by_module[new_id.sha] = {{pairs[0].to, {"digest-0", std::nullopt, std::nullopt}}};
-    cb::store::VersionsLedger with_bodies(w.services(&bodies));
+    cb::compare::VersionsLedger with_bodies(w.services(&bodies));
     CB_CHECK(c.carry_names(with_bodies).has_value());   // (a build compared with itself has no names to carry: the same ones are on both sides)
     CB_CHECK(bodies.named.empty());
 });

@@ -1,4 +1,3 @@
 # Upward includes still in the tree (app.layers test, docs/SDK_DESIGN.md rule 3). This list only shrinks.
-store/versions_ledger.hpp -> compare/versions.hpp
 verify/lanes/powerpc.cpp -> engine/pcode_cpu_ppc.hpp
 verify/regress.cpp -> engine/lane_kit.hpp
