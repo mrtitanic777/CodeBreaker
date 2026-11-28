@@ -9,6 +9,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/gen/elfbe.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::ppc_elf {
@@ -36,66 +37,55 @@ Bytes inflate_exact(ByteView in, std::size_t expected, std::size_t at) {
     return std::move(r.data);
 }
 
-// The headers of the file as it stands (no inflating).
+// The headers of the file as it stands (no inflating). The layout is elf.fmt's, read big-endian (its generated reader,
+// formats/gen/elfbe); that the tables and the sections lie in the file is this reader's rule.
 Elf parse_headers(ByteView data) {
     if (!is_ppc_elf(data)) throw FormatError(kReader, 0, "not a 32-bit big-endian PowerPC ELF executable");
+    const gen::elfbe::Elf e = gen::elfbe::read(data).elf;
+    const gen::elfbe::Header& h = e.header;
     Elf elf;
     elf.data.assign(data.begin(), data.end());
-    elf.os_abi = data[7];
-    elf.abi_version = data[8];
-    elf.type = be16(data, 16);
-    elf.machine = be16(data, 18);
-    elf.version = be32(data, 20);
-    elf.entry = be32(data, 24);
-    elf.phoff = be32(data, 28);
-    elf.shoff = be32(data, 32);
-    elf.flags = be32(data, 36);
-    elf.ehsize = be16(data, 40);
-    elf.phentsize = be16(data, 42);
-    elf.phnum = be16(data, 44);
-    elf.shentsize = be16(data, 46);
-    elf.shnum = be16(data, 48);
-    elf.shstrndx = be16(data, 50);
+    elf.os_abi = e.ident.os_abi;
+    elf.abi_version = e.ident.abi_version;
+    elf.type = h.type;
+    elf.machine = h.machine;
+    elf.version = h.version;
+    elf.entry = static_cast<std::uint32_t>(h.entry);
+    elf.phoff = static_cast<std::uint32_t>(h.phoff);
+    elf.shoff = static_cast<std::uint32_t>(h.shoff);
+    elf.flags = h.flags;
+    elf.ehsize = h.ehsize;
+    elf.phentsize = h.phentsize;
+    elf.phnum = h.phnum;
+    elf.shentsize = h.shentsize;
+    elf.shnum = h.shnum;
+    elf.shstrndx = h.shstrndx;
     elf.wiiu = elf.os_abi == kOsAbiCafe || elf.type == kTypeRpl;
     if (elf.phnum != 0) {
         if (elf.phentsize != kProgramHeaderSize || static_cast<std::uint64_t>(elf.phoff) + std::uint64_t{elf.phnum} * kProgramHeaderSize > data.size())
             throw FormatError(kReader, 28, "the program header table is outside the file");
-        for (unsigned i = 0; i < elf.phnum; ++i) {
-            const std::size_t at = elf.phoff + i * kProgramHeaderSize;
-            elf.program_headers.push_back({be32(data, at), be32(data, at + 4), be32(data, at + 8), be32(data, at + 12), be32(data, at + 16), be32(data, at + 20), be32(data, at + 24), be32(data, at + 28)});
-        }
+        elf.program_headers.reserve(elf.phnum);
+        if (e.segments)
+            for (const gen::elfbe::Segment& p : *e.segments)
+                elf.program_headers.push_back({p.type, static_cast<std::uint32_t>(p.offset), static_cast<std::uint32_t>(p.vaddr), static_cast<std::uint32_t>(p.paddr),
+                                               static_cast<std::uint32_t>(p.filesz), static_cast<std::uint32_t>(p.memsz), p.flags, static_cast<std::uint32_t>(p.align)});
     }
     if (elf.shnum != 0) {
         if (elf.shentsize != kSectionHeaderSize || static_cast<std::uint64_t>(elf.shoff) + std::uint64_t{elf.shnum} * kSectionHeaderSize > data.size())
             throw FormatError(kReader, 32, "the section header table is outside the file");
-        for (unsigned i = 0; i < elf.shnum; ++i) {
-            const std::size_t at = elf.shoff + i * kSectionHeaderSize;
-            SectionHeader s;
-            s.name_offset = be32(data, at);
-            s.type = be32(data, at + 4);
-            s.flags = be32(data, at + 8);
-            s.address = be32(data, at + 12);
-            s.offset = be32(data, at + 16);
-            s.size = be32(data, at + 20);
-            s.link = be32(data, at + 24);
-            s.info = be32(data, at + 28);
-            s.align = be32(data, at + 32);
-            s.entsize = be32(data, at + 36);
+        elf.sections.reserve(elf.shnum);
+        for (std::size_t i = 0; e.sections && i < e.sections->size(); ++i) {
+            const gen::elfbe::Section& n = (*e.sections)[i];
+            SectionHeader s{n.name_offset, n.type, static_cast<std::uint32_t>(n.flags), static_cast<std::uint32_t>(n.address), static_cast<std::uint32_t>(n.offset),
+                            static_cast<std::uint32_t>(n.size), n.link, n.info, static_cast<std::uint32_t>(n.align), static_cast<std::uint32_t>(n.entsize), {}};
             if (s.type != kTypeNobits && s.type != 0 && static_cast<std::uint64_t>(s.offset) + s.size > data.size())
-                throw FormatError(kReader, at, std::format("section {} lies outside the file", i));
+                throw FormatError(kReader, n._offset, std::format("section {} lies outside the file", i));
             elf.sections.push_back(std::move(s));
         }
-        if (elf.shstrndx < elf.sections.size()) {
-            const SectionHeader& strings = elf.sections[elf.shstrndx];
-            if (strings.type != kTypeNobits && !(strings.flags & kFlagDeflated)) {
-                const ByteView table = ByteView(elf.data).subspan(strings.offset, strings.size);
-                for (SectionHeader& s : elf.sections) {
-                    if (s.name_offset >= table.size()) continue;
-                    const auto end = std::find(table.begin() + s.name_offset, table.end(), std::uint8_t{0});
-                    s.name.assign(reinterpret_cast<const char*>(table.data() + s.name_offset), static_cast<std::size_t>(end - (table.begin() + s.name_offset)));
-                }
-            }
-        }
+        // the names, unless the string table is itself stored compressed (they are read again once it is inflated)
+        if (e.names && !(elf.sections[elf.shstrndx].flags & kFlagDeflated))
+            for (std::size_t i = 0; i < elf.sections.size(); ++i)
+                if (const auto& t = (*e.names)[i].text) elf.sections[i].name = std::string(t->substr(0, t->find('\0')));
     }
     return elf;
 }
