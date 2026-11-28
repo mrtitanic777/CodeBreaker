@@ -1986,6 +1986,14 @@ Expression* UnitBuilder::dispatch(Node* e) {
     if (const auto* x = ir::get<ir::Assign>(e)) {
         Expression* target = expr(x->target);
         if (!x->op) return make<AssignmentExpression>(target, coerce(x->value, type_of(x->target)));
+        if (*x->op == "??") {   // ILSpy's tree has no `??=`: `x = x ?? v`, the same where the place is a local or a field of this or a class
+            Node* place = strip(x->target);
+            const auto* sel = ir::get<ir::Select>(place);
+            if (!ir::is<ir::Name>(place) && !(sel != nullptr && sel->sym && sel->sym->kind == ir::SymKind::Field && (ir::is<ir::This>(sel->obj) || ir::is<ir::TypeName>(sel->obj))))
+                throw Declined{"operator", "the operator ??= on a place found by an expression"};
+            Expression* either = make<BinaryOperatorExpression>(expr(x->target), BinaryOperatorType::NullCoalescing, coerce(x->value, type_of(x->target)));
+            return make<AssignmentExpression>(target, either);
+        }
         const auto op = assignment_operators().find(*x->op);
         if (op == assignment_operators().end()) throw Declined{"operator", "the operator " + *x->op + "="};
         Expression* t = make<AssignmentExpression>(target, op->second, expr(x->value));

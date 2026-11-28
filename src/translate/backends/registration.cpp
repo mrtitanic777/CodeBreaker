@@ -37,10 +37,11 @@ void register_cpp17_back_end(Registry& r) {
                     {"python", "cxx", "l2"}, true}}});
 }
 
-// C# as C# (and Java as C#): backends/csharp, with csharp_java for Java's library.
+// C# as C# (and Java as C#): the one C# back end, ILSpy's syntax tree and output visitor over L2 (dotnet/decompiler/csharp/l2_syntax_builder),
+// with the rule set java (translate/rules/java_csharp) for Java's library.
 void register_csharp_back_end(Registry& r) {
     r.add(BackEnd{"csharp",
-                  "backends/csharp",
+                  "dotnet/decompiler/csharp/l2_syntax_builder",
                   {{"csharp", "judge-cs-cpp", "writes the program as C# again, runs both (csc and the installed .NET), and compares what they print and their exit code",
                     {"dotnet"}, true},
                    {"java", "translate_file", "writes the program as C#, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",

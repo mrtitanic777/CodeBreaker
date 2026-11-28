@@ -58,13 +58,13 @@ CB_TEST("translate.registry.the_standard_registry_holds_every_front_end_and_back
         return std::any_of(all.begin(), all.end(), [&](const reg::Route& x) { return x.from == from && x.to == to && x.emitter == emitter; });
     };
     CB_CHECK(has("csharp", "cpp17", "backends/csharp_cpp17"));
-    CB_CHECK(has("csharp", "csharp", "backends/csharp"));
+    CB_CHECK(has("csharp", "csharp", "dotnet/decompiler/csharp/l2_syntax_builder"));
     CB_CHECK(has("csharp", "cpp03", "dotnet/cs2cpp with backends/cpp03"));
     CB_CHECK(has("java", "cpp03", "backends/cpp03"));
     CB_CHECK(has("java", "cpp17", "backends/cpp03_cpp17 (Bodies17)"));
     CB_CHECK(has("java", "cpp17", "l2 core cpp17"));
     CB_CHECK(has("java", "c", "backends/c_java"));
-    CB_CHECK(has("java", "csharp", "backends/csharp"));
+    CB_CHECK(has("java", "csharp", "dotnet/decompiler/csharp/l2_syntax_builder"));
     CB_CHECK(has("c", "java", "backends/java"));
     CB_CHECK(has("python", "cpp17", "l2 core cpp17"));
 });

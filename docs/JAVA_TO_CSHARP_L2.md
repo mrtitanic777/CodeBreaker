@@ -172,3 +172,9 @@ same class: the same tree, apart from source positions. Then the C# from both is
   takes to C# (the kits, Shapes, Recs, Streams, Printable) goes through translate_file's Java to C# route on the new path and gives
   what the test wants of the old one: the JVM's output, or the refusal (AsListKit, Fixed, Early) or the divergence (TreeBin,
   Shuffled) it checks for.
+- 2026-11-28: step 5, first part: translate_file's Java to C# and C# to C# routes, `pairs::java_to_csharp`,
+  `pairs::csharp_to_csharp` and the registered back end call the new path (L2CSharpProgram, with the rule set java for Java
+  units). What is left of step 5: `csharp.cpp`, `csharp_java.cpp` and their headers, used now by their own tests only
+  (`translate.csharp.*` and `translate.csharp_java.*` in `csharp_test.cpp` and `csharp_java_test.cpp`), are deleted once
+  those tests are moved onto the new path with reviewed expected text, and the old goldens (`translate/testdata/csharp_*.cs.txt`,
+  `csharp_java/*.cs.txt`) with them; the `.l2.json` inputs stay, `dotnet.l2_csharp.*` reads them.

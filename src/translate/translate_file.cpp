@@ -15,12 +15,11 @@
 #include "java/jar.hpp"
 #include "java/apimap.hpp"
 #include "java/frontend.hpp"
+#include "dotnet/decompiler/csharp/l2_syntax_builder.hpp"
 #include "translate/backends/c_java.hpp"
 #include "translate/backends/go_java.hpp"
 #include "translate/backends/rust_java.hpp"
 #include "translate/backends/cpp17.hpp"
-#include "translate/backends/csharp.hpp"
-#include "translate/backends/csharp_java.hpp"
 #include "translate/dotnet/judge.hpp"
 #include "translate/dotnet/pairs.hpp"
 #include "translate/frontends/csharp/frontend.hpp"
@@ -31,7 +30,7 @@ namespace cb::translate::translate_file {
 namespace stdfs = std::filesystem;
 namespace dj = cb::translate::dotnet::judge;
 namespace ir = cb::translate::ir;
-namespace cs = cb::translate::backends::csharp;
+namespace cs = cb::dotnet::decompiler::csharp;   // the one C# back end: ILSpy's syntax tree and output visitor over L2
 
 namespace {
 
@@ -163,11 +162,11 @@ Result tf_csharp_csharp(const stdfs::path& input, const stdfs::path& out, const 
         for (ir::Node* n : ir::walk(u))
             if (ir::get<ir::MethodDecl>(n) != nullptr) ++functions;
     translating(0, functions, {});
-    cs::Program written(program.units);
+    cs::L2CSharpProgram written(program.units);
     const std::vector<stdfs::path> paths = written.write(judged / "cs");
     if (!written.ledger().empty()) {
         std::vector<std::string> why;
-        for (const cs::Gap& g : written.ledger()) why.push_back(std::format("{} {}: {}", g.where, g.kind, g.why));
+        for (const cs::L2Gap& g : written.ledger()) why.push_back(std::format("{} {}: {}", g.where, g.kind, g.why));
         result.verdict = Verdict::Refused;
         result.detail = "declined: " + text::join(why, "; ");
         return result;
@@ -456,13 +455,13 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
         if (!sdk || !sdk->available()) throw Error("translating Java to C# needs the .NET SDK (dotnet.exe with Roslyn and the targeting pack)");
         for (ir::Node* unit : units) ir::get<ir::Unit>(unit)->lang = "java";
         const java::apimap::Registry registry = java::apimap::Registry::load(backends::cpp17::api_maps_dir());
-        cs::Options options;
-        options.libraries["java"] = backends::csharp_java::factory(registry);
+        cs::L2CSharpOptions options;   // Java's library through the rule set java (translate/rules/java_csharp)
+        options.java_registry = &registry;
         options.runtime_dir = environment.config.checkout_root() / "config" / "translate" / "dotnet" / "runtime";
-        cs::Program written(units, options);
+        cs::L2CSharpProgram written(units, options);
         csharp_files = written.write(judged / "cs");
         std::vector<std::string> why;
-        for (const cs::Gap& g : written.ledger()) why.push_back(std::format("{} {}: {}", g.where, g.kind, g.why));
+        for (const cs::L2Gap& g : written.ledger()) why.push_back(std::format("{} {}: {}", g.where, g.kind, g.why));
         for (ir::Node* unit : units)
             for (ir::Node* n : ir::unsupported(unit)) why.push_back(ir::get<ir::Unsupported>(n)->raw.value_or("a construct the front end does not read"));
         if (!why.empty()) {

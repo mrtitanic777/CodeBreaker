@@ -1,13 +1,12 @@
 #include "translate/dotnet/pairs.hpp"
 
 #include "core/fs.hpp"
-#include "translate/backends/csharp.hpp"
-#include "translate/backends/csharp_java.hpp"
+#include "dotnet/decompiler/csharp/l2_syntax_builder.hpp"
 
 namespace cb::translate::dotnet::pairs {
 
 namespace stdfs = std::filesystem;
-namespace cs = cb::translate::backends::csharp;
+namespace cs = cb::dotnet::decompiler::csharp;   // the one C# back end
 
 namespace {
 
@@ -23,8 +22,8 @@ Verdict judged(const std::vector<Refusal>& refused, judge::Run original, judge::
     return {j.verdict, j.detail, refused, std::move(files), std::move(original), std::move(translation)};
 }
 
-void add_ledger(std::vector<Refusal>& refused, const std::vector<cs::Gap>& ledger) {
-    for (const cs::Gap& g : ledger) refused.push_back({g.where, g.kind, g.why});
+void add_ledger(std::vector<Refusal>& refused, const std::vector<cs::L2Gap>& ledger) {
+    for (const cs::L2Gap& g : ledger) refused.push_back({g.where, g.kind, g.why});
 }
 
 void add_unsupported(std::vector<Refusal>& refused, const std::vector<ir::Node*>& units) {
@@ -48,7 +47,7 @@ Verdict Pairs::csharp_to_csharp(const std::vector<stdfs::path>& files, const std
     frontends::csharp::Program program = units(files, work);
     std::vector<Refusal> refused;
     for (const auto& r : program.refused) refused.push_back({r.where, r.kind, r.why});
-    cs::Program out(program.units);
+    cs::L2CSharpProgram out(program.units);
     const std::vector<stdfs::path> paths = out.write(work / "cs");
     add_ledger(refused, out.ledger());
     const judge::CSharpToolchain tools = judge::CSharpToolchain::of(sdk);
@@ -61,10 +60,10 @@ Verdict Pairs::java_to_csharp(const stdfs::path& src_dir, const std::string& mai
     judge::fresh_folder(work);
     std::vector<ir::Node*> units = cb::java::frontend::lower_program(arena, src_dir, java.tools);
     for (ir::Node* u : units) ir::get<ir::Unit>(u)->lang = "java";
-    cs::Options options;
-    if (java.registry != nullptr) options.libraries["java"] = backends::csharp_java::factory(*java.registry);
+    cs::L2CSharpOptions options;
+    options.java_registry = java.registry;
     options.runtime_dir = java.runtime_dir;
-    cs::Program out(units, options);
+    cs::L2CSharpProgram out(units, options);
     const std::vector<stdfs::path> paths = out.write(work / "cs");
     std::vector<Refusal> refused;
     add_ledger(refused, out.ledger());
