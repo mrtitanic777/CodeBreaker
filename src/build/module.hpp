@@ -262,6 +262,9 @@ struct ReadableNames {
     std::map<std::string, std::string> functions;
     // an exported function's parameters as the SDK headers declare it ({the export's name: (type, name) in the header's order})
     std::map<std::string, std::vector<std::pair<std::string, std::string>>> parameters;
+    // where each name is from, as `names` says it: {MODULE.ordinal or "seg:off": source}; {export: the header that declares it}
+    std::map<std::string, std::string> sources;
+    std::map<std::string, std::string> headers;
 };
 
 struct Services {

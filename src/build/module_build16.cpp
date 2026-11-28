@@ -13,6 +13,7 @@
 #include "base/cache.hpp"
 #include "build/module_internal.hpp"
 #include "build/source_form.hpp"
+#include "core/crypto.hpp"
 #include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 #include <nlohmann/json.hpp>
@@ -695,8 +696,8 @@ void write_source_form(Ctx16& c, const std::map<std::string, asm16::Import>& imp
     for (const auto& [name, stem] : c.stems) ++per_stem[stem];
     for (const auto& [name, stem] : c.stems)
         if (!stem.starts_with("asm/") && per_stem[stem] == 1) in.stem_function[stem] = name;
-    if (c.services.readable_names) {
-        const ReadableNames known = c.services.readable_names(c.path);
+    const ReadableNames known = c.services.readable_names ? c.services.readable_names(c.path) : ReadableNames{};
+    {
         in.parameters = known.parameters;
         for (const auto& [symbol, imported] : imports) {
             const auto* ordinal = std::get_if<std::uint16_t>(&imported.which);
@@ -723,6 +724,33 @@ void write_source_form(Ctx16& c, const std::map<std::string, asm16::Import>& imp
         if (line.starts_with("option stub=")) in.carried.emplace_back(line.substr(12));
     in.documents = {base + ".def", base + "_public.h"};
     const source_form::SourceForm form = source_form::write(in);
+    // RECOVERY.md: where each function's form and each name came from (the build's own record of the module, module.l2.json)
+    {
+        source_form::RecoveryInput r;
+        r.module = b.name;
+        const Bytes original = fs::read_file(c.path);
+        r.size = original.size();
+        r.sha256 = crypto::to_hex(crypto::sha256(original));
+        r.sources = known.sources;
+        r.headers = known.headers;
+        for (const auto& [symbol, imported] : imports)
+            if (const auto* ordinal = std::get_if<std::uint16_t>(&imported.which)) r.import_of[symbol] = std::format("{}.{}", text::upper(imported.module), *ordinal);
+        const nlohmann::json doc = nlohmann::json::parse(fs::read_text(c.folder / "module.l2.json"), nullptr, false);
+        if (doc.is_object() && doc.contains("units") && doc["units"].is_array()) {
+            for (const nlohmann::json& u : doc["units"]) {
+                source_form::RecoveryInput::Unit unit;
+                unit.name = u.value("name", std::string());
+                if (const auto o = u.find("origin"); o != u.end() && o->is_object()) {
+                    unit.seg = o->value("segment", 0u);
+                    unit.off = o->value("offset", 0u);
+                }
+                unit.c = u.value("node", std::string()) == "MethodDecl";
+                unit.reason = u.value("reason", std::string());
+                if (!unit.name.empty()) r.units.push_back(std::move(unit));
+            }
+        }
+        fs::write_text(form.folder / "RECOVERY.md", source_form::recovery(r, form));
+    }
     b.source_form = form.folder;
     b.source_missing = form.missing;
     b.source_named_parameters = form.named_parameters;
@@ -1149,7 +1177,6 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         const auto declared = m.declarations.find(fn->second);
         return declared == m.declarations.end() ? std::nullopt : std::optional<std::string>(declared->second);
     }));
-    if (image) write_source_form(c, imports, base);
     // the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
     {
         std::map<std::int64_t, std::int64_t> lengths;
@@ -1158,6 +1185,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         b.l2 = module_document(*b.l2_arena, b.name, m, b.assembled, c.stems, folder, lengths);
         json::save(folder / "module.l2.json", translate::l2::to_json(*b.l2), json::Style::PythonCompatible);
     }
+    if (image) write_source_form(c, imports, base);
     return image;
 }
 
