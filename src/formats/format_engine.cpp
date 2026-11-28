@@ -1160,7 +1160,10 @@ private:
                 case Arr::Count: {
                     node.kind = Kind::Array;
                     const std::uint64_t count = length(f.arr_expr, cx);
-                    if (count > (1u << 24)) fail(at, "'" + f.name + "' claims " + std::to_string(count) + " elements");
+                    if (count > (1u << 24)) {   // a damaged count; one the data cannot hold even at a byte an element is a file cut short
+                        if (c > end || count > end - c) throw TruncatedError(fmt(), c, count, c > end ? 0 : end - c);
+                        fail(at, "'" + f.name + "' claims " + std::to_string(count) + " elements");
+                    }
                     for (std::uint64_t i = 0; i < count; ++i)
                         if (!element(i, end)) break;
                     break;

@@ -1,0 +1,31 @@
+# pck.fmt -- a Minecraft Legacy Console Edition package (.pck; formats/xbox/pck), big-endian: the version, the property
+# names (id, UTF-16 name), the entry table (size, type, UTF-16 name). The payloads follow the table in entry order; where
+# each one starts is the reader's (a PNG by its signature, the rest after zero padding).
+
+format pck
+endian be
+
+struct File {
+    version        : u32
+    property_count : u32
+    properties     : Property[property_count]
+    count          : u32
+    entries        : PckEntry[count]
+    let table_end = $pos
+}
+
+struct Property {
+    id     : u32
+    length : u32                 # UTF-16 units
+    assert length <= 8192 : "bad name length"
+    name   : bytes(length * 2)   # UTF-16BE
+    pad    : bytes(4)
+}
+
+struct PckEntry {
+    size   : u32
+    type   : u32
+    length : u32
+    name   : bytes(length * 2)   # UTF-16BE
+    pad    : bytes(4)
+}
