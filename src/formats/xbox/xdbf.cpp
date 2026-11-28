@@ -7,6 +7,7 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/log.hpp"
+#include "formats/gen/xdbf.hpp"
 #include "core/text.hpp"
 #include "formats/xbox/utf16.hpp"
 
@@ -77,27 +78,25 @@ std::optional<Achievement> decode_achievement(ByteView b) {
     return a;
 }
 
+// The layout is xdbf.fmt's (its generated reader, formats/gen/xdbf); what a cut-short table or a payload outside the file
+// means is this reader's.
 Database Database::parse(ByteView file) {
-    io::ByteReader r(file, kXdbfReader);
-    if (as_text(r.bytes(4)) != kMagic) throw FormatError(kXdbfReader, 0, "not an XDBF file (bad magic)");
+    if (file.size() >= 4 && as_text(file.first(4)) != kMagic) throw FormatError(kXdbfReader, 0, "not an XDBF file (bad magic)");   // (shorter: the read says it is cut short)
+    const gen::xdbf::File h = gen::xdbf::read(file);
     Database db;
-    db.version = r.u32_be();
-    db.entry_table_len = r.u32_be();
-    const std::uint32_t entry_count = r.u32_be();
-    db.free_table_len = r.u32_be();
-    db.free_count = r.u32_be();
-    if (kXdbfHeaderSize + std::uint64_t{entry_count} * kXdbfEntrySize > file.size()) {
-        throw TruncatedError(kXdbfReader, kXdbfHeaderSize, std::uint64_t{entry_count} * kXdbfEntrySize, file.size() - kXdbfHeaderSize);
-    }
-    const std::uint64_t heap = db.data_start();
-    for (std::uint32_t i = 0; i < entry_count; ++i) {
+    db.version = h.version;
+    db.entry_table_len = h.entry_table_len;
+    db.free_table_len = h.free_table_len;
+    db.free_count = h.free_count;
+    if (!h.entries) throw TruncatedError(kXdbfReader, kXdbfHeaderSize, std::uint64_t{h.entry_count} * kXdbfEntrySize, file.size() - kXdbfHeaderSize);
+    db.entries.reserve(h.entries->size());
+    for (const gen::xdbf::Entry& n : *h.entries) {
         Entry e;
-        e.ns = r.u16_be();
-        e.id = r.u64_be();
-        const std::uint32_t offset = r.u32_be(), length = r.u32_be();
-        // A zero-length payload is empty wherever its offset points; any other must lie in the file.
-        if (length) {
-            const ByteView at = io::checked_range(file, heap + offset, length);
+        e.ns = n.ns;
+        e.id = n.id;
+        // A zero-length payload is empty wherever its offset points; any other must lie in the file (not read: outside it).
+        if (n.length) {
+            const ByteView at = n.payload ? *n.payload : io::checked_range(file, db.data_start() + n.offset, n.length);
             e.payload.assign(at.begin(), at.end());
         }
         db.entries.push_back(std::move(e));
