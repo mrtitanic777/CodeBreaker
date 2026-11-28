@@ -180,6 +180,8 @@ struct DecompilerContext {
     std::optional<MethodDescriptor> current_method_descriptor;
     MethodWrapper* current_method_wrapper = nullptr;
     VarProcessor* current_var_processor = nullptr;
+    // Not upstream: what is told of each root class written (DecompileRequest::on_class_written).
+    std::function<void(ClassNode* root)> class_written;
 
     static CounterContainer& counter_container() { return *current().counters; }
 

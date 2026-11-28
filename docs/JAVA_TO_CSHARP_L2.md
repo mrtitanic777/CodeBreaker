@@ -209,3 +209,37 @@ same class: the same tree, apart from source positions. Then the C# from both is
   What does not build is the input's own: cs_back declares a property `Item` beside an indexer; cs_corpus and cs_own are several
   programs with a Main each; cs_gen's `Exercise` holds a pointer, so it is declined, as before. minecraft's NoiseMain needs
   classes its units do not have.
+- 2026-11-28: step 4, first part: Fernflower's tree lowers into L2, `java/decompiler/lower_l2` (`lower_l2::decompile` decompiles and
+  lowers each root class once ClassWriter has written it, through a non-upstream hook, `DecompileRequest::on_class_written`). It walks
+  what ClassWriter walks, in its order, and makes for each piece what javac's tree of the written text lowers to:
+  - classes, fields (with their initialisers and constants), methods, constructors with javac's implicit `super()`, a default
+    constructor where the text leaves it out, enum constants, member classes;
+  - every statement kind (labels, break and continue, if / else if, the four loops, switch, try / catch / finally, synchronized);
+  - every expression kind Fernflower writes, with the casts the text writes, and the parameters it leaves out;
+  - lambdas and method references: a lambda's parameters are its content method's, which carry the types javac inferred;
+  - symbols named by the class that declares the member, as javac's are, through the classes the run read (a library's first base
+    when none of them declares it);
+  - the bases of a class with no type parameters of its own taken from its Signature (`Comparable<Item>`).
+
+  What it does not carry yet is an Unsupported node with its reason: anonymous and local classes, an enum constant with a body, an
+  assert. Proof:
+  - `java.decompiler.lower_l2.*`: each program compiled with javac (Java 8, or 17), decompiled and lowered, and Fernflower's text of
+    the same run lowered by the javac front end, compared as documents. Positions, Paren nodes, javac's IMPLICIT mark and what only
+    the JDK knows are left out: a JDK member's owner, varargs and generic types (the text is raw).
+  - calc and fixtures are the same document, class for class. So are 10 of the 20 kits: AsListKit, BoxKit, BoxStep, ClientKit,
+    DataKit, ExtKit, FormatKit, LibKit, SwitchTry and ToArrayKit.
+  - modern is not, and cannot be. Its lambdas are passed where the bytecode's interfaces are raw, so javac types the text's
+    lambda parameters as Object and cannot resolve them; the lowering has the compiled lambdas' types.
+  - `translate.csharp.pairs.decompiled_*` (`pairs::jvm_to_csharp`): the program's class files decompiled into L2, the rule set java
+    and the C# back end, run beside the JVM. calc and fixtures agree, and so do BoxKit, ExtKit, FormatKit, MapKeyKit, SwitchTry
+    and ToArrayKit.
+
+  The rule set java gained one rule for this: a lambda of a raw JDK functional interface takes objects, and reads each parameter
+  declared of a class through a cast, as Java's bridge method does. It is needed because C# converts a lambda to Func<object, bool>
+  only if the lambda takes objects. What is left of step 4:
+  - anonymous and local classes, and enum constants with bodies. The rule set hoists them from javac's shape: `New{body}` and
+    `LocalClass`, with the captured locals read by name;
+  - JDK members named by the class the bytecode names. javac names `IllegalStateException.getMessage` as Throwable's, which the
+    API maps key on, so the JDK's class headers (the jmods) should be read for the lookup;
+  - raw collections from the bytecode that do not build in C#, such as modern's raw Iterator over a map's entries;
+  - RetroMCP's jar, and the Java back end reading these units.

@@ -591,6 +591,7 @@ private:
     Node* string_of(Node* a);
     Node* method_ref(Node* e);
     void check_lambda(Node* e);
+    void raw_lambda_params(ir::Lambda& l, const TypeP& face);
     Node* fill(const std::string& tmpl, Node* call_node, const ir::Call& call);
     struct Row {
         std::optional<apimap::Mapping> mapping;
@@ -3206,6 +3207,44 @@ Node* Pass::method_ref(Node* e) {
     return expr(lambda);
 }
 
+// A lambda of a JDK functional interface named raw (Predicate: the decompiler's bytecode, or a raw source) whose parameters are declared of a
+// class: its delegate takes objects (Func<object, bool>), and C# converts a lambda to it only if the lambda takes objects too. Each such
+// parameter is taken as an object and read as its class (`(Item)x`), which is what Java's bridge method does.
+void Pass::raw_lambda_params(ir::Lambda& l, const TypeP& face) {
+    const auto* c = face ? std::get_if<ir::ClassType>(&face->body) : nullptr;
+    if (c == nullptr || !c->args.empty() || !function_table().contains(c->name)) return;
+    std::map<std::string, TypeP> narrowed;
+    for (Node* pn : l.params) {
+        auto* p = ir::get<ir::Param>(pn);
+        if (p == nullptr || !p->sym || !p->type || !std::holds_alternative<ir::ClassType>(p->type->body)) continue;
+        if (std::get<ir::ClassType>(p->type->body).name == "java.lang.Object") continue;
+        narrowed[p->sym->name] = p->type;
+        p->type = ir::class_type("java.lang.Object");
+        p->sym = ir::make_sym(p->sym->kind, p->sym->name, p->sym->owner, p->sym->is_static, p->type);
+    }
+    if (narrowed.empty()) return;
+    std::function<void(Node*&, const std::map<std::string, TypeP>&)> read_as = [&](Node*& n, const std::map<std::string, TypeP>& names) {
+        if (n == nullptr || names.empty() || ir::is<ir::ClassDecl>(n)) return;
+        if (const auto* inner = ir::get<ir::Lambda>(n)) {   // an inner lambda's parameters hide the names they take
+            std::map<std::string, TypeP> left = names;
+            for (Node* pn : inner->params)
+                if (const auto* p = ir::get<ir::Param>(pn); p != nullptr && p->sym) left.erase(p->sym->name);
+            ir::visit(*n, [&](auto& k) { k.each_child([&](Node*& child) { read_as(child, left); }); });
+            return;
+        }
+        if (const auto* name = ir::get<ir::Name>(n); name != nullptr && name->sym && name->sym->kind == ir::SymKind::Param) {
+            if (const auto it = names.find(name->sym->name); it != names.end()) {
+                Node* taken = ir::make(arena_, ir::Name{.sym = ir::make_sym(ir::SymKind::Param, name->sym->name, name->sym->owner, false, ir::class_type("java.lang.Object"))},
+                                       ir::class_type("java.lang.Object"));
+                n = ir::make(arena_, ir::Cast{.x = taken}, it->second);
+                return;
+            }
+        }
+        ir::visit(*n, [&](auto& k) { k.each_child([&](Node*& child) { read_as(child, names); }); });
+    };
+    read_as(l.body, narrowed);
+}
+
 void Pass::check_lambda(Node* e) {
     const std::string* q = qual(e->type);
     if (q == nullptr) return;
@@ -3260,6 +3299,7 @@ Node* Pass::expr(Node* e) {
     if (ir::is<ir::MethodRef>(x)) return method_ref(x);
     if (auto* l = ir::get<ir::Lambda>(x)) {
         check_lambda(x);
+        raw_lambda_params(*l, x->type);
         const TypeP saved_ret = std::exchange(ret_, TypeP{});
         if (ir::is<ir::Block>(l->body)) {
             auto saved = labels_;
