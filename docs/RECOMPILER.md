@@ -156,3 +156,14 @@ buttons.
   `ppc_64_xenon_be.sla`: add, lwz, stwu, cmpwi, bl, blr, bctr, beq, vmaddfp128, sync, a word that is not an instruction, and
   add, lwz and stwu run on the emulator with the results the operations name. No title is touched: nothing on the project
   path calls the new API.
+- 2026-11-28: step 2: the p-code translator (`recompile/pcode_emit`) beside XenonRecomp. XenonRecomp keeps the function around each
+  instruction (labels, branches, calls, switch tables, the flush mode, its locals) and asks the translator first for every instruction
+  (`XenonRecomp/instruction_translator.h`); the translator writes the instruction from its p-code or declines it (a way out of it, a
+  user operation such as VMX128's arithmetic, a register the context lacks, a fused multiply-add, a store before `eieio`), and
+  XenonRecomp writes what it declines. The description is `ppc_64_xenonexact_be.sla`: `ppc_64_xenon_be.slaspec` with `XENON_EXACT`,
+  the console's 32-bit mode for record forms and carries, `divw`, `mulhw` and `lvebx`/`lvehx`/`lvewx` as the console's results
+  (and XenonRecomp's own tests) give them (docs/GHIDRA_FORK.md L12); the decompiler's descriptions are unchanged but for line
+  numbers. Proof: `recompile.x360.xenias_instruction_tests_through_the_pcode_translator`: every test file, 0 mismatches, 2,767
+  instructions written by the translator and 1,608 by XenonRecomp (1,279 of them `blr`). On the way: the instruction tests had not
+  built since a rename reached the harness's generated `main.cpp` (`xenon_log::println`), and a build failure was reported as a
+  skip, so the test passed with nothing checked; both fixed, and the XenonRecomp-only run is 0 mismatches again.

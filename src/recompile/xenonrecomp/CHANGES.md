@@ -74,3 +74,13 @@ CodeBreaker links XenonRecomp and XenonAnalyse into `codebreaker.exe` (MSVC, cla
   (`Image::ParseImage`, both programs).
 - XenonAnalyse's output buffer is cleared at the start of each run (it is a file-level static).
 - Inside another build the programs (and xxhsum) build on request only.
+
+## The one recompiler, step 2 (2026-11-28)
+
+- An instruction translator the caller sets (`XenonRecomp/instruction_translator.h`, for the runs of one thread) is asked
+  for every instruction first, with the names the configuration gives each register. Where it writes the instruction,
+  its statements stand in for the `switch`'s (the flush mode set first when it computes with the FPU). Where it declines,
+  or when no translator is set or the code is `relocatable_code`, the output is what it was. CodeBreaker's p-code
+  translator (`src/recompile/pcode_emit`) is the one it is given (docs/RECOMPILER.md).
+- The instruction tests' harness printed its mismatches with `xenon_log::println`, which the generated `main.cpp` does not
+  have (a rename of fmt's `println` had reached the text it writes), so the tests no longer built: it is `fmt::println` again.

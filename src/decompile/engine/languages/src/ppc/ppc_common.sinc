@@ -1591,11 +1591,43 @@ macro cr0flags(result ) {
 	# the first three bits of CR are set by signed comparison of the
 	# result to zero, and the fourth bit of CR is copied from the SO field
 	# of the XER
+@ifdef XENON_EXACT
+	# (the Xbox 360 runs a title in 32-bit mode: the low word is compared, as the console's results show)
+	local whole = result;
+	local low:4 = whole:4;
+	setCrBit(cr0, 0, (low s< 0)); # 0b100
+	setCrBit(cr0, 1, (low s> 0)); # 0b010
+	setCrBit(cr0, 2, (low == 0)); # 0b001
+@else
+	setCrBit(cr0, 0, (result s< 0)); # 0b100
+	setCrBit(cr0, 1, (result s> 0)); # 0b010
+	setCrBit(cr0, 2, (result == 0)); # 0b001
+@endif
+	setCrBit(cr0, 3, (xer_so & 1));
+}
+
+@ifdef XENON_EXACT
+# CR0 from the whole doubleword: divd., divdu. and rldicl., as XenonRecomp has always written them
+macro cr0flags64(result) {
 	setCrBit(cr0, 0, (result s< 0)); # 0b100
 	setCrBit(cr0, 1, (result s> 0)); # 0b010
 	setCrBit(cr0, 2, (result == 0)); # 0b001
 	setCrBit(cr0, 3, (xer_so & 1));
 }
+
+# XER[CA] in the Xenon's 32-bit mode: of the low words' addition (addCarry) and of the subtraction b - a (subCarry: no borrow).
+macro addCarry(a, b) {
+	local x:$(REGISTER_SIZE) = a;
+	local y:$(REGISTER_SIZE) = b;
+	xer_ca = carry(x:4, y:4);
+}
+
+macro subCarry(a, b) {
+	local x:$(REGISTER_SIZE) = a;
+	local y:$(REGISTER_SIZE) = b;
+	xer_ca = (x:4 <= y:4);
+}
+@endif
 
 macro addOverflow(a,b) {
 	xer_ov = scarry(a,b);
@@ -1608,9 +1640,17 @@ macro subOverflow(a,b) {
 }
 
 macro addExtendedCarry(op1,op2){
+@ifdef XENON_EXACT
+	local carryIn:4 = zext(xer_ca);
+	local x:$(REGISTER_SIZE) = op1;
+	local y:$(REGISTER_SIZE) = op2;
+	tmp:4 = y:4 + carryIn;
+	xer_ca = carry(y:4, carryIn) || carry(x:4, tmp);
+@else
 	local carryIn:$(REGISTER_SIZE) = zext(xer_ca);
 	tmp:$(REGISTER_SIZE) = op2 + carryIn;
 	xer_ca = carry(op2, carryIn) || carry(op1, tmp);
+@endif
 }
 
 macro addExtendedOverflow(op1, op2) {
@@ -1621,10 +1661,19 @@ macro addExtendedOverflow(op1, op2) {
 }
 
 macro subExtendedCarry(op1,op2){
+@ifdef XENON_EXACT
+	local carryIn:4 = zext(!xer_ca);
+	local x:$(REGISTER_SIZE) = op1;
+	local y:$(REGISTER_SIZE) = op2;
+	local CYa = x:4 < y:4;
+	local result:4 = x:4 - y:4;
+	xer_ca = !(CYa || (result < carryIn) );
+@else
 	local carryIn = zext(!xer_ca);
 	local CYa = op1 < op2;
 	local result = op1 - op2;
 	xer_ca = !(CYa || (result < carryIn) );
+@endif
 }
 
 macro subExtendedOverflow(op1, op2) {
