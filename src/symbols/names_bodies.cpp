@@ -8,7 +8,8 @@
 #include "core/io.hpp"
 #include "core/text.hpp"
 #include "core16_types.hpp"
-#include "symbols/names.hpp"
+#include "symbols/name_data.hpp"
+#include "symbols/runtime_library.hpp"
 #include "symbols/x86.hpp"
 
 namespace cb::symbols::names {

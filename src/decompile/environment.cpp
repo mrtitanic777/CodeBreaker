@@ -15,7 +15,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "formats/powerpc_image.hpp"
-#include "symbols/names.hpp"
+#include "symbols/name_data.hpp"
 
 namespace cb::decompile::environment {
 
@@ -333,8 +333,7 @@ struct CorpusEnvironment::Impl {
           modules(s.modules ? s.modules : std::make_shared<CorpusModules>(s.corpus)),
           imports(read_imports),
           scanner(*modules),
-          known(*this),
-          namer(symbols::names::Namer::Services{s.corpus, s.ordinals, nullptr, [this](const std::filesystem::path& module) { return ppc_names(module); }}) {}
+          known(*this) {}
 
     Sources s;
     std::shared_ptr<CorpusModules> modules;
@@ -368,7 +367,6 @@ struct CorpusEnvironment::Impl {
     // PowerPC images read (the last few: the facts, the functions and the names are asked in turn for one).
     std::mutex ppc_lock;
     std::map<std::filesystem::path, std::shared_ptr<const ppc::Image>> ppc_images;
-    symbols::names::Namer namer;
 
     std::shared_ptr<const ppc::Image> ppc_image(const std::filesystem::path& module) {
         std::lock_guard hold(ppc_lock);
@@ -382,7 +380,7 @@ struct CorpusEnvironment::Impl {
         return slot;
     }
 
-    std::optional<symbols::names::PowerPcNames> ppc_names(const std::filesystem::path& module) {
+    symbols::names::PowerPcNames ppc_names(const std::filesystem::path& module) {
         const std::shared_ptr<const ppc::Image> image = ppc_image(module);
         symbols::names::PowerPcNames out;
         if (image->entry() != 0) out.entry = image->entry();
@@ -436,7 +434,7 @@ dsc::PowerPcFacts CorpusEnvironment::powerpc_facts(const std::filesystem::path& 
     out.imports.insert(image->imports().begin(), image->imports().end());
     out.inlined.insert(image->inlined().begin(), image->inlined().end());
     // what run-time type information and the entry point name for certain
-    for (const auto& [address, named] : impl_->namer.powerpc_names(module)) out.names[static_cast<decompiler::Va>(address)] = named.name;
+    for (const auto& [address, named] : symbols::names::powerpc_names(impl_->ppc_names(module))) out.names[static_cast<decompiler::Va>(address)] = named.name;
     return out;
 }
 

@@ -5,7 +5,7 @@
 #include "core/error.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
-#include "symbols/names.hpp"
+#include "symbols/name_data.hpp"
 
 namespace cb::symbols::names {
 
