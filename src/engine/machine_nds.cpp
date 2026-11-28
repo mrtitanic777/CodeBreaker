@@ -9,7 +9,7 @@
 #include "emulate/arm.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/nds.hpp"
 #include "formats/nds.hpp"
@@ -104,7 +104,7 @@ vl::Effects nds_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     options.a = {static_cast<std::uint32_t>(nds_at(state, "a0")), static_cast<std::uint32_t>(nds_at(state, "a1")), static_cast<std::uint32_t>(nds_at(state, "a2")),
                  static_cast<std::uint32_t>(nds_at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(nds_at(state, "s0"));
-    const emulate::arm::RunResult run = pcode_cpu::call(bus, entry, options);
+    const emulate::arm::RunResult run = emulate::pcode_cpu::call(bus, entry, options);
     // what the run changed in the memories of the machine (the program is in main RAM: its own bytes are not an effect unless the run rewrote them)
     std::vector<std::string> changed;
     for (std::size_t k = 0; k < regions.size(); ++k)

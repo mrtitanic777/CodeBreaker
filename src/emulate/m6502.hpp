@@ -3,7 +3,7 @@
 // on 6502.sla and 65sc02.sla); the interpreter that was here was retired when the emulator matched it.
 //
 //     m6502::Bus bus;                                  // 64 KB, with device ranges handed to callbacks
-//     m6502::RunResult r = engine::pcode_cpu::run(bus, entry, {.a = 3});    // call a function: run to its RTS
+//     m6502::RunResult r = emulate::pcode_cpu::run(bus, entry, {.a = 3});    // call a function: run to its RTS
 //     cb::emulate::Run record = m6502::record(r);      // the one run record the judge compares
 //
 // `decimal` (default off: the NES's 2A03 has no decimal mode) makes ADC and SBC follow D as a stock 6502 does. An opcode the NMOS 6502 documents nothing

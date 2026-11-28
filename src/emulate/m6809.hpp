@@ -3,7 +3,7 @@
 // the emulator matched it.
 //
 //     m6809::Bus bus(image);
-//     m6809::RunResult r = engine::pcode_cpu::run(bus, 0x0030, {.a = 1});   // call the function as JSR would, run to its RTS
+//     m6809::RunResult r = emulate::pcode_cpu::run(bus, 0x0030, {.a = 1});   // call the function as JSR would, run to its RTS
 //
 // SWI, SWI2, SWI3, CWAI and SYNC wait for an interrupt the model does not raise: a run reaching one stops with that reason. A run starts with the registers it is given and
 // the stack pointer at `RunOptions::s`; a return address is pushed that nothing is at, and reaching it is the end.

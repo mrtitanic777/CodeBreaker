@@ -13,7 +13,7 @@
 #include "emulate/sh2.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/dreamcast.hpp"
 #include "formats/dreamcast.hpp"
@@ -247,7 +247,7 @@ vl::Effects dreamcast_effects(const stdfs::path& path, std::uint32_t entry, cons
     options.fpscr = static_cast<std::uint32_t>(at(state, "fpscr"));
     options.fa[0] = static_cast<std::uint32_t>(at(state, "f0"));
     options.fa[1] = static_cast<std::uint32_t>(at(state, "f1"));
-    const sh2::RunResult run = pcode_cpu::call(bus, entry, options);
+    const sh2::RunResult run = emulate::pcode_cpu::call(bus, entry, options);
     return outcome(run, watched);
 }
 

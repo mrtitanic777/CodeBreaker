@@ -3,7 +3,7 @@
 //
 //     Trace trace;
 //     z80::Bus bus = bus_for(coleco(), memory, trace);       // memory: the 64 KB as loaded; the BIOS area reads as RET
-//     z80::RunResult r = engine::pcode_cpu::run(bus, entry, run_options(coleco(), trace));    // trace.ports: every IN/OUT with the full port; trace.calls: the BIOS entries called
+//     z80::RunResult r = emulate::pcode_cpu::run(bus, entry, run_options(coleco(), trace));    // trace.ports: every IN/OUT with the full port; trace.calls: the BIOS entries called
 //
 // The firmware of these machines (the ColecoVision's BIOS, the Amstrad CPC's jumpblock) is not part of the program, and it is not run: every
 // byte of it reads as RET, so a call into it comes back at once, the same way in the original's run and the rebuilt one's, and the call is

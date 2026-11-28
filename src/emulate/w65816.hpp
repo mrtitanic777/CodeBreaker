@@ -1,7 +1,7 @@
 // emulate/w65816.hpp -- a Super Nintendo cartridge machine, to run functions on (Unicorn has no 65C816).
 //
 //     w65816::Machine machine(rom);                                // the cartridge's ROM, the console's 128 KB of RAM, the chips' registers
-//     w65816::Run r = engine::pcode_cpu::run(machine, 0x808123, {.a = 3});    // call a function: run to its RTS or RTL
+//     w65816::Run r = emulate::pcode_cpu::run(machine, 0x808123, {.a = 3});    // call a function: run to its RTS or RTL
 //
 // The CPU runs on CodeBreaker's one emulator (engine/pcode_cpu_w65816: 65816.sla and what the adapter adds); the interpreter that was here was retired when the
 // emulator matched it. WAI and STP end a run ("stopped"). Time is not modelled.

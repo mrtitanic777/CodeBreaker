@@ -4,7 +4,7 @@
 //
 //     f8::Bus bus;                                    // 64 KB of memory, ports through callbacks, every port access logged
 //     bus.load(0x0800, rom);                          // the cartridge
-//     f8::RunResult r = engine::pcode_cpu::run(bus, 0x0820, {.a = 1});    // call the function as PI would, run to its POP
+//     f8::RunResult r = emulate::pcode_cpu::run(bus, 0x0820, {.a = 1});    // call the function as PI would, run to its POP
 //
 // A run starts with PC1 holding kReturnAddress and ends when POP brings it back.
 #pragma once

@@ -5,7 +5,7 @@
 //     cp1610::Bus bus;                                         // 64 K words
 //     bus.memory(0x5000, 0x6FFF, rom_words, false);            // ROM (a write to it is dropped)
 //     bus.device(0x0000, 0x003F, read, write, true, 0x3FFF);   // a device range: every access logged, values kept to 14 bits
-//     cp1610::RunResult r = engine::pcode_cpu::run(bus, 0x5100, {.r = {1, 2}});   // call the function as `JSR R5` would, run to its `MOVR R5,R7`
+//     cp1610::RunResult r = emulate::pcode_cpu::run(bus, 0x5100, {.r = {1, 2}});   // call the function as `JSR R5` would, run to its `MOVR R5,R7`
 //
 // A run starts with the registers it is given and R5 and the top of the stack holding an address nothing is at; reaching it is the end.
 #pragma once

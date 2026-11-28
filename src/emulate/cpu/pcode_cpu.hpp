@@ -1,0 +1,133 @@
+// emulate/cpu/pcode_cpu.hpp -- the lanes' 6502 run on CodeBreaker's one emulator (decompile/engine/pcode_emulator), the p-code
+// interpreter of the processor's SLEIGH description, in place of the lane's own CPU core (emulate/m6502).
+//
+//     RunResult r = emulate::pcode_cpu::call(bus, entry, options);   // as emulate::m6502::run, on the core chosen by CB_PCODE_EMU
+//
+// The machine stays the lane's: the Bus (memory map, address mask, devices, the log of device accesses) is the emulator's
+// read and write hook, so every data access of the program goes through Bus::read and Bus::write exactly as the own core
+// makes it. What the emulator reads instructions from is its page map, a copy of the bus's memory as the processor sees it
+// (the address mask's mirrors included), kept current: after an instruction that touched the bus the copy is compared with
+// the bus's memory and what changed (a bank switch, a store into RAM that code runs from) is written to every mirror.
+//
+// The same run and the same result as emulate::m6502::run: a function is called as JSR calls it (return address pushed,
+// returning when the pc reaches kReturnAddress), the registers A X Y P S as the run left them, the device accesses of the
+// run in order, an instruction the NMOS 6502 documents nothing for stops the run with the same fault. Differences from the
+// own core: none (ADC and SBC are decimal with D set when `decimal` is, as the 6502 descriptions do it with their BCD switch);
+// NMOS runs 6502exact.sla and `Variant::Cmos` 65sc02.sla (the 65C02 without the bit instructions the Lynx's 65SC02 lacks): the descriptions built with
+// EXACT, whose stack, decimal mode and flags are the chip's; 6502.sla and 65c02.sla, built without it, are the decompiler's and the disassembler's, unchanged.
+//
+// The 6502 and Z80 lanes (Atari 2600, 5200, 7800, NES, Lynx; Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) run only here; the other
+// families' call() uses the emulator by default and CB_PCODE_EMU=0 (or force(false)) their own cores.
+#pragma once
+
+#include <memory>
+#include <optional>
+
+#include "emulate/m6502.hpp"
+#include "emulate/m68k.hpp"
+#include "emulate/arm.hpp"
+#include "emulate/mips.hpp"
+#include "emulate/r4300.hpp"
+#include "emulate/powerpc.hpp"
+#include "emulate/sh2.hpp"
+#include "emulate/z80.hpp"
+
+namespace cb::emulate::pcode_cpu {
+
+// Whether call() runs on the emulator, as every CPU family does by default: force() if set, else CB_PCODE_EMU ("0", "false", "no": the own cores, to compare).
+bool enabled();
+// The same for a lane still too slow on the emulator to be its default (the WonderSwan, the PlayStation 4 and 5, the Xbox One): only force(true) or CB_PCODE_EMU=1 puts it there.
+bool enabled_when_asked();
+// Override the environment (tests flip it); std::nullopt goes back to the environment.
+void force(std::optional<bool> on);
+
+// The run on the emulator, always.
+emulate::m6502::RunResult run(emulate::m6502::Bus& bus, std::uint16_t entry, const emulate::m6502::RunOptions& options = {});
+
+
+// The 6502 one instruction at a time on the emulator, as emulate::m6502::Cpu ran it: `regs` and `steps` are the processor's, step() runs the instruction at
+// regs.pc (a Fault: an undocumented opcode, and nothing changed). The bus is the emulator's as run() makes it, and what is put in its memory between steps is
+// seen by the next one. `decimal`: ADC and SBC are decimal when D is set (the description's BCD switch), as RunOptions::decimal is for run(). The thread's emulator is shared: a run or another M6502Cpu between steps is allowed.
+class M6502Session;
+class M6502Cpu {
+public:
+    explicit M6502Cpu(emulate::m6502::Bus& bus, bool decimal = false, emulate::m6502::Variant variant = emulate::m6502::Variant::Nmos);
+    ~M6502Cpu();
+    M6502Cpu(const M6502Cpu&) = delete;
+    M6502Cpu& operator=(const M6502Cpu&) = delete;
+
+    emulate::m6502::Registers regs;
+    std::uint64_t steps = 0;
+
+    std::optional<emulate::m6502::Fault> step();
+
+private:
+    std::unique_ptr<M6502Session> session_;
+};
+
+// The same for the lanes' Z80 (emulate::z80::Bus), on z80exact.sla (z80.slaspec built with EXACT: the chip's undocumented flags, bits 5 and 3 of F, the
+// ports' sixteen lines, the block instructions' flags on every step; z80.sla without it is the decompiler's): the Bus is the emulator's read/write hook for the "ram" space and its
+// "io" space (IN and OUT; the port is all sixteen lines, as the description puts A or B on the high ones), the 64 KB of bus memory the
+// page map instructions are decoded from, kept current. The call is made as CALL makes it (return address pushed, kReturnAddress ends the
+// run), HALT stops the run with the Halt fault, an instruction the description lacks with Undecodable (a DD/FD in front of an instruction that
+// takes no index is skipped, most of the ED page is NOP; the description has every opcode, the undocumented ones too). R counts the fetches (two for a prefixed
+// instruction, bit 7 kept), counted before each instruction as the chip does, so LD A,R reads its own count; the interrupt flip-flops and mode
+// are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
+emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
+
+// The Z80 one instruction at a time on the emulator (the retired emulate::z80::Cpu's shape): `regs` (the interrupt flip-flops, the mode and HALT among them) and
+// `steps` are the processor's; step() runs the instruction at regs.pc (a Fault: halted by an earlier HALT, or no instruction there, and nothing changed).
+// What is put in the bus's memory between steps is seen by the next one. The thread's emulator is shared: a run or another Z80Cpu between steps is allowed.
+class Z80Session;
+class Z80Cpu {
+public:
+    explicit Z80Cpu(emulate::z80::Bus& bus);
+    ~Z80Cpu();
+    Z80Cpu(const Z80Cpu&) = delete;
+    Z80Cpu& operator=(const Z80Cpu&) = delete;
+
+    emulate::z80::Registers regs;
+    std::uint64_t steps = 0;
+
+    std::optional<emulate::z80::Fault> step();
+
+private:
+    std::unique_ptr<Z80Session> session_;
+};
+
+// The same for the 68000 lanes (emulate::m68k::Bus), on 68020.sla (a superset of the 68000). Every data access goes through the Bus's read/write (the
+// device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.
+// The call is made as JSR makes it; TRAP, CHK, TRAPV and STOP end the run with the fault the own core gives.
+emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+
+// The PlayStation's R3000A (emulate::mips::Bus), on mips32le.sla: the adapter carries the BIOS calls, the load delay slot, the faults, coprocessor 0 and the
+// GTE (the own core's). A branch in a branch's delay slot, which the description cannot decode, is run one instruction at a time.
+emulate::mips::RunResult run(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
+emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
+
+// The Nintendo 64's R4300i (emulate::r4300::Bus), on mips64be.sla: the adapter carries the integer machine, loads and stores, branches (likely ones too),
+// faults, coprocessor 0 and the FPU.
+emulate::r4300::RunResult run(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
+emulate::r4300::RunResult call(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
+
+// The Game Boy Advance's ARM7TDMI (emulate::arm::Bus of System::Gba), on ARM4t_le.sla: ARM and Thumb state, the BIOS calls and bus errors are carried by the
+// adapter. call() gives every other machine (the DS, the 3DS, the Vita) to the own core.
+emulate::arm::RunResult run(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+
+// The SuperH lanes' SH-2 (the Saturn, the 32X; emulate::sh2::Bus) on sh-2.sla and SH-4 (the Dreamcast) on SuperH4_le.sla: a delayed branch and its slot are one step of
+// the emulator, the faults, the on-chip registers and the bus's devices are the adapter's and the bus's; what the descriptions leave out (the SH-4's FPU, banks and
+// cache instructions) runs as the own core runs it.
+emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+
+// The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla (engine/pcode_cpu_ppc.cpp): every instruction runs on the emulator, the
+// description's where it has one, the adapter's on the emulator's registers where it has none (paired singles, the special registers, the floating arithmetic); the Machine is the
+// memory. The lane judge's runs (calls out, a path, a branch log, absent code, a shadow) are made there too. call() is run() where the emulator is on, else the interpreter's run.
+emulate::powerpc::RunResult run(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                const emulate::powerpc::RunOptions& options = {});
+emulate::powerpc::RunResult call(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                 const emulate::powerpc::RunOptions& options = {});
+
+}  // namespace cb::emulate::pcode_cpu

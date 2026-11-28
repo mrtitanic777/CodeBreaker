@@ -8,7 +8,7 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/lynx_test_image.hpp"
 
 namespace cb::emulate::lynx {
@@ -48,7 +48,7 @@ CB_TEST("engine.lynx_boot.bus_logs_suzy_and_mikey_and_keeps_ram_quiet", [] {
                         0x8D, 0xF9, 0xFF, 0x60};         // STA MAPCTL; RTS
     std::copy(code.begin(), code.end(), image.begin() + 0x400);
     m6502::Bus bus = make_bus(image);
-    const m6502::RunResult r = engine::pcode_cpu::run(bus, 0x400, {.variant = m6502::Variant::Cmos});
+    const m6502::RunResult r = emulate::pcode_cpu::run(bus, 0x400, {.variant = m6502::Variant::Cmos});
     CB_CHECK_EQ(r.exit(), "return");
     CB_CHECK_EQ(r.regs.a, 0xFF);
     CB_CHECK_EQ(r.io.size(), 3u);

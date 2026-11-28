@@ -1,7 +1,7 @@
 // emulate/huc6280.hpp -- a PC Engine / TurboGrafx-16 HuCard machine, to run functions on (Unicorn has no HuC6280).
 //
 //     huc6280::Machine machine(rom.data);          // the card's ROM in 8 KB banks; RAM, the mapping registers and the chips' registers
-//     huc6280::Run r = engine::pcode_cpu::run(machine, 0xE010, {.a = 3});    // call a function: run to its RTS
+//     huc6280::Run r = emulate::pcode_cpu::run(machine, 0xE010, {.a = 3});    // call a function: run to its RTS
 //
 // The CPU runs on CodeBreaker's one emulator (engine/pcode_cpu_huc6280: huc6280.sla and what the adapter adds); the interpreter that was here was retired when the
 // emulator matched it. Time is not modelled.

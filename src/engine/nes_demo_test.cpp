@@ -23,7 +23,7 @@
 #include "core/fs.hpp"
 #include "core/process.hpp"
 #include "core/testing.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "core/text.hpp"
 #include "decompile/decompiler.hpp"
 #include "decompile/decompiler_internal.hpp"
@@ -113,7 +113,7 @@ NdOutcome nd_interpret(const NdState& st) {
     Bytes mem = nd_memory(st);
     const Bytes before = mem;
     cpu6502::Bus bus = cpu6502::Bus::over(mem);
-    cb::engine::pcode_cpu::M6502Cpu cpu(bus);   // (the one emulator, a step at a time: the 2A03's binary arithmetic)
+    cb::emulate::pcode_cpu::M6502Cpu cpu(bus);   // (the one emulator, a step at a time: the 2A03's binary arithmetic)
     cpu.regs = {st.a, st.x, st.y, st.s, st.p, kPc};
     NdOutcome out;
     if (cpu.step()) {
@@ -223,13 +223,13 @@ CB_TEST("engine.nes_demo.the_program_runs_on_the_interpreter", [] {
         cpu6502::Bus bus{cb::ByteView(rom.memory())};
         bus.memory()[0x10] = 6;
         bus.memory()[0x11] = 7;
-        const cpu6502::RunResult run = cb::engine::pcode_cpu::run(bus, 0xC04F);   // multiply
+        const cpu6502::RunResult run = cb::emulate::pcode_cpu::run(bus, 0xC04F);   // multiply
         CB_CHECK(run.end == cpu6502::End::Return);
         CB_CHECK_EQ(run.regs.a, 42);
     }
     cpu6502::Bus bus{cb::ByteView(rom.memory())};
     bus.map(0x2000, 0x401F, [](std::uint16_t) -> std::uint8_t { return 0x80; });   // in vblank at once
-    const cpu6502::RunResult run = cb::engine::pcode_cpu::run(bus, 0xC000, {.max_steps = 4000});   // reset: ends in its loop
+    const cpu6502::RunResult run = cb::emulate::pcode_cpu::run(bus, 0xC000, {.max_steps = 4000});   // reset: ends in its loop
     std::vector<std::pair<unsigned, unsigned>> writes;
     for (const cpu6502::DeviceAccess& io : bus.log())
         if (io.kind == cpu6502::DeviceAccess::Kind::Write) writes.emplace_back(io.address, io.value);

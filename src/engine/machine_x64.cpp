@@ -19,7 +19,7 @@
 #include "emulate/unicorn_uc.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu_x86.hpp"
+#include "emulate/cpu/pcode_cpu_x86.hpp"
 #include "formats/read.hpp"
 #include "platforms/ps4.hpp"
 #include "platforms/ps5.hpp"
@@ -247,7 +247,7 @@ int reg(const char* name) { return *emulate::unicorn_uc::x86_register(name); }
 vl::Effects effects(const std::string& kind, const Loader& loader, const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
     const std::shared_ptr<const Loaded> loaded = cached(kind, loader, path);
     namespace uu = emulate::unicorn_uc;
-    const std::unique_ptr<core16::Uc> uc = pcode_cpu::open_x86(64);   // (Unicorn, unless the one emulator is asked for: pcode_cpu_x86.hpp)
+    const std::unique_ptr<core16::Uc> uc = emulate::pcode_cpu::open_x86(64);   // (Unicorn, unless the one emulator is asked for: pcode_cpu_x86.hpp)
     uc->mem_map(loaded->low, loaded->high - loaded->low);
     for (const Loaded::Part& part : loaded->parts) uc->mem_write(part.address, part.bytes);
     uc->mem_map(kStubs, page_up(std::max<std::size_t>(loaded->imports.size(), 1) * 16));
@@ -314,7 +314,7 @@ vl::Effects effects(const std::string& kind, const Loader& loader, const stdfs::
         },
         kStubs, kStubs + stub_names.size() * 16);
 
-    const std::shared_ptr<void> syscall_hook = pcode_cpu::hook_syscall(*uc, [&](core16::Uc& u) {
+    const std::shared_ptr<void> syscall_hook = emulate::pcode_cpu::hook_syscall(*uc, [&](core16::Uc& u) {
         const std::uint64_t rax = u.reg_read(reg("RAX")), rdi = u.reg_read(reg("RDI")), rsi = u.reg_read(reg("RSI")), rdx = u.reg_read(reg("RDX"));
         if (calls.size() < kShown) {
             const std::string name = loaded->syscall_name ? loaded->syscall_name(rax) : std::string();

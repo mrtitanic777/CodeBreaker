@@ -9,7 +9,7 @@
 #include "emulate/arm.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/threedo.hpp"
 #include "formats/threedo.hpp"
@@ -87,7 +87,7 @@ vl::Effects threedo_effects(const stdfs::path& path, std::uint32_t entry, const 
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::arm::RunResult run = pcode_cpu::call(bus, kLoad + entry, options);   // (the one emulator, on the big-endian ARMv4T description)
+    const emulate::arm::RunResult run = emulate::pcode_cpu::call(bus, kLoad + entry, options);   // (the one emulator, on the big-endian ARMv4T description)
 
     std::vector<std::string> changed;
     for (std::size_t i = 0; i < before.size() && changed.size() < kIoShown; ++i) {

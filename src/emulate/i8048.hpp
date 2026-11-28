@@ -4,7 +4,7 @@
 //
 //     i8048::Bus bus;                                  // 4 KB of program memory, ports and external data through callbacks, every access logged
 //     bus.load(0x400, rom);                            // the cartridge at $0400
-//     i8048::RunResult r = engine::pcode_cpu::run(bus, 0x0420, {.a = 1});     // call the function as CALL would, run to its RET
+//     i8048::RunResult r = emulate::pcode_cpu::run(bus, 0x0420, {.a = 1});     // call the function as CALL would, run to its RET
 //
 // Interrupts, the timer and the counter are not modelled. Reaching the return address a run was given is its end; an undefined opcode stops it.
 #pragma once

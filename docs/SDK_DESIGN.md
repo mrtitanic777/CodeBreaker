@@ -202,3 +202,7 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
 - 2026-11-27: phase 1: the L2 hub counts as the l2 layer, decompile/jar -> java, build/data -> decompile (d77067f32); the
   toolchain area (layer 1): the OpenWatcom, Microsoft C 6 and Visual C++ 1.52 drivers and the native DOS runner (cb::toolchain).
   Upward includes 11 -> 7, all of them source and verify reaching engine's lane kit (6) and store's versions ledger (1).
+- 2026-11-27: phase 1 step: upward includes 0. The source pipeline is engine code (6e8a84aac), the versions ledger compare's
+  (ee3aa0c5a), regress a command in app (bbfe805c5), and the one emulator's CPU adapters (engine/pcode_*, 110 files) are
+  emulate/cpu (cb::emulate::pcode_*). Every include of product code now points down; app.layers keeps it so. Next: phase 1's
+  public faces (one public header set per area).

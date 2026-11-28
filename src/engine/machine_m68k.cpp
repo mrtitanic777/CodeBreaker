@@ -9,7 +9,7 @@
 #include "core/error.hpp"
 #include "emulate/m68k.hpp"
 #include "engine/lane_registry.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
 #include "platforms/neogeo.hpp"
@@ -219,7 +219,7 @@ vl::Effects neogeo_effects(const stdfs::path& path, std::uint32_t entry, const v
     bus.map(0x300000, 0x3BFFFF, idle);
     bus.map(0x800000, 0x800FFF, idle);
 
-    const m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options_of(state, 0x10F300, false));
+    const m68k::RunResult run = cb::emulate::pcode_cpu::call(bus, entry, options_of(state, 0x10F300, false));
     Bytes vram;
     for (const std::uint16_t w : lspc->vram) {
         vram.push_back(static_cast<std::uint8_t>(w >> 8));
@@ -270,7 +270,7 @@ vl::Effects segacd_effects(const stdfs::path& path, std::uint32_t entry, const v
         bus.map(0xA00000, 0xA1FFFF, hardware);
         bus.map(0xC00000, 0xC0001F, hardware);
     }
-    const m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options_of(state, sub ? 0x1F000 : 0xFFFF00, sub));
+    const m68k::RunResult run = cb::emulate::pcode_cpu::call(bus, entry, options_of(state, sub ? 0x1F000 : 0xFFFF00, sub));
     const std::uint32_t ram = sub ? kSubFree : kMainFree;   // (the free RAM: the program's own bytes are not part of what a run did)
     const std::uint32_t word = sub ? kSubWordRam : kMainWordRam;
     return outcome(run, {bytes_of(ByteView(bus.memory().data() + ram, sub ? 0x10000 : 0x8000)), bytes_of(ByteView(bus.memory().data() + word, 0x10000))});

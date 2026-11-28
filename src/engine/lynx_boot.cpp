@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "decompile/m6502.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 
 namespace cb::engine::lynx_boot {
 
@@ -94,7 +94,7 @@ el::Boot boot(const fl::Program& program) {
         std::uint8_t value = 0;
     } pending;
 
-    pcode_cpu::M6502Cpu cpu(bus, true, m6502::Variant::Cmos);   // (decimal mode on, as the 65SC02 runs it)
+    emulate::pcode_cpu::M6502Cpu cpu(bus, true, m6502::Variant::Cmos);   // (decimal mode on, as the 65SC02 runs it)
     cpu.regs.pc = fl::kStage1Address;
     cpu.regs.s = 0xFF;
     cpu.regs.y = 2;

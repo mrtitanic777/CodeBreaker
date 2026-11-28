@@ -12,7 +12,7 @@
 #include "emulate/powerpc.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/gamecube.hpp"
 #include "platforms/wii.hpp"
@@ -134,7 +134,7 @@ vl::Effects effects(pp::Console console, const stdfs::path& path, std::uint32_t 
     options.fargs = {static_cast<double>(at(state, "f1")) / 1000.0, static_cast<double>(at(state, "f2")) / 1000.0};
     const std::array<std::uint64_t, 5> args = {static_cast<std::uint32_t>(at(state, "r3")), static_cast<std::uint32_t>(at(state, "r4")), static_cast<std::uint32_t>(at(state, "r5")),
                                                static_cast<std::uint32_t>(at(state, "r6")), static_cast<std::uint32_t>(at(state, "r7"))};
-    const pw::RunResult run = pcode_cpu::call({}, entry, args, options);
+    const pw::RunResult run = emulate::pcode_cpu::call({}, entry, args, options);
     const pw::Machine& m = *run.machine;
     std::vector<std::string> changed;
     for (const pw::ByteWrite& w : run.writes) {

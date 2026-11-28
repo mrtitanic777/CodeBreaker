@@ -12,7 +12,7 @@
 #include "emulate/a64.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu_a64.hpp"
+#include "emulate/cpu/pcode_cpu_a64.hpp"
 #include "formats/read.hpp"
 #include "platforms/nswitch.hpp"
 #include "formats/nro.hpp"
@@ -232,7 +232,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     options.tpidr_el0 = kTlsData;
     for (unsigned i = 0; i < 4; ++i) options.x[i] = static_cast<std::uint64_t>(at(state, std::format("a{}", i).c_str()));
     options.x19 = static_cast<std::uint64_t>(at(state, "s0"));
-    const ea::RunResult run = pcode_cpu::call(memory, loaded->base + entry, options);
+    const ea::RunResult run = emulate::pcode_cpu::call(memory, loaded->base + entry, options);
 
     std::map<std::uint64_t, std::uint8_t> was(before.begin(), before.end());
     std::vector<std::string> changed;

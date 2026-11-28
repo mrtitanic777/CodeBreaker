@@ -11,7 +11,7 @@
 #include "emulate/arm.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/n3ds.hpp"
 #include "formats/n3ds.hpp"
@@ -184,7 +184,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     std::uint32_t address = 0;
     n3ds_prepare(path, entry, state, bus, options, address);
     const auto before = bus.memory().changes(1 << 20);
-    const emulate::arm::RunResult run = pcode_cpu::call(bus, address, options);
+    const emulate::arm::RunResult run = emulate::pcode_cpu::call(bus, address, options);
 
     std::map<std::uint32_t, std::uint8_t> was(before.begin(), before.end());
     std::vector<std::string> changed;

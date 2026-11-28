@@ -3,7 +3,7 @@
 // SLEIGH description (engine/pcode_cpu: run() calls a function, Z80Cpu steps it).
 //
 //     z80::Bus bus;                                                        // 64 KB, 64K ports, device ranges handed to callbacks
-//     z80::RunResult r = engine::pcode_cpu::run(bus, entry, {.regs = {.b = 3}});   // call a function: run to its RET
+//     z80::RunResult r = emulate::pcode_cpu::run(bus, entry, {.regs = {.b = 3}});   // call a function: run to its RET
 //     cb::emulate::Run record = z80::record(r);                            // the one run record the judge compares
 //
 // What a function touches outside memory is the machine's business: the Z80 has its own I/O ports (IN, OUT, and the block forms), which go to

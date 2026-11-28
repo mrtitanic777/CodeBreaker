@@ -5,7 +5,7 @@
 //     tlcs900::Bus bus;                                           // 24 address lines
 //     bus.memory(0x004000, 0x006BFF, {}, true);                    // work RAM
 //     bus.device(0x008000, 0x008FFF);                              // a device range: every access logged
-//     tlcs900::RunResult r = engine::pcode_cpu::run(bus, entry, {.xwa = 1});   // call the function as `call` would, run to its `ret`
+//     tlcs900::RunResult r = emulate::pcode_cpu::run(bus, entry, {.xwa = 1});   // call the function as `call` would, run to its `ret`
 //
 // `swi n` is the BIOS: it is stubbed -- it logs the number and the register state (the function number is RW3) in `RunResult::swis` and goes on, with `RunOptions::on_swi`
 // free to supply a result. Timing, interrupts and the other on-chip devices are not modelled. `halt`, an undefined bit pattern and a run past `max_steps` stop a run. A run

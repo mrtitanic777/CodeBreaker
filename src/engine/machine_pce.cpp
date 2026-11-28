@@ -11,7 +11,7 @@
 #include "emulate/huc6280.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
-#include "engine/pcode_cpu_huc6280.hpp"
+#include "emulate/cpu/pcode_cpu_huc6280.hpp"
 #include "formats/read.hpp"
 #include "platforms/pce.hpp"
 #include "formats/pce.hpp"
@@ -90,7 +90,7 @@ vl::Effects pce_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     options.x = static_cast<std::uint8_t>(at(state, "x"));
     options.y = static_cast<std::uint8_t>(at(state, "y"));
     options.max_steps = kSteps;
-    const emulate::huc6280::Run run = pcode_cpu::run(machine, logical, options);
+    const emulate::huc6280::Run run = emulate::pcode_cpu::run(machine, logical, options);
     std::vector<std::string> io;
     for (const emulate::huc6280::Access& x : run.io) {
         io.push_back(x.text());

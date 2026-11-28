@@ -5,7 +5,7 @@
 //     v810::Bus bus(0x07FFFFFF);                                  // the address lines the machine has (the Virtual Boy: 27)
 //     bus.memory(0x05000000, 0x05FFFFFF, {}, true, false, 0x10000);   // 64 KB of RAM seen again and again over 16 MB
 //     bus.device(0x02000000, 0x02FFFFFF, read, write);            // a device range: every access logged
-//     v810::RunResult r = engine::pcode_cpu::run(bus, entry, {.r6 = 1});   // call the function as `jal` would, run to its `jmp [lp]`
+//     v810::RunResult r = emulate::pcode_cpu::run(bus, entry, {.r6 = 1});   // call the function as `jal` would, run to its `jmp [lp]`
 //
 // Timing is not modelled. trap, reti and halt, a divide by zero, a bit string over a megabit and an undefined bit pattern stop a run with that reason. A run starts with the
 // registers it is given and lp pointing at an address nothing is at; reaching it is the end.

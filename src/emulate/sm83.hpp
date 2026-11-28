@@ -3,7 +3,7 @@
 // Sm83Cpu steps it).
 //
 //     sm83::Bus bus;                                   // the Z80 module's: 64 KB, device ranges handed to callbacks
-//     sm83::RunResult r = engine::pcode_cpu::run(bus, entry, sm83::RunOptions{.regs = {.a = 3}});   // call a function: run to its RET
+//     sm83::RunResult r = emulate::pcode_cpu::run(bus, entry, sm83::RunOptions{.regs = {.a = 3}});   // call a function: run to its RET
 //     cb::emulate::Run record = sm83::record(r);       // the one run record the judge compares
 //
 // Flags as the SM83 keeps them: Z N H C in bits 7-4 of F, bits 3-0 always zero. The I/O registers at $FF00-$FF7F and $FFFF are the machine's: a Bus hands them to

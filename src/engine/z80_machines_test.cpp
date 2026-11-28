@@ -4,7 +4,7 @@
 
 #include "emulate/z80_machines.hpp"
 
-#include "engine/pcode_cpu.hpp"
+#include "emulate/cpu/pcode_cpu.hpp"
 
 #include "core/testing.hpp"
 
@@ -28,7 +28,7 @@ CB_TEST("engine.z80_machines.the_coleco_bios_is_ret_and_a_call_into_it_is_noted_
     z80::Bus bus = bus_for(coleco(), mem, trace);
     z80::RunOptions options;
     options.regs.a = std::uint8_t{0x12};
-    const z80::RunResult r = engine::pcode_cpu::run(bus, 0x8000, run_options(coleco(), trace, options));
+    const z80::RunResult r = emulate::pcode_cpu::run(bus, 0x8000, run_options(coleco(), trace, options));
     CB_CHECK_EQ(r.exit(), "return");
     CB_CHECK_EQ(r.regs.a, 0x80);   // the VDP status: the frame flag
     CB_CHECK((trace.calls == std::vector<std::string>{"BLK_WRT_VRAM"}));
@@ -40,7 +40,7 @@ CB_TEST("engine.z80_machines.a_call_to_a_bios_address_with_no_name_is_noted_by_i
     stub_firmware(coleco(), mem);
     Trace trace;
     z80::Bus bus = bus_for(coleco(), mem, trace);
-    (void)engine::pcode_cpu::run(bus, 0x8000, run_options(coleco(), trace));
+    (void)emulate::pcode_cpu::run(bus, 0x8000, run_options(coleco(), trace));
     CB_CHECK((trace.calls == std::vector<std::string>{"1000"}));
 });
 
@@ -52,7 +52,7 @@ CB_TEST("engine.z80_machines.the_cpc_ports_are_noted_with_all_sixteen_bits", [] 
     CB_CHECK_EQ(mem[0xB8FF], 0x00);
     Trace trace;
     z80::Bus bus = bus_for(cpc(), mem, trace);
-    const z80::RunResult r = engine::pcode_cpu::run(bus, 0x4000, run_options(cpc(), trace));
+    const z80::RunResult r = emulate::pcode_cpu::run(bus, 0x4000, run_options(cpc(), trace));
     CB_CHECK_EQ(r.exit(), "return");
     CB_CHECK((trace.ports == std::vector<std::string>{"out 7f8d 8d", "in f5ff ff"}));
     CB_CHECK((trace.calls == std::vector<std::string>{"KM_WAIT_CHAR"}));
