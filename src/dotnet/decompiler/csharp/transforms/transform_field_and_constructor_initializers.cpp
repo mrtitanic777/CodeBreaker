@@ -1,5 +1,6 @@
 // dotnet/decompiler/csharp/transforms/transform_field_and_constructor_initializers.cpp -- see
 // transform_field_and_constructor_initializers.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/transform_field_and_constructor_initializers.hpp"
 
 #include <algorithm>
@@ -198,12 +199,16 @@ std::shared_ptr<InitializerSequence> InitializerSequence::analyze(ConstructorIni
         for (il::ArenaObject* annotation : initializer->annotations()) {
             auto* instruction = dynamic_cast<il::ILInstruction*>(annotation);
             if (instruction == nullptr) continue;
-            for (il::ILInstruction* inst : instruction->descendants()) {
-                auto* with_variable = dynamic_cast<il::IInstructionWithVariableOperand*>(inst);
-                if (with_variable != nullptr) {
-                    ILVariable* v = with_variable->variable();
-                    if (v->function() == function && v->kind() == VariableKind::Parameter) depends_on_body = true;
-                }
+            L2Lane* l2 = context.context.l2;
+            std::vector<ILVariable*> named;
+            if (l2 != nullptr) {
+                named = l2->variables_named(*instruction);
+            } else {
+                for (il::ILInstruction* inst : instruction->descendants())
+                    if (auto* with_variable = dynamic_cast<il::IInstructionWithVariableOperand*>(inst)) named.push_back(with_variable->variable());
+            }
+            for (ILVariable* v : named) {
+                if (v->function() == function && variable_of(l2, *v).kind == VariableKind::Parameter) depends_on_body = true;
             }
         }
 
@@ -349,9 +354,9 @@ bool ConstructorInitializerAnalyzer::analyze(const std::vector<EntityDeclaration
                 if (f != nullptr && TransformFieldAndConstructorInitializers::is_generated_primary_constructor_backing_field(f)) {
                     auto* rr = entry.initializer->annotation<ILVariableResolveResult>();
                     ILVariable* variable = rr != nullptr ? rr->variable : nullptr;
-                    if (variable != nullptr && variable->kind() == VariableKind::Parameter && variable->index().has_value() &&
-                        *variable->index() >= 0) {
-                        const IParameter* p = ctor_method->parameters()[static_cast<std::size_t>(*variable->index())];
+                    const std::optional<VariableFacts> facts = variable != nullptr ? std::optional<VariableFacts>(variable_of(context.l2, *variable)) : std::nullopt;
+                    if (facts && facts->kind == VariableKind::Parameter && facts->index.has_value() && *facts->index >= 0) {
+                        const IParameter* p = ctor_method->parameters()[static_cast<std::size_t>(*facts->index)];
                         has_primary_constructor_parameter_map = true;
                         has_backing_field_map = true;
                         primary_constructor_parameter_to_backing_store_map[p] = {nullptr, f};
@@ -663,8 +668,9 @@ void ConstructorInitializerAnalyzer::remove_implicit_constructor() {
         for (ParameterDeclaration* pd : type_declaration->primary_constructor_parameters().to_vector()) {
             auto* rr = pd->annotation<ILVariableResolveResult>();
             ILVariable* v = rr != nullptr ? rr->variable : nullptr;
-            if (v == nullptr || !v->index().has_value() || *v->index() < 0) continue;
-            const IParameter* p = primary_constructor->parameters()[static_cast<std::size_t>(*v->index())];
+            const std::optional<int> index = v != nullptr ? variable_of(context.l2, *v).index : std::nullopt;
+            if (!index.has_value() || *index < 0) continue;
+            const IParameter* p = primary_constructor->parameters()[static_cast<std::size_t>(*index)];
 
             auto found = primary_constructor_parameter_to_backing_store_map.find(p);
             if (found == primary_constructor_parameter_to_backing_store_map.end()) {
@@ -863,7 +869,7 @@ bool TransformFieldAndConstructorInitializers::transform_declaration(const IType
         ILVariable* v = found->second;
         parent->remove_annotations<semantics::MemberResolveResult>();
         parent->add_annotation(make<ILVariableResolveResult>(v));
-        identifier->replace_with(Identifier::create(*v->name));
+        identifier->replace_with(Identifier::create(*variable_of(context_->l2, *v).name));
     }
 
     return true;

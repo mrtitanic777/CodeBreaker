@@ -3176,11 +3176,13 @@ TranslatedExpression ExpressionBuilder::translate_if(const IfFacts& inst, Transl
 
     ILInstruction* lhs_inst = nullptr;
     ILInstruction* rhs_inst = nullptr;
-    if (inst.match_logic_and(&lhs_inst, &rhs_inst) && !rhs_inst->match_ldc_i4(1)) {
+    if ((l2 != nullptr ? l2->match_logic_and(*inst.self, &lhs_inst, &rhs_inst) : inst.match_logic_and(&lhs_inst, &rhs_inst)) &&
+        !(l2 != nullptr ? l2->is_ldc_i4(*rhs_inst, 1) : rhs_inst->match_ldc_i4(1))) {
         op = BinaryOperatorType::ConditionalAnd;
         assert(rhs_inst == inst.true_inst());
         rhs = true_branch;
-    } else if (inst.match_logic_or(&lhs_inst, &rhs_inst) && !rhs_inst->match_ldc_i4(0)) {
+    } else if ((l2 != nullptr ? l2->match_logic_or(*inst.self, &lhs_inst, &rhs_inst) : inst.match_logic_or(&lhs_inst, &rhs_inst)) &&
+               !(l2 != nullptr ? l2->is_ldc_i4(*rhs_inst, 0) : rhs_inst->match_ldc_i4(0))) {
         op = BinaryOperatorType::ConditionalOr;
         assert(rhs_inst == inst.false_inst());
         rhs = false_branch;

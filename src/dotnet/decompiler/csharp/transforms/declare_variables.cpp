@@ -62,10 +62,12 @@ DeclareVariables::InsertionPoint DeclareVariables::InsertionPoint::up_to(int tar
     return result;
 }
 
-DeclareVariables::VariableToDeclare::VariableToDeclare(ILVariable* variable, InsertionPoint point, IdentifierExpression* use, int order)
-    : il_variable(variable), default_initialization(VariableInitKind::None), source_order(order), insertion_point(point), first_use(use) {
-    if (variable->uses_initial_value()) {
-        if (variable->initial_value_is_initialized()) {
+DeclareVariables::VariableToDeclare::VariableToDeclare(ILVariable* variable, VariableFacts facts_, InsertionPoint point, IdentifierExpression* use,
+                                                       int order)
+    : il_variable(variable), facts(std::move(facts_)), default_initialization(VariableInitKind::None), source_order(order), insertion_point(point),
+      first_use(use) {
+    if (facts.uses_initial_value) {
+        if (facts.initial_value_is_initialized) {
             default_initialization = VariableInitKind::NeedsDefaultValue;
         } else {
             default_initialization = VariableInitKind::NeedsSkipInit;
@@ -107,7 +109,11 @@ void DeclareVariables::run(AstNode* root_node, TransformContext& context) {
     update_annotations(root_node);
 }
 
-void DeclareVariables::analyze(AstNode* root_node) {
+void DeclareVariables::analyze(AstNode* root_node, TransformContext& context) {
+    // (the analysis reads the variables' facts through the context's L2 lane)
+    TransformContext* const was = context_;
+    context_ = &context;
+    ScopeExit restore([&] { context_ = was; });
     clear_analysis_results();
     find_insertion_points(root_node, 0);
     resolve_collisions();
@@ -152,7 +158,7 @@ void DeclareVariables::ensure_expression_statements_are_valid(AstNode* root_node
             }
             if (function == nullptr) throw std::logic_error("Sequence contains no matching element");
             // if possible use C# 7.0 discard-assignment
-            if (context.settings.discards && !hides_variable_with_name(function, "_")) {
+            if (context.settings.discards && !hides_variable_with_name_of(context.l2, *function, "_")) {
                 context.step("Assign invalid expression statement to discard", stmt);
                 Expression* discard = make<IdentifierExpression>("_");  // no ResolveResult
                 stmt->set_expression(make<AssignmentExpression>(discard, detach(stmt->expression())));
@@ -172,6 +178,7 @@ void DeclareVariables::ensure_expression_statements_are_valid(AstNode* root_node
                 std::string name = il::transforms::AssignVariableNames::generate_variable_name(function, type, using_scope, value_context,
                                                                                                nullptr, true);
                 ILVariable* v = function->register_variable(VariableKind::StackSlot, type, name);
+                if (context.l2 != nullptr) context.l2->variable_registered(function, v);
                 Expression* target = with_rr(make<IdentifierExpression>(*v->name), make<ILVariableResolveResult>(v, v->type())).expression;
                 stmt->set_expression(make<AssignmentExpression>(target, detach(stmt->expression())));
             }
@@ -214,7 +221,7 @@ void DeclareVariables::find_insertion_points(AstNode* node, int node_level) {
     } else if (lambda != nullptr && is<Expression>(lambda->body())) {
         // expression-bodied lambdas don't have a BlockStatement linking to the BlockContainer
         ILFunction* function = node->annotation<ILFunction>();
-        scope = function != nullptr ? il::as<BlockContainer>(function->body()) : nullptr;
+        scope = function != nullptr ? function_body_of(context_->l2, *function) : nullptr;
         if (scope != nullptr) {
             scope_tracking_.push_back({InsertionPoint{node_level + 1, lambda->body()}, scope});
         }
@@ -230,11 +237,11 @@ void DeclareVariables::find_insertion_points(AstNode* node, int node_level) {
     if (auto* ident_expr = as<IdentifierExpression>(node)) {
         auto* rr = dynamic_cast<ILVariableResolveResult*>(get_resolve_result(ident_expr));
         ILFunction* local_function = ident_expr->annotation<ILFunction>();
-        if (rr != nullptr && variable_needs_declaration(rr->variable->kind())) {
+        if (rr != nullptr && variable_needs_declaration(variable_of(context_->l2, *rr->variable).kind)) {
             find_insertion_point_for_variable(rr->variable, ident_expr, node_level);
-        } else if (local_function != nullptr && local_function->kind() == il::ILFunctionKind::LocalFunction) {
-            for (ILVariable* v : local_function->captured_variables) {
-                if (variable_needs_declaration(v->kind())) find_insertion_point_for_variable(v, ident_expr, node_level);
+        } else if (local_function != nullptr && function_kind_of(context_->l2, *local_function) == il::ILFunctionKind::LocalFunction) {
+            for (ILVariable* v : captured_variables_of(context_->l2, *local_function)) {
+                if (variable_needs_declaration(variable_of(context_->l2, *v).kind)) find_insertion_point_for_variable(v, ident_expr, node_level);
             }
         }
     }
@@ -243,24 +250,26 @@ void DeclareVariables::find_insertion_points(AstNode* node, int node_level) {
 void DeclareVariables::find_insertion_point_for_variable(ILVariable* variable, IdentifierExpression* ident_expr, int node_level) {
     InsertionPoint new_point;
     int start_index = static_cast<int>(scope_tracking_.size()) - 1;
-    BlockContainer* capture_scope = variable->capture_scope;
+    VariableFacts facts = variable_of(context_->l2, *variable);
+    BlockContainer* capture_scope = facts.capture_scope;
     while (capture_scope != nullptr && !is_relevant_scope(capture_scope)) {
-        capture_scope = BlockContainer::find_closest_container(capture_scope->parent());
+        capture_scope = enclosing_container_of(context_->l2, *capture_scope);
     }
     if (capture_scope != nullptr && start_index > 0 && capture_scope != scope_tracking_[start_index].scope) {
         while (start_index > 0 && scope_tracking_[start_index].scope != capture_scope) start_index--;
         new_point = scope_tracking_[start_index + 1].insertion_point;
     } else {
         new_point = InsertionPoint{node_level, ident_expr};
-        if (variable->uses_initial_value()) {
+        if (facts.uses_initial_value) {
             // Uninitialized variables are logically initialized at the beginning of the function
             // Because it's possible that the variable has a loop-carried dependency,
             // declare it outside of any loops.
             while (start_index >= 0) {
-                if (scope_tracking_[start_index].scope->entry_point()->incoming_edge_count() > 1) {
+                const ContainerFacts scope = container_of(context_->l2, *scope_tracking_[start_index].scope);
+                if (scope.entry_incoming > 1) {
                     // declare variable outside of loop
                     new_point = scope_tracking_[start_index].insertion_point;
-                } else if (il::is<ILFunction>(scope_tracking_[start_index].scope->parent())) {
+                } else if (scope.is_function_body) {
                     // stop at beginning of function
                     break;
                 }
@@ -271,12 +280,13 @@ void DeclareVariables::find_insertion_point_for_variable(ILVariable* variable, I
     if (VariableToDeclare* v = find_variable(variable)) {
         v->insertion_point = find_common_parent(v->insertion_point, new_point);
     } else {
-        add_variable(variable, std::make_unique<VariableToDeclare>(variable, new_point, ident_expr, static_cast<int>(variables_.size())));
+        add_variable(variable, std::make_unique<VariableToDeclare>(variable, std::move(facts), new_point, ident_expr, static_cast<int>(variables_.size())));
     }
 }
 
-bool DeclareVariables::is_relevant_scope(BlockContainer* scope) {
-    return scope->entry_point()->incoming_edge_count() > 1 || il::is<ILFunction>(scope->parent());
+bool DeclareVariables::is_relevant_scope(BlockContainer* scope) const {
+    const ContainerFacts facts = container_of(context_->l2, *scope);
+    return facts.entry_incoming > 1 || facts.is_function_body;
 }
 
 bool DeclareVariables::variable_needs_declaration(VariableKind kind) {
@@ -403,9 +413,10 @@ void DeclareVariables::insert_deconstruction_variable_declarations() {
             if (!std::any_of(g.begin(), g.end(), [&](VariableToDeclare* vd) { return vd->il_variable == v && !vd->removed_due_to_collision(); }))
                 return false;
             if (!used_variables.insert(v).second) return false;
-            const typesystem::IType* expected_type = static_cast<il::LdLoc*>(value)->variable()->type();
-            if (!v->type()->equals(expected_type)) return false;
-            if (!(v->kind() == VariableKind::StackSlot || v->kind() == VariableKind::Local)) return false;
+            const typesystem::IType* expected_type = variable_of(context.l2, *static_cast<il::LdLoc*>(value)->variable()).type;
+            const VariableFacts facts = variable_of(context.l2, *v);
+            if (!facts.type->equals(expected_type)) return false;
+            if (!(facts.kind == VariableKind::StackSlot || facts.kind == VariableKind::Local)) return false;
             return true;
         };
         bool all_declarable = true;
@@ -473,10 +484,10 @@ void DeclareVariables::insert_variable_declarations(TransformContext& context) {
                 type = context.type_system_ast_builder.convert_type(v->type());
             }
             auto* composed_type = as<ComposedType>(type);
-            if (il_variable->is_ref_read_only && composed_type != nullptr && composed_type->has_ref_specifier()) {
+            if (v->facts.is_ref_read_only && composed_type != nullptr && composed_type->has_ref_specifier()) {
                 composed_type->set_has_read_only_specifier(true);
             }
-            if (il_variable->kind() == VariableKind::PinnedLocal) {
+            if (v->facts.kind == VariableKind::PinnedLocal) {
                 type->add_trailing_trivia(make<Comment>("pinned", CommentType::MultiLine));
             }
             replacements.push_back({v->insertion_point.next_node,
@@ -512,8 +523,7 @@ void DeclareVariables::insert_variable_declarations(TransformContext& context) {
             // Note: ExpressionBuilder.HidesVariableWithName produces inaccurate results, because it
             // does not take lambdas and local functions into account, that are defined in the same
             // scope as v.
-            if (context.settings.discards && il_variable->load_count() == 0 && il_variable->store_count() == 0 &&
-                il_variable->address_count() == 1) {
+            if (context.settings.discards && v->facts.load_count == 0 && v->facts.store_count == 0 && v->facts.address_count == 1) {
                 name = "_";
             } else {
                 name = v->name();
@@ -651,7 +661,7 @@ void DeclareVariables::update_annotations(AstNode* root_node) {
         } else {
             continue;
         }
-        if (il_var == nullptr || !variable_needs_declaration(il_var->kind())) continue;
+        if (il_var == nullptr || !variable_needs_declaration(variable_of(context_->l2, *il_var).kind)) continue;
         VariableToDeclare* v = variable_dict_.at(il_var);
         if (!v->removed_due_to_collision()) continue;
         while (v->replacement_due_to_collision != nullptr) {

@@ -1,4 +1,5 @@
 // dotnet/decompiler/csharp/transforms/pattern_statement_transform.cpp -- see pattern_statement_transform.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/pattern_statement_transform.hpp"
 
 #include <algorithm>
@@ -384,7 +385,7 @@ void PatternStatementTransform::run(AstNode* root_node, TransformContext& contex
     } cleanup{this};
     context_ = &context;
     initialize(context);
-    declare_variables_.analyze(root_node);
+    declare_variables_.analyze(root_node, *context_);
     root_node->accept_visitor(static_cast<IAstVisitorT<AstNode*>&>(*this));
 }
 
@@ -498,7 +499,7 @@ ForStatement* PatternStatementTransform::transform_for(ExpressionStatement* node
     // declaration is hoisted in front, leaving a headless `for (; cond; v = ref ...)` whose only
     // initialization is the for-initializer ref-assignment -- which can't be split from a ref local
     // (CS8174). Keeping it a while-loop matches the source and keeps the initializer on the decl.
-    if (variable != nullptr && variable->type()->is_by_ref_like() && is_variable_used_after(loop, variable)) return nullptr;
+    if (variable != nullptr && variable_of(context_->l2, *variable).type->is_by_ref_like() && is_variable_used_after(loop, variable)) return nullptr;
     // Cannot convert to for loop, if any variable that is used in the "iterator" part of the pattern,
     // will be declared in the body of the while-loop.
     Statement* iterator_statement = single<Statement>(m3, "iterator");
@@ -560,7 +561,7 @@ bool PatternStatementTransform::iterator_variables_declared_inside_loop_body(Sta
         auto* id = as<IdentifierExpression>(node);
         if (id == nullptr) continue;
         ILVariable* v = get_il_variable(id);
-        if (v == nullptr || !DeclareVariables::variable_needs_declaration(v->kind())) continue;
+        if (v == nullptr || !DeclareVariables::variable_needs_declaration(variable_of(context_->l2, *v).kind)) continue;
         if (declare_variables_.get_declaration_point(v)->parent() == iterator_statement->parent()) return true;
     }
     return false;
@@ -569,19 +570,22 @@ bool PatternStatementTransform::iterator_variables_declared_inside_loop_body(Sta
 // ---- foreach ----------------------------------------------------------------------------------------------------------------------
 
 AstType* PatternStatementTransform::convert_variable_type(ILVariable* variable) {
-    if (context_->settings.anonymous_types && contains_anonymous_type(variable->type())) return make<SimpleType>("var");
-    return context_->type_system_ast_builder.convert_type(variable->type());
+    const typesystem::IType* type = variable_of(context_->l2, *variable).type;
+    if (context_->settings.anonymous_types && contains_anonymous_type(type)) return make<SimpleType>("var");
+    return context_->type_system_ast_builder.convert_type(type);
 }
 
 bool PatternStatementTransform::variable_can_be_used_as_foreach_local(ILVariable* item_var, Statement* loop) {
-    if (item_var == nullptr || !(item_var->kind() == VariableKind::Local || item_var->kind() == VariableKind::StackSlot)) {
+    if (item_var == nullptr) return false;
+    const VariableFacts item = variable_of(context_->l2, *item_var);
+    if (!(item.kind == VariableKind::Local || item.kind == VariableKind::StackSlot)) {
         // only locals/temporaries can be converted into foreach loop variable
         return false;
     }
 
     il::BlockContainer* block_container = loop->annotation<il::BlockContainer>();
 
-    if (!item_var->is_single_definition()) {
+    if (!item.is_single_definition()) {
         // foreach variable cannot be assigned to.
         // As a special case, we accept taking the address for a method call,
         // but only if the call is the only use, so that any mutation by the call
@@ -591,7 +595,7 @@ bool PatternStatementTransform::variable_can_be_used_as_foreach_local(ILVariable
         }
     }
 
-    if (item_var->capture_scope != nullptr && item_var->capture_scope != block_container) {
+    if (item.capture_scope != nullptr && item.capture_scope != block_container) {
         // captured variables cannot be declared in the loop unless the loop is their capture scope
         return false;
     }
@@ -607,21 +611,27 @@ bool PatternStatementTransform::variable_can_be_used_as_foreach_local(ILVariable
     return in_loop && !declare_variables_.was_merged(item_var);
 }
 
-bool PatternStatementTransform::address_used_for_single_call(ILVariable* v, il::BlockContainer* loop) {
-    if (v->store_count() == 1 && v->address_count() == 1 && v->load_count() == 0 &&
-        v->type()->is_reference_type() == std::optional<bool>(false)) {
-        il::LdLoca* address = v->address_instructions()[0];
-        auto* call = il::as<il::Call>(address->parent());
-        if (call != nullptr && address->child_index() == 0 && !call->method->is_static()) {
-            // used as this pointer for a method call
-            // this is OK iff the call is not within a nested loop
-            for (il::ILInstruction* node = call->parent(); node != nullptr; node = node->parent()) {
-                if (node == loop)
-                    return true;
-                else if (il::is<il::BlockContainer>(node))
-                    break;
+bool PatternStatementTransform::address_used_for_single_call(ILVariable* v, il::BlockContainer* loop) const {
+    const VariableFacts facts = variable_of(context_->l2, *v);
+    if (facts.store_count == 1 && facts.address_count == 1 && facts.load_count == 0 && facts.type->is_reference_type() == std::optional<bool>(false)) {
+        // used as this pointer for a method call
+        // this is OK iff the call is not within a nested loop (the first container above the call is the loop)
+        std::optional<std::vector<il::BlockContainer*>> containers;
+        if (context_->l2 != nullptr) {
+            containers = context_->l2->single_this_call_containers(*v);
+        } else {
+            il::LdLoca* address = v->address_instructions()[0];
+            auto* call = il::as<il::Call>(address->parent());
+            if (call != nullptr && address->child_index() == 0 && !call->method->is_static()) {
+                containers.emplace();
+                for (il::ILInstruction* node = call->parent(); node != nullptr; node = node->parent())
+                    if (auto* c = il::as<il::BlockContainer>(node)) {
+                        containers->push_back(c);
+                        break;
+                    }
             }
         }
+        return containers && !containers->empty() && containers->front() == loop;
     }
     return false;
 }
@@ -634,20 +644,23 @@ Statement* PatternStatementTransform::transform_foreach_on_array(ForStatement* f
     ILVariable* index_variable = get_il_variable(single<IdentifierExpression>(m, "indexVariable"));
     ILVariable* array_variable = get_il_variable(single<IdentifierExpression>(m, "arrayVariable"));
     if (item_variable == nullptr || index_variable == nullptr || array_variable == nullptr) return nullptr;
-    if (array_variable->type()->kind() != TypeKind::Array && !is_known(array_variable->type(), KnownTypeCode::String)) return nullptr;
+    const typesystem::IType* array_type = variable_of(context_->l2, *array_variable).type;
+    if (array_type->kind() != TypeKind::Array && !is_known(array_type, KnownTypeCode::String)) return nullptr;
     if (!variable_can_be_used_as_foreach_local(item_variable, for_statement)) return nullptr;
-    if (index_variable->store_count() != 2 || index_variable->load_count() != 3 || index_variable->address_count() != 0) return nullptr;
+    if (const VariableFacts index = variable_of(context_->l2, *index_variable); index.store_count != 2 || index.load_count != 3 || index.address_count != 0)
+        return nullptr;
     context_->step("Introduce foreach over array", for_statement);
     auto* body = make<BlockStatement>();
     for (Statement* statement : m.get<Statement>("statements")) body->statements().add(detach(statement));
     AstType* variable_type = convert_variable_type(item_variable);
-    auto* designation = make<SingleVariableDesignation>(*item_variable->name);
+    auto* designation = make<SingleVariableDesignation>(*variable_of(context_->l2, *item_variable).name);
     Expression* in_expression = detach(single<IdentifierExpression>(m, "arrayVariable"));
     auto* foreach_stmt = make<ForeachStatement>(variable_type, designation, in_expression, body);
     copy_annotations_from(foreach_stmt, for_statement);
     item_variable->set_kind(VariableKind::ForeachLocal);
+    if (context_->l2 != nullptr) context_->l2->variable_changed(item_variable);
     // Add the variable annotation for highlighting (TokenTextWriter expects it directly on the ForeachStatement).
-    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, item_variable->type()));
+    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, variable_of(context_->l2, *item_variable).type));
     // TODO : add ForeachAnnotation
     for_statement->replace_with(foreach_stmt);
     context_->end_step(foreach_stmt);
@@ -687,7 +700,7 @@ Statement* PatternStatementTransform::transform_foreach_on_inline_array(ForState
 
     // Soundness: the loop counts 0..length-1 over exactly the inline array's length, so the
     // index is provably in range. Any other bound (or a non-inline-array buffer) is rejected.
-    std::optional<int> array_length = get_inline_array_length(buffer_variable->type());
+    std::optional<int> array_length = get_inline_array_length(variable_of(context_->l2, *buffer_variable).type);
     if (!array_length) return nullptr;
     const auto* loop_bound = std::get_if<std::int32_t>(&single<PrimitiveExpression>(m, "length")->value());
     if (loop_bound == nullptr || *loop_bound != *array_length) return nullptr;
@@ -695,7 +708,8 @@ Statement* PatternStatementTransform::transform_foreach_on_inline_array(ForState
     if (!variable_can_be_used_as_foreach_local(item_variable, for_statement)) return nullptr;
     // The index is a pure counter: stored at init + increment, loaded at the condition,
     // the increment, and the element access; never captured by address.
-    if (index_variable->store_count() != 2 || index_variable->load_count() != 3 || index_variable->address_count() != 0) return nullptr;
+    if (const VariableFacts index = variable_of(context_->l2, *index_variable); index.store_count != 2 || index.load_count != 3 || index.address_count != 0)
+        return nullptr;
 
     context_->step("Introduce foreach over inline array", for_statement);
     // Take the buffer reference for the `in` expression before dropping the element access.
@@ -705,11 +719,12 @@ Statement* PatternStatementTransform::transform_foreach_on_inline_array(ForState
     auto* body = cast<BlockStatement>(for_statement->embedded_statement());
     body->statements().first_or_null()->remove();
     AstType* variable_type = convert_variable_type(item_variable);
-    auto* designation = make<SingleVariableDesignation>(*item_variable->name);
+    auto* designation = make<SingleVariableDesignation>(*variable_of(context_->l2, *item_variable).name);
     auto* foreach_stmt = make<ForeachStatement>(variable_type, designation, in_expression, detach(body));
     copy_annotations_from(foreach_stmt, for_statement);
     item_variable->set_kind(VariableKind::ForeachLocal);
-    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, item_variable->type()));
+    if (context_->l2 != nullptr) context_->l2->variable_changed(item_variable);
+    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, variable_of(context_->l2, *item_variable).type));
     for_statement->replace_with(foreach_stmt);
     context_->end_step(foreach_stmt);
     return foreach_stmt;
@@ -796,8 +811,8 @@ Statement* PatternStatementTransform::transform_foreach_on_multi_dim_array(Expre
     // The matched multi-dimensional foreach pattern guarantees a statement after stmt.
     statements_to_delete.push_back(get_next_statement(stmt));
     ILVariable* item_variable = get_il_variable(foreach_variable);
-    if (item_variable == nullptr || !item_variable->is_single_definition() ||
-        (item_variable->kind() != VariableKind::Local && item_variable->kind() != VariableKind::StackSlot))
+    if (item_variable == nullptr || !variable_of(context_->l2, *item_variable).is_single_definition() ||
+        (variable_of(context_->l2, *item_variable).kind != VariableKind::Local && variable_of(context_->l2, *item_variable).kind != VariableKind::StackSlot))
         return nullptr;
     for (ILVariable* ub : upper_bounds) {
         if (!(ub->is_single_definition() && ub->load_count() == 1)) return nullptr;
@@ -809,14 +824,15 @@ Statement* PatternStatementTransform::transform_foreach_on_multi_dim_array(Expre
     auto* body = make<BlockStatement>();
     for (Statement* statement : statements) body->statements().add(detach(statement));
     AstType* variable_type = convert_variable_type(item_variable);
-    auto* designation = make<SingleVariableDesignation>(*item_variable->name);
+    auto* designation = make<SingleVariableDesignation>(*variable_of(context_->l2, *item_variable).name);
     Expression* in_expression = detach(single<IdentifierExpression>(m, "collection"));
     auto* foreach_stmt = make<ForeachStatement>(variable_type, designation, in_expression, body);
     for (Statement* statement : statements_to_delete) detach(statement);
     // foreach_stmt->copy_annotations_from(for_statement);
     item_variable->set_kind(VariableKind::ForeachLocal);
+    if (context_->l2 != nullptr) context_->l2->variable_changed(item_variable);
     // Add the variable annotation for highlighting (TokenTextWriter expects it directly on the ForeachStatement).
-    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, item_variable->type()));
+    foreach_stmt->variable_designation()->add_annotation(make<ILVariableResolveResult>(item_variable, variable_of(context_->l2, *item_variable).type));
     // TODO : add ForeachAnnotation
     expression_statement->replace_with(foreach_stmt);
     context_->end_step(foreach_stmt);

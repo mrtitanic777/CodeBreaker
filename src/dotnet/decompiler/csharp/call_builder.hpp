@@ -27,6 +27,7 @@
 
 #include "dotnet/decompiler/csharp/annotations.hpp"
 #include "dotnet/decompiler/csharp/instruction_facts.hpp"
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/resolver/csharp_invocation_resolve_result.hpp"
 #include "dotnet/decompiler/csharp/resolver/csharp_resolver.hpp"
 #include "dotnet/decompiler/csharp/resolver/method_group_resolve_result.hpp"
@@ -163,6 +164,7 @@ private:
 
     ExpressionWithResolveResult build_string_concat(const typesystem::IMethod* method,
                                                     const std::vector<std::pair<il::ILInstruction*, typesystem::KnownTypeCode>>& operands);
+    friend class L2Body;   // (its matcher of the same on the tree is checked against this one)
     static bool is_span_based_string_concat(il::CallInstruction* call, std::vector<std::pair<il::ILInstruction*, typesystem::KnownTypeCode>>* operands);
 
     // The interpolated string of String.Format / FormattableStringFactory.Create; an ExpressionWithResolveResult without an expression
@@ -218,7 +220,7 @@ private:
     ExpressionWithResolveResult handle_constructor_call(const ExpectedTargetDetails& expected_target_details, ResolveResult* target,
                                                         const typesystem::IMethod* method, ArgumentList& argument_list);
 
-    TranslatedExpression handle_delegate_construction(il::CallInstruction* inst);
+    TranslatedExpression handle_delegate_construction(il::CallInstruction* inst, const DelegateConstructionMatch& match);
     bool can_use_delegate_construction(const typesystem::IMethod* target_method, il::ILInstruction* this_arg, const typesystem::IMethod* invoke_method);
     ExpressionWithResolveResult build_delegate_reference(const typesystem::IMethod* method, const typesystem::IMethod* invoke_method,
                                                          const ExpectedTargetDetails& expected_target_details, il::ILInstruction* this_arg);

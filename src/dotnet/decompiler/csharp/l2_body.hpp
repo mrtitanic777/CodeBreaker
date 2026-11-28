@@ -24,7 +24,12 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <map>
 #include <optional>
+#include <source_location>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "core/arena.hpp"
 #include "dotnet/decompiler/csharp/instruction_facts.hpp"
@@ -44,11 +49,92 @@ namespace ir = cb::translate::ir;
 
 // What the bodies of one decompiler share: the arena their trees live in, and the lowering, whose types, members and entities stand for
 // the type system's objects and are made once for all the methods that use them. It must not outlive the type system.
+class L2Body;
+
+// A delegate construction (DelegateConstruction::match_delegate_construction): the method, the object it binds, the delegate type, and
+// whether the method pointer is a virtual one (ldvirtftn).
+struct DelegateConstructionMatch {
+    const typesystem::IMethod* method;
+    il::ILInstruction* target;
+    const typesystem::IType* delegate_type;
+    bool is_virtual;
+
+    bool operator==(const DelegateConstructionMatch&) const = default;
+};
+
+// What the C# transforms read of a variable, from its symbol and the uses ir::TreeIndex counts (L2Lane::variable).
+struct VariableFacts {
+    il::VariableKind kind;
+    const typesystem::IType* type;
+    std::optional<std::string> name;
+    bool uses_initial_value;
+    bool initial_value_is_initialized;
+    bool is_ref_read_only;
+    int load_count;
+    int store_count;   // with the initial value where it is used, as ILVariable::store_count
+    int address_count;
+    il::BlockContainer* capture_scope;
+    std::optional<int> index;
+
+    bool is_single_definition() const { return store_count == 1 && address_count == 0; }
+
+    bool operator==(const VariableFacts&) const = default;
+};
+
+// What they read of a container: the jumps into its entry block (its own entry counted), whether it is a function's body.
+struct ContainerFacts {
+    int entry_incoming;
+    bool is_function_body;
+
+    bool operator==(const ContainerFacts&) const = default;
+};
+
 class L2Lane {
 public:
-    L2Lane() = default;
+    L2Lane();
+    ~L2Lane();
     L2Lane(const L2Lane&) = delete;
     L2Lane& operator=(const L2Lane&) = delete;
+
+    // The bodies the C# transforms read, after the builders: each kept for the lane's life, found by the function it is the body of.
+    void keep(std::unique_ptr<L2Body> body);
+    L2Body* body_of(const il::ILInstruction* inst) const;   // the body of the function the instruction is in; null for none kept
+
+    // The facts the C# transforms read, from L2 where the object's body is kept (else from the ILAst). With CB_DN_L2_CHECK set, each is
+    // read from the ILAst too and a difference counted in `check_differences` (the proof that the transforms read the same).
+    VariableFacts variable(const il::ILVariable& v);
+    ContainerFacts container(const il::BlockContainer& c);
+    il::ILFunctionKind function_kind(const il::ILFunction& f);
+    il::BlockContainer* function_body(const il::ILFunction& f);
+    std::vector<il::ILVariable*> captured_variables(const il::ILFunction& f);   // in the order the function's set has them
+    il::BlockContainer* enclosing_container(const il::ILInstruction& inst);       // the closest container above it (BlockContainer::find_closest_container of its parent)
+    bool hides_variable_with_name(const il::ILFunction& f, const std::string& name);   // a variable or local function of it or a function around it has the name
+    // A variable a C# transform registers in a function, given a symbol in its body as the builders' are; one it changes (its kind),
+    // restated.
+    void variable_registered(il::ILFunction* function, il::ILVariable* v);
+    void variable_changed(il::ILVariable* v);
+    // What an instruction is (decided from its node, as the lifting decides it): a call (call, callvirt, newobj), a user-defined or a
+    // dynamic compound assignment; a call's method, a match's deconstruct method; the variables a function has, in its order; the
+    // variables an instruction or its operands name (each node naming a variable; in no particular order).
+    bool is_call_instruction(const il::ILInstruction& inst);
+    bool is_user_defined_compound_assign(const il::ILInstruction& inst);
+    bool is_dynamic_compound_assign(const il::ILInstruction& inst);
+    const typesystem::IMethod* call_method(const il::CallInstruction& call);
+    const typesystem::IMethod* match_method(const il::MatchInstruction& match);
+    std::vector<il::ILVariable*> function_variables(const il::ILFunction& f);
+    std::vector<il::ILVariable*> variables_named(il::ILInstruction& inst);
+    // An address-taking of a variable used once as the `this` of a non-static call (PatternStatementTransform): the call's container
+    // chain from the call up to the first container, or nothing when the variable's one address is not such a `this`.
+    std::optional<std::vector<il::BlockContainer*>> single_this_call_containers(const il::ILVariable& v);
+    // The same facts read from the ILAst.
+    static VariableFacts ilast_variable(const il::ILVariable& v);
+    static ContainerFacts ilast_container(const il::BlockContainer& c);
+    static bool ilast_hides_variable_with_name(const il::ILFunction& f, const std::string& name);
+    std::size_t checks = 0;
+    std::size_t check_differences = 0;
+    std::map<std::uint32_t, std::size_t> check_differences_at;   // by the line of l2_body.cpp that read the fact
+    std::size_t facts_from_l2 = 0;
+    std::size_t facts_from_ilast = 0;
 
     cb::Arena arena;
     translate::frontends::cil::Lowering lowering{arena};
@@ -66,7 +152,24 @@ public:
     std::chrono::steady_clock::duration transforms_time{};
     std::chrono::steady_clock::duration lowering_time{};
     std::chrono::steady_clock::duration builders_time{};
+
+    bool check_enabled() const { return check_; }
+
+private:
+    template <class T> T checked(T from_l2, T from_ilast, std::source_location where = std::source_location::current());
+    std::vector<std::unique_ptr<L2Body>> kept_;
+    translate::frontends::cil::FlatMap<const il::ILFunction*, L2Body*> by_function_;
+    bool check_ = false;
 };
+
+// The same, with no lane (the transforms of a tree the builders made without L2): from the ILAst.
+VariableFacts variable_of(L2Lane* l2, const il::ILVariable& v);
+ContainerFacts container_of(L2Lane* l2, const il::BlockContainer& c);
+il::ILFunctionKind function_kind_of(L2Lane* l2, const il::ILFunction& f);
+il::BlockContainer* function_body_of(L2Lane* l2, const il::ILFunction& f);
+std::vector<il::ILVariable*> captured_variables_of(L2Lane* l2, const il::ILFunction& f);
+il::BlockContainer* enclosing_container_of(L2Lane* l2, const il::ILInstruction& inst);
+bool hides_variable_with_name_of(L2Lane* l2, const il::ILFunction& f, const std::string& name);
 
 class L2Body {
 public:
@@ -94,6 +197,36 @@ public:
     il::ILInstruction* operand(const ir::Node* child, const il::ILInstruction& parent) const;
     // A switch's facts from its node (a Switch or a SwitchExpr); nothing where a section or an operand is not where it was lowered.
     std::optional<SwitchFacts> switch_facts(const ir::Node& node, il::SwitchInstruction& inst) const;
+    // The facts of an object of the body (null: one the tree does not have).
+    std::optional<VariableFacts> variable_facts(const il::ILVariable& v);
+    std::optional<ContainerFacts> container_facts(const il::BlockContainer& c);
+    std::optional<il::ILFunctionKind> function_kind(const il::ILFunction& f) const;
+    il::BlockContainer* function_body(const il::ILFunction& f) const;
+    std::optional<std::vector<il::ILVariable*>> captured_variables(const il::ILFunction& f) const;
+    std::optional<il::BlockContainer*> enclosing_container(const il::ILInstruction& inst);
+    std::optional<bool> hides_variable_with_name(const il::ILFunction& f, const std::string& name);
+    std::optional<std::vector<il::ILVariable*>> function_variables(const il::ILFunction& f) const;
+    std::optional<std::vector<il::ILVariable*>> variables_named(il::ILInstruction& inst);
+    std::optional<std::optional<std::vector<il::BlockContainer*>>> single_this_call_containers(const il::ILVariable& v);
+    // The builders' patterns, matched on the tree (each as its ILAst matcher, which a CB_DN_L2_CHECK run compares it with): a newobj of a
+    // delegate over ldftn/ldvirtftn; a tuple's construction (its elements, the Rest of a long one followed); a span-based string.Concat
+    // (its operands and their types); `a && b` (if a then b else 0) and `a || b` (if a then 1 else b).
+    std::optional<DelegateConstructionMatch> match_delegate_construction(il::NewObj& newobj);
+    bool match_tuple_construction(il::NewObj& newobj, std::vector<il::ILInstruction*>* elements);
+    bool match_span_string_concat(il::CallInstruction& call, std::vector<std::pair<il::ILInstruction*, typesystem::KnownTypeCode>>* operands);
+    bool match_logic_and(il::IfInstruction& inst, il::ILInstruction** lhs, il::ILInstruction** rhs);
+    bool match_logic_or(il::IfInstruction& inst, il::ILInstruction** lhs, il::ILInstruction** rhs);
+    // The foreach without a dispose (StatementBuilder::transform_to_foreach_without_dispose): the block's statement `at` a store of a
+    // variable, the next a while loop.
+    std::optional<std::pair<il::StLoc*, il::BlockContainer*>> match_store_then_while(il::Block& block, int at);
+    // A container's kind (its Region's), an instruction that is the ldc.i4 of `value` (a Lit of I4), the cast around a foreach's
+    // get_Current (castclass or unbox.any: its type), from the nodes.
+    il::ContainerKind container_kind(const il::BlockContainer& c);
+    bool is_ldc_i4(const il::ILInstruction& inst, std::int32_t value);
+    std::optional<std::pair<il::ILInstruction*, const typesystem::IType*>> cast_around(il::ILInstruction& inst);
+    const typesystem::IMethod* call_method(const il::CallInstruction& call);
+    // The ILAst's matchers of the same (with no body: the builders read the ILAst alone).
+    static std::optional<DelegateConstructionMatch> ilast_delegate_construction(il::NewObj& newobj);
     // The tree's derived state: parents, uses, jumps.
     ir::TreeIndex& index() { return index_; }
 
@@ -101,8 +234,8 @@ public:
     void variable_changed(il::ILVariable* variable);                        // its kind, type or name
     void variable_registered(il::ILFunction* function, il::ILVariable* variable);
     void replaced(il::ILInstruction* old, il::ILInstruction* now);           // after old->replace_with(now): `now` a load or an address
-    void inserted(il::Block* block, int at);
-    void moved(il::ILInstruction* old, il::ILInstruction* now);              // before old->replace_with(now): `now` an instruction of the tree                                // after block->instructions.insert(at, store)
+    void inserted(il::Block* block, int at);                                // after block->instructions.insert(at, store)
+    void moved(il::ILInstruction* old, il::ILInstruction* now);              // before old->replace_with(now): `now` an instruction of the tree
 
     // Counts an instruction the builders translated from its L2 node, or through the ILAst.
     void count(bool read_from_l2, const il::ILInstruction& inst);

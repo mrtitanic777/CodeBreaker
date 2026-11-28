@@ -1,4 +1,5 @@
 // dotnet/decompiler/csharp/transforms/introduce_query_expressions.cpp -- see introduce_query_expressions.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/introduce_query_expressions.hpp"
 
 #include <cassert>
@@ -68,7 +69,7 @@ void IntroduceQueryExpressions::combine_range_variables(QueryClause* clause, ILV
             context_->step("Combine query range variables", identifier);
             parent->remove_annotations<ILVariableResolveResult>();
             parent->add_annotation(make<ILVariableResolveResult>(new_variable));
-            Identifier* new_identifier = Identifier::create(*new_variable->name);
+            Identifier* new_identifier = Identifier::create(*variable_of(context_->l2, *new_variable).name);
             identifier->replace_with(new_identifier);
             context_->end_step(new_identifier);
         }

@@ -883,10 +883,19 @@ Statement* StatementBuilder::transform_to_foreach(il::UsingInstruction* inst, Ex
 // or a sealed class that does not implement IDisposable. The pattern spans two consecutive instructions; on success, i is advanced past
 // the loop container.
 Statement* StatementBuilder::transform_to_foreach_without_dispose(il::Block* block, int* i) {
-    auto* store_inst = il::as<il::StLoc>(block->instructions[*i]);
-    if (store_inst == nullptr || !(*i + 1 < block->instructions.count())) return nullptr;
-    auto* loop_container = il::as<il::BlockContainer>(block->instructions[*i + 1]);
-    if (loop_container == nullptr || loop_container->kind() != il::ContainerKind::While) return nullptr;
+    il::StLoc* store_inst = nullptr;
+    il::BlockContainer* loop_container = nullptr;
+    if (L2Body* l2 = expr_builder().l2) {
+        const auto m = l2->match_store_then_while(*block, *i);
+        if (!m) return nullptr;
+        store_inst = m->first;
+        loop_container = m->second;
+    } else {
+        store_inst = il::as<il::StLoc>(block->instructions[*i]);
+        if (store_inst == nullptr || !(*i + 1 < block->instructions.count())) return nullptr;
+        loop_container = il::as<il::BlockContainer>(block->instructions[*i + 1]);
+        if (loop_container == nullptr || loop_container->kind() != il::ContainerKind::While) return nullptr;
+    }
     Statement* transformed = transform_to_foreach_without_dispose(store_inst, loop_container);
     if (transformed == nullptr) return nullptr;
     (*i)++;
@@ -933,7 +942,8 @@ Statement* StatementBuilder::transform_to_foreach(il::BlockContainer* container,
                                                   il::ILVariable* enumerator_var, bool is_async, const Match& m, il::ILInstruction* resource_expression) {
     namespace pm = syntax::pattern_matching;
     // Detect whether we're dealing with a while loop with multiple embedded statements.
-    if (loop_container->kind() != il::ContainerKind::While) return nullptr;
+    L2Body* const body_l2 = expr_builder().l2;
+    if ((body_l2 != nullptr ? body_l2->container_kind(*loop_container) : loop_container->kind()) != il::ContainerKind::While) return nullptr;
     il::ILInstruction* condition_inst;
     il::Block* body;
     if (!loop_container->match_condition_block(loop_container->entry_point(), &condition_inst, &body)) return nullptr;
@@ -972,15 +982,20 @@ Statement* StatementBuilder::transform_to_foreach(il::BlockContainer* container,
     }
     // Handle explicit casts: this is the case if an explicit type different from the collection-item-type was used. For example:
     // foreach (ClassA item in nonGenericEnumerable)
-    const IType* type = single_getter->method->return_type();
+    const IType* type = (body_l2 != nullptr ? body_l2->call_method(*single_getter) : single_getter->method)->return_type();
     il::ILInstruction* inst_to_replace = single_getter;
     bool use_var = false;
-    if (auto* cc = il::as<il::CastClass>(inst_to_replace->parent())) {
-        type = cc->type();
-        inst_to_replace = cc;
-    } else if (auto* ua = il::as<il::UnboxAny>(inst_to_replace->parent())) {
-        type = ua->type();
-        inst_to_replace = ua;
+    std::optional<std::pair<il::ILInstruction*, const IType*>> cast;
+    if (body_l2 != nullptr) {
+        cast = body_l2->cast_around(*single_getter);
+    } else if (auto* cc = il::as<il::CastClass>(single_getter->parent())) {
+        cast = std::make_pair(static_cast<il::ILInstruction*>(cc), cc->type());
+    } else if (auto* ua = il::as<il::UnboxAny>(single_getter->parent())) {
+        cast = std::make_pair(static_cast<il::ILInstruction*>(ua), ua->type());
+    }
+    if (cast) {
+        type = cast->second;
+        inst_to_replace = cast->first;
     } else {
         int tuple_cardinality;
         if (typesystem::TupleType::is_tuple_compatible(type, tuple_cardinality)) {
@@ -1576,7 +1591,7 @@ syntax::LocalFunctionDeclarationStatement* StatementBuilder::translate_function(
     }
 
     if (function->method->has_body()) {
-        StatementBuilder nested_builder(*type_system_, *decompilation_context_, function, *settings_, decompile_run, cancellation_token_);
+        StatementBuilder nested_builder(*type_system_, *decompilation_context_, function, *settings_, decompile_run, cancellation_token_, expr_builder().l2);
 
         method->set_body(nested_builder.convert_as_block(function->body()));
 

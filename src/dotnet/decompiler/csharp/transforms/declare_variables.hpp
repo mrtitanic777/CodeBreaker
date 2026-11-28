@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/syntax/syntax.hpp"
 #include "dotnet/decompiler/csharp/transforms/iast_transform.hpp"
 #include "dotnet/decompiler/csharp/transforms/transform_context.hpp"
@@ -38,7 +39,7 @@ public:
 
     // Analyze the input AST (containing undeclared variables) for where those variables would be declared by this transform.
     // Analysis does not modify the AST.
-    void analyze(syntax::AstNode* root_node);
+    void analyze(syntax::AstNode* root_node, TransformContext& context);
 
     // The position where the declaration for the variable will be inserted: the node the declaration goes before.
     syntax::AstNode* get_declaration_point(il::ILVariable* variable);
@@ -70,9 +71,11 @@ private:
 
     struct VariableToDeclare {
         il::ILVariable* il_variable;
-        const typesystem::IType* type() const { return il_variable->type(); }
+        // What the transform reads of the variable (from L2: csharp/l2_body.hpp), as it is when the variable is first found.
+        VariableFacts facts;
+        const typesystem::IType* type() const { return facts.type; }
         // Variables reaching this transform have already been assigned a name.
-        const std::string& name() const { return *il_variable->name; }
+        const std::string& name() const { return *facts.name; }
 
         // Whether the variable needs to be default-initialized.
         VariableInitKind default_initialization;
@@ -92,7 +95,8 @@ private:
         bool removed_due_to_collision() const { return replacement_due_to_collision != nullptr; }
         bool declared_in_deconstruction = false;
 
-        VariableToDeclare(il::ILVariable* variable, InsertionPoint insertion_point, syntax::IdentifierExpression* first_use, int source_order);
+        VariableToDeclare(il::ILVariable* variable, VariableFacts facts, InsertionPoint insertion_point, syntax::IdentifierExpression* first_use,
+                          int source_order);
     };
 
     struct ScopeEntry {
@@ -114,7 +118,7 @@ private:
 
     void find_insertion_points(syntax::AstNode* node, int node_level);
     void find_insertion_point_for_variable(il::ILVariable* variable, syntax::IdentifierExpression* ident_expr, int node_level);
-    static bool is_relevant_scope(il::BlockContainer* scope);
+    bool is_relevant_scope(il::BlockContainer* scope) const;
     static InsertionPoint find_common_parent(InsertionPoint old_point, InsertionPoint new_point);
 
     void resolve_collisions();

@@ -1,4 +1,5 @@
 // dotnet/decompiler/csharp/transforms/prettify_assignments.cpp -- see prettify_assignments.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/prettify_assignments.hpp"
 
 #include "dotnet/decompiler/csharp/annotations.hpp"
@@ -61,8 +62,18 @@ void PrettifyAssignments::visit_assignment_expression(AssignmentExpression& assi
             util::csharp_primitive_cast(csharp::resolver::get_type_code(rr->type()), typesystem::ConstantValue(std::int32_t{1}), false) ==
                 rr->constant_value()) {
             // only if it's not a custom operator
-            if (assignment->annotation<il::CallInstruction>() == nullptr && assignment->annotation<il::UserDefinedCompoundAssign>() == nullptr &&
-                assignment->annotation<il::DynamicCompoundAssign>() == nullptr) {
+            // (what made the assignment: each instruction it is annotated with, decided from its L2 node)
+            bool custom_operator = false;
+            for (il::ArenaObject* a : assignment->annotations()) {
+                const auto* inst = dynamic_cast<const il::ILInstruction*>(a);
+                if (inst == nullptr) continue;
+                L2Lane* l2 = context_->l2;
+                if (l2 != nullptr ? (l2->is_call_instruction(*inst) || l2->is_user_defined_compound_assign(*inst) || l2->is_dynamic_compound_assign(*inst))
+                                  : (dynamic_cast<const il::CallInstruction*>(inst) != nullptr || il::is<il::UserDefinedCompoundAssign>(inst) ||
+                                     il::is<il::DynamicCompoundAssign>(inst)))
+                    custom_operator = true;
+            }
+            if (!custom_operator) {
                 UnaryOperatorType type;
                 // When the parent is an expression statement, pre- or post-increment doesn't matter; so we can pick post-increment which is
                 // more commonly used (for (int i = 0; i < x; i++))

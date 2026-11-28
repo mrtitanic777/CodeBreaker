@@ -67,7 +67,7 @@ private:
 
     // foreach
     bool variable_can_be_used_as_foreach_local(il::ILVariable* item_var, syntax::Statement* loop);
-    static bool address_used_for_single_call(il::ILVariable* v, il::BlockContainer* loop);
+    bool address_used_for_single_call(il::ILVariable* v, il::BlockContainer* loop) const;
     syntax::Statement* transform_foreach_on_array(syntax::ForStatement* for_statement);
     syntax::Statement* transform_foreach_on_inline_array(syntax::ForStatement* for_statement);
     bool match_lower_bound(int index_num, il::ILVariable** index, il::ILVariable* collection, syntax::Statement* statement);

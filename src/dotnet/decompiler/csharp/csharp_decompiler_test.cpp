@@ -106,6 +106,9 @@ CB_TEST("dotnet.decompiler.csharp.wip_dump", [] {
             const auto ms = [](std::chrono::steady_clock::duration d) { return std::chrono::duration<double, std::milli>(d).count(); };
             by_op << std::format("time transforms_ms {:.1f} lowering_ms {:.1f} builders_ms {:.1f}\n", ms(lane->transforms_time), ms(lane->lowering_time),
                                  ms(lane->builders_time));
+            by_op << std::format("transforms facts_from_l2 {} facts_from_ilast {} checks {} check_differences {}\n", lane->facts_from_l2,
+                                 lane->facts_from_ilast, lane->checks, lane->check_differences);
+            for (const auto& [line, n] : lane->check_differences_at) by_op << std::format("check_difference l2_body.cpp:{} {}\n", line, n);
             for (std::size_t op = 0; op < lane->from_ilast_by_op.size(); ++op)
                 if (lane->from_ilast_by_op[op] != 0)
                     by_op << std::format("ilast {} {} without_node {}\n", il::opcode_name(static_cast<il::OpCode>(op)), lane->from_ilast_by_op[op],

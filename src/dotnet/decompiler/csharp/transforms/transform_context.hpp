@@ -30,6 +30,10 @@ class DecompilerTypeSystem;
 
 #include "dotnet/decompiler/csharp/syntax/type_system_ast_builder.hpp"
 
+namespace cb::dotnet::decompiler::csharp {
+class L2Lane;
+}
+
 namespace cb::dotnet::decompiler::csharp::transforms {
 
 // Parameters for IAstTransform.
@@ -46,6 +50,9 @@ public:
     syntax::TypeSystemAstBuilder& type_system_ast_builder;
     const DecompilerSettings& settings;
     DecompileRun& decompile_run;
+    // The method bodies as L2 (stage 14, l2_body.hpp): what the transforms read of a variable, a container or a function; null where the
+    // builders read the ILAst alone (then the transforms read it too).
+    L2Lane* l2 = nullptr;
 
     // The current member; nullptr if a whole type or module is being decompiled.
     const typesystem::IMember* current_member() const { return decompilation_context_->current_member(); }

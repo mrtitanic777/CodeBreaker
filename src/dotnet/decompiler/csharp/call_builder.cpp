@@ -256,17 +256,17 @@ TranslatedExpression CallBuilder::build(CallInstruction* inst, const IType* type
 
 TranslatedExpression CallBuilder::build(const CallFacts& facts, const IType* type_hint) {
     CallInstruction* inst = facts.self;   // (the patterns below match its operands)
+    L2Body* l2 = expression_builder_.l2;
     if (auto* newobj = il::as<NewObj>(inst)) {
-        const IMethod* delegate_method = nullptr;
-        il::ILInstruction* delegate_target = nullptr;
-        const IType* delegate_type = nullptr;
-        if (il::transforms::DelegateConstruction::match_delegate_construction(newobj, &delegate_method, &delegate_target, &delegate_type)) {
-            return handle_delegate_construction(newobj);
+        if (const auto m = l2 != nullptr ? l2->match_delegate_construction(*newobj) : L2Body::ilast_delegate_construction(*newobj)) {
+            return handle_delegate_construction(newobj, *m);
         }
     }
     std::vector<il::ILInstruction*> tuple_elements;
     if (settings_.tuple_types && il::as<NewObj>(inst) != nullptr &&
-        il::transforms::TupleTransform::match_tuple_construction(il::as<NewObj>(inst), &tuple_elements) && tuple_elements.size() >= 2) {
+        (l2 != nullptr ? l2->match_tuple_construction(*il::as<NewObj>(inst), &tuple_elements)
+                       : il::transforms::TupleTransform::match_tuple_construction(il::as<NewObj>(inst), &tuple_elements)) &&
+        tuple_elements.size() >= 2) {
         std::optional<std::vector<const IType*>> element_types = typesystem::TupleType::get_tuple_element_types(facts.method->declaring_type());
         std::vector<std::optional<std::string>> element_names;
         if (auto* tt = dynamic_cast<const typesystem::TupleType*>(type_hint)) element_names = tt->element_names();
@@ -292,7 +292,7 @@ TranslatedExpression CallBuilder::build(const CallFacts& facts, const IType* typ
             .with_il_instruction(inst);
     }
     std::vector<std::pair<il::ILInstruction*, KnownTypeCode>> operands;
-    if (settings_.string_concat && is_span_based_string_concat(inst, &operands)) {
+    if (settings_.string_concat && (l2 != nullptr ? l2->match_span_string_concat(*inst, &operands) : is_span_based_string_concat(inst, &operands))) {
         return build_string_concat(facts.method, operands).with_il_instruction(inst);
     }
     TranslatedExpression result =
@@ -1671,22 +1671,12 @@ ExpressionWithResolveResult CallBuilder::handle_constructor_call(const ExpectedT
     }
 }
 
-TranslatedExpression CallBuilder::handle_delegate_construction(CallInstruction* inst) {
-    il::ILInstruction* this_arg = inst->arguments()[0];
-    il::ILInstruction* func = inst->arguments()[1];
-    const IMethod* method;
+TranslatedExpression CallBuilder::handle_delegate_construction(CallInstruction* inst, const DelegateConstructionMatch& match) {
+    // (the method, its object and whether it is a virtual one from the match: from L2)
+    il::ILInstruction* this_arg = match.target;
+    const IMethod* method = match.method;
     ExpectedTargetDetails expected_target_details;
-    switch (func->op_code) {
-        case OpCode::LdFtn:
-            method = static_cast<il::LdFtn*>(func)->method();
-            expected_target_details.call_op_code = OpCode::Call;
-            break;
-        case OpCode::LdVirtFtn:
-            method = static_cast<il::LdVirtFtn*>(func)->method();
-            expected_target_details.call_op_code = OpCode::CallVirt;
-            break;
-        default: throw std::invalid_argument("Unknown instruction type: " + std::string(il::opcode_name(func->op_code)));
-    }
+    expected_target_details.call_op_code = match.is_virtual ? OpCode::CallVirt : OpCode::Call;
     if (can_use_delegate_construction(method, this_arg, typesystem::get_delegate_invoke_method(inst->method->declaring_type()))) {
         return handle_delegate_construction(inst->method->declaring_type(), method, expected_target_details, this_arg, inst);
     } else {

@@ -1,4 +1,5 @@
 // dotnet/decompiler/csharp/transforms/replace_method_calls_with_operators.cpp -- see replace_method_calls_with_operators.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/replace_method_calls_with_operators.hpp"
 
 #include "dotnet/decompiler/csharp/annotations.hpp"
@@ -111,7 +112,7 @@ void ReplaceMethodCallsWithOperators::process_invocation_expression(InvocationEx
             auto* lambda = as<LambdaExpression>(ancestor);
             if (lambda == nullptr) continue;
             auto* function = lambda->annotation<il::ILFunction>();
-            if (function != nullptr && function->kind() == il::ILFunctionKind::ExpressionTree) {
+            if (function != nullptr && function_kind_of(context_->l2, *function) == il::ILFunctionKind::ExpressionTree) {
                 is_in_expression_tree = true;
                 break;
             }

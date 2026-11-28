@@ -1101,10 +1101,11 @@ syntax::TypeSystemAstBuilder create_ast_builder(const DecompilerSettings& settin
 // Runs the AST transforms over the tree.
 void run_ast_transforms(std::vector<std::unique_ptr<transforms::IAstTransform>>& ast_transforms, AstNode* root_node, const typesystem::DecompilerTypeSystem& type_system,
                         DecompileRun& decompile_run, const util::CancellationToken& cancellation_token,
-                        const typesystem::ITypeResolveContext& decompilation_context) {
+                        const typesystem::ITypeResolveContext& decompilation_context, L2Lane* l2) {
     syntax::TypeSystemAstBuilder type_system_ast_builder = create_ast_builder(decompile_run.settings);
     transforms::TransformContext context(type_system, decompile_run, decompile_run.settings, cancellation_token, decompilation_context,
                                          type_system_ast_builder);
+    context.l2 = l2;
     // The tree handed to the pipeline must already be well-formed; check it once up front so a malformed builder output is caught here
     // rather than blamed on the first transform.
     root_node->check_invariant();
@@ -1180,7 +1181,7 @@ std::unique_ptr<DecompileRun> CSharpDecompiler::create_decompile_run(std::unorde
 }
 
 void CSharpDecompiler::run_transforms(AstNode* root_node, DecompileRun& decompile_run, const typesystem::ITypeResolveContext& decompilation_context) {
-    run_ast_transforms(ast_transforms_, root_node, *type_system_, decompile_run, cancellation_token, decompilation_context);
+    run_ast_transforms(ast_transforms_, root_node, *type_system_, decompile_run, cancellation_token, decompilation_context, l2_lane_.get());
     cancellation_token.throw_if_cancellation_requested();
     output_visitor::InsertParenthesesVisitor insert_parentheses;
     insert_parentheses.insert_parentheses_for_readability = true;
@@ -2179,6 +2180,7 @@ void CSharpDecompiler::decompile_body(const IMethod* method, EntityDeclaration* 
             const auto builders_start = std::chrono::steady_clock::now();
             body = statement_builder.convert_as_block(function->body());
             l2_lane_->builders_time += std::chrono::steady_clock::now() - builders_start;
+            l2_lane_->keep(std::move(l2));   // (the C# transforms read it)
 
             Statement* warning_anchor = body->statements().first_or_null();
             for (const std::string& warning : function->warnings) {

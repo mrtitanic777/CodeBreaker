@@ -1,4 +1,5 @@
 // dotnet/decompiler/csharp/transforms/introduce_using_declarations.cpp -- see introduce_using_declarations.hpp.
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/transforms/introduce_using_declarations.hpp"
 
 #include <algorithm>
@@ -57,10 +58,11 @@ using util::culture_compare;
 // Finds the namespaces the types the tree refers to are in.
 class FindRequiredImports final : public DepthFirstAstVisitor {
 public:
-    explicit FindRequiredImports(const TransformContext& context) {
+    explicit FindRequiredImports(const TransformContext& context) : l2_(context.l2) {
         current_namespace_ = context.current_type_definition() != nullptr ? context.current_type_definition()->namespace_() : std::string();
     }
 
+    L2Lane* l2_;
     std::unordered_set<std::string> declared_namespaces = {std::string()};
     std::unordered_set<std::string> imported_namespaces;
 
@@ -83,31 +85,32 @@ public:
     void visit_foreach_statement(ForeachStatement& foreach_statement) override {
         auto* annotation = foreach_statement.annotation<ForeachAnnotation>();
         if (annotation != nullptr) {
-            auto* call = il::as<il::CallInstruction>(annotation->get_enumerator_call);
-            if (call != nullptr && call->method != nullptr && call->method->is_extension_method()) add_imported_namespace(call->method->declaring_type());
+            auto* call = dynamic_cast<il::CallInstruction*>(annotation->get_enumerator_call);
+            const IMethod* method = call != nullptr ? (l2_ != nullptr ? l2_->call_method(*call) : call->method) : nullptr;
+            if (method != nullptr && method->is_extension_method()) add_imported_namespace(method->declaring_type());
         }
         DepthFirstAstVisitor::visit_foreach_statement(foreach_statement);
     }
 
     void visit_parenthesized_variable_designation(ParenthesizedVariableDesignation& designation) override {
         auto* annotation = designation.annotation<il::MatchInstruction>();
-        if (annotation != nullptr && annotation->method() != nullptr) add_imported_namespace(annotation->method()->declaring_type());
+        const IMethod* method = annotation != nullptr ? (l2_ != nullptr ? l2_->match_method(*annotation) : annotation->method()) : nullptr;
+        if (method != nullptr) add_imported_namespace(method->declaring_type());
         DepthFirstAstVisitor::visit_parenthesized_variable_designation(designation);
     }
 
     void visit_tuple_expression(TupleExpression& tuple_expression) override {
         auto* annotation = tuple_expression.annotation<il::MatchInstruction>();
-        if (annotation != nullptr && annotation->method() != nullptr) add_imported_namespace(annotation->method()->declaring_type());
+        const IMethod* method = annotation != nullptr ? (l2_ != nullptr ? l2_->match_method(*annotation) : annotation->method()) : nullptr;
+        if (method != nullptr) add_imported_namespace(method->declaring_type());
         DepthFirstAstVisitor::visit_tuple_expression(tuple_expression);
     }
 
     void visit_array_initializer_expression(ArrayInitializerExpression& array_initializer_expression) override {
         for (Expression* item : array_initializer_expression.elements()) {
             auto* optional_call = item->annotation<il::CallInstruction>();
-            if (optional_call != nullptr && optional_call->method != nullptr && optional_call->method->is_extension_method() &&
-                optional_call->method->name() == "Add") {
-                add_imported_namespace(optional_call->method->declaring_type());
-            }
+            const IMethod* method = optional_call != nullptr ? (l2_ != nullptr ? l2_->call_method(*optional_call) : optional_call->method) : nullptr;
+            if (method != nullptr && method->is_extension_method() && method->name() == "Add") add_imported_namespace(method->declaring_type());
         }
         DepthFirstAstVisitor::visit_array_initializer_expression(array_initializer_expression);
     }
@@ -255,9 +258,10 @@ private:
     std::shared_ptr<syntax::TypeSystemAstBuilder> create_ast_builder(CSharpResolver* resolver, il::ILFunction* function = nullptr) {
         if (function != nullptr) {
             auto variables = std::make_shared<resolver::VariableDictionary>();
-            for (il::ILVariable* v : function->variables()) {
-                if (v->kind() != il::VariableKind::Parameter && v->name && !variables->contains(*v->name))
-                    variables->set(*v->name, make<DefaultVariable>(v->type(), *v->name));
+            for (il::ILVariable* variable : context_.l2 != nullptr ? context_.l2->function_variables(*function) : function->variables().items()) {
+                const VariableFacts v = variable_of(context_.l2, *variable);
+                if (v.kind != il::VariableKind::Parameter && v.name && !variables->contains(*v.name))
+                    variables->set(*v.name, make<DefaultVariable>(v.type, *v.name));
             }
             resolver = make<CSharpResolver>(resolver->add_variables(variables));
         }
