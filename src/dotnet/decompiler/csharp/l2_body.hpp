@@ -75,6 +75,7 @@ struct VariableFacts {
     int address_count;
     il::BlockContainer* capture_scope;
     std::optional<int> index;
+    il::StackType stack_type;
 
     bool is_single_definition() const { return store_count == 1 && address_count == 0; }
 
@@ -224,6 +225,12 @@ public:
     il::ContainerKind container_kind(const il::BlockContainer& c);
     bool is_ldc_i4(const il::ILInstruction& inst, std::int32_t value);
     std::optional<std::pair<il::ILInstruction*, const typesystem::IType*>> cast_around(il::ILInstruction& inst);
+    // A variable's facts as the builders read them (the ILAst's where the tree has no symbol for it); the values its stores store (null for a store that is no stloc: a pattern's, a handler's, a using's or a fixed's variable); whether an instruction is a
+    // default.value, and of which type.
+    VariableFacts variable(const il::ILVariable& v);
+    std::vector<il::ILInstruction*> stored_values(const il::ILVariable& v);
+    bool match_default_value(const il::ILInstruction& inst, const typesystem::IType** type);
+    bool hides(const il::ILFunction& f, const std::string& name);   // ExpressionBuilder::hides_variable_with_name, from the tree
     const typesystem::IMethod* call_method(const il::CallInstruction& call);
     // The ILAst's matchers of the same (with no body: the builders read the ILAst alone).
     static std::optional<DelegateConstructionMatch> ilast_delegate_construction(il::NewObj& newobj);

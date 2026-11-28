@@ -285,7 +285,11 @@ ExpressionWithResolveResult ExpressionBuilder::convert_variable(ILVariable* vari
     return with_rr(expr, make<ILVariableResolveResult>(variable, variable->type()));
 }
 
-bool ExpressionBuilder::hides_variable_with_name(const std::string& name) { return hides_variable_with_name(current_function, name); }
+bool ExpressionBuilder::hides_variable_with_name(const std::string& name) {
+    // (the names of the function's and its outer functions' variables and local functions, from L2)
+    if (l2 != nullptr) return l2->hides(*current_function, name);
+    return hides_variable_with_name(current_function, name);
+}
 
 bool ExpressionBuilder::hides_variable_with_name(ILFunction* current_function, const std::string& name) {
     auto hides_variable_or_nested_function = [&](ILFunction* function) {
@@ -715,33 +719,42 @@ TranslatedExpression ExpressionBuilder::visit_ld_loca(LdLoca& inst, TranslationC
 TranslatedExpression ExpressionBuilder::visit_st_loc(StLoc& inst, TranslationContext) { return translate_st_loc(StLocFacts::of(inst)); }
 
 TranslatedExpression ExpressionBuilder::translate_st_loc(const StLocFacts& inst) {
-    TranslatedExpression translated_value = translate(inst.value(), inst.variable()->type());
+    TranslatedExpression translated_value = translate(inst.value(), l2 != nullptr ? l2->variable(*inst.variable()).type : inst.variable()->type());
     auto is_other_value_type = [](const IType* type) {
         return type->is_reference_type() == std::optional<bool>(false) && get_stack_type(*type) == StackType::O;
     };
-    auto all_stores_use_consistent_type = [&](const std::vector<IStoreInstruction*>& store_instructions, const IType* expected_type) {
+    // (the variable's kind, stores and stack type from L2: its symbol and the stores ir::TreeIndex lists)
+    auto all_stores_use_consistent_type = [&](ILVariable* v, const IType* expected_type) {
         expected_type = expected_type->accept_visitor(NormalizeTypeVisitor::type_erasure());
-        for (IStoreInstruction* store : store_instructions) {
-            auto* stloc = dynamic_cast<StLoc*>(store);
-            if (stloc == nullptr) return false;
-            const IType* type = infer_type(stloc->value(), compilation)->accept_visitor(NormalizeTypeVisitor::type_erasure());
+        std::vector<ILInstruction*> values;
+        if (l2 != nullptr) {
+            values = l2->stored_values(*v);
+        } else {
+            for (IStoreInstruction* store : v->store_instructions()) {
+                auto* stloc = dynamic_cast<StLoc*>(store);
+                values.push_back(stloc != nullptr ? stloc->value() : nullptr);
+            }
+        }
+        for (ILInstruction* value : values) {
+            if (value == nullptr) return false;
+            const IType* type = infer_type(value, compilation)->accept_visitor(NormalizeTypeVisitor::type_erasure());
             if (!type->equals(expected_type)) return false;
         }
         return true;
     };
+    const VariableFacts facts = l2 != nullptr ? l2->variable(*inst.variable()) : L2Lane::ilast_variable(*inst.variable());
     auto can_use_type_for_stack_slot = [&](ILVariable* v, const IType* type) {
-        return v->is_single_definition() || is_other_value_type(type) || v->stack_type == StackType::Ref ||
-               all_stores_use_consistent_type(v->store_instructions(), type);
+        return facts.is_single_definition() || is_other_value_type(type) || facts.stack_type == StackType::Ref || all_stores_use_consistent_type(v, type);
     };
-    if (inst.variable()->kind() == VariableKind::StackSlot && loaded_variables_set_.find(inst.variable()) == loaded_variables_set_.end()) {
+    if (facts.kind == VariableKind::StackSlot && loaded_variables_set_.find(inst.variable()) == loaded_variables_set_.end()) {
         // Stack slots in the ILAst have inaccurate types (e.g. System.Object for StackType.O)
         // so we should replace them with more accurate types where possible:
         const IType* type = nullptr;
-        if (can_use_type_for_stack_slot(inst.variable(), translated_value.type()) &&
-            inst.variable()->stack_type == get_stack_type(*translated_value.type()) && translated_value.type()->kind() != TypeKind::Null) {
+        if (can_use_type_for_stack_slot(inst.variable(), translated_value.type()) && facts.stack_type == get_stack_type(*translated_value.type()) &&
+            translated_value.type()->kind() != TypeKind::Null) {
             inst.variable()->set_type(translated_value.type());
             if (l2 != nullptr) l2->variable_changed(inst.variable());
-        } else if (inst.value()->match_default_value(&type) && is_other_value_type(type)) {
+        } else if ((l2 != nullptr ? l2->match_default_value(*inst.value(), &type) : inst.value()->match_default_value(&type)) && is_other_value_type(type)) {
             inst.variable()->set_type(type);
             if (l2 != nullptr) l2->variable_changed(inst.variable());
         }

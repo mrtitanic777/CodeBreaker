@@ -48,7 +48,7 @@ template <class T> T L2Lane::checked(T from_l2, T from_ilast, std::source_locati
 
 VariableFacts L2Lane::ilast_variable(const il::ILVariable& v) {
     return VariableFacts{v.kind(), v.type(), v.name, v.uses_initial_value(), v.initial_value_is_initialized(), v.is_ref_read_only,
-                         v.load_count(), v.store_count(), v.address_count(), v.capture_scope, v.index()};
+                         v.load_count(), v.store_count(), v.address_count(), v.capture_scope, v.index(), v.stack_type};
 }
 
 ContainerFacts L2Lane::ilast_container(const il::BlockContainer& c) {
@@ -513,6 +513,80 @@ const typesystem::IMethod* L2Body::call_method(const il::CallInstruction& call) 
     return check_against(lane_, lane_.check_enabled(), l2, call.method);
 }
 
+VariableFacts L2Body::variable(const il::ILVariable& v) {
+    const std::optional<VariableFacts> l2 = variable_facts(v);
+    if (!l2) {
+        ++lane_.facts_from_ilast;
+        return L2Lane::ilast_variable(v);
+    }
+    ++lane_.facts_from_l2;
+    return check_against(lane_, lane_.check_enabled(), *l2, lane_.check_enabled() ? L2Lane::ilast_variable(v) : *l2);
+}
+
+std::vector<il::ILInstruction*> L2Body::stored_values(const il::ILVariable& v) {
+    const auto ilast = [&] {
+        std::vector<il::ILInstruction*> out;
+        for (il::IStoreInstruction* store : v.store_instructions()) {
+            auto* stloc = dynamic_cast<il::StLoc*>(store);
+            out.push_back(stloc != nullptr ? stloc->value() : nullptr);
+        }
+        return out;
+    };
+    // the stores ir::TreeIndex lists (a plain Assign to the variable's Name: its value; a Local, a Catch, a PatternMatch: none)
+    const ir::SymP* sym = map_.sym(&v);
+    if (sym == nullptr) {
+        ++lane_.facts_from_ilast;
+        return ilast();
+    }
+    std::vector<il::ILInstruction*> out;
+    for (ir::Node* store : index_.uses(sym->get()).stores) {
+        const auto* assign = ir::get<ir::Assign>(store);
+        il::ILInstruction* stloc = assign != nullptr ? map_.instruction(store) : nullptr;
+        il::ILInstruction* value = stloc != nullptr ? operand(assign->value, *stloc) : nullptr;
+        if (assign != nullptr && value == nullptr) {
+            ++lane_.facts_from_ilast;
+            return ilast();
+        }
+        out.push_back(value);
+    }
+    ++lane_.facts_from_l2;
+    if (lane_.check_enabled()) {
+        // (the same values: the tree lists the stores in its order, the ILAst in the order they were made)
+        std::vector<il::ILInstruction*> a = out, b = ilast();
+        std::sort(a.begin(), a.end());
+        std::sort(b.begin(), b.end());
+        check_against(lane_, true, a, b);
+    }
+    return out;
+}
+
+bool L2Body::hides(const il::ILFunction& f, const std::string& name) {
+    const std::optional<bool> l2 = hides_variable_with_name(f, name);
+    if (!l2) {
+        ++lane_.facts_from_ilast;
+        return L2Lane::ilast_hides_variable_with_name(f, name);
+    }
+    ++lane_.facts_from_l2;
+    return check_against(lane_, lane_.check_enabled(), *l2, lane_.check_enabled() ? L2Lane::ilast_hides_variable_with_name(f, name) : *l2);
+}
+
+bool L2Body::match_default_value(const il::ILInstruction& inst, const typesystem::IType** type) {
+    const ir::Node* n = map_.node(&inst);
+    const typesystem::IType* ilast_type = nullptr;
+    if (n == nullptr) {
+        ++lane_.facts_from_ilast;
+        return inst.match_default_value(type);
+    }
+    ++lane_.facts_from_l2;
+    const bool l2 = ir::is<ir::Default>(n);
+    *type = l2 ? translate::frontends::cil::clr_type(n->type) : nullptr;
+    if (lane_.check_enabled()) {
+        const bool ilast = inst.match_default_value(&ilast_type);
+        check_against(lane_, true, std::make_pair(l2, l2 ? *type : nullptr), std::make_pair(ilast, ilast ? ilast_type : nullptr));
+    }
+    return l2;
+}
+
 il::ContainerKind L2Body::container_kind(const il::BlockContainer& c) {
     const auto* region = ir::get<ir::Region>(map_.node(&c));
     if (region == nullptr) {
@@ -676,7 +750,7 @@ std::optional<VariableFacts> L2Body::variable_facts(const il::ILVariable& v) {
     const std::string* exact = s.info.get_as<std::string>("cil.kind_exact");
     VariableFacts facts{translate::frontends::cil::variable_kind(*s.role, exact), translate::frontends::cil::clr_type(s.type),
                         s.name.empty() ? std::nullopt : std::optional<std::string>(s.name), s.entry_used, s.entry_initialized, s.ref_readonly, 0, 0, 0,
-                        nullptr, s.index ? std::optional<int>(static_cast<int>(*s.index)) : std::nullopt};
+                        nullptr, s.index ? std::optional<int>(static_cast<int>(*s.index)) : std::nullopt, static_cast<il::StackType>(s.stack)};
     const ir::TreeIndex::Uses& uses = index_.uses(&s);
     facts.load_count = static_cast<int>(uses.loads.size());
     facts.store_count = static_cast<int>(index_.store_count(&s));
