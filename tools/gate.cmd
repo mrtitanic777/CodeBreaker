@@ -65,12 +65,12 @@ if defined GJOBS set CMD=%CMD% --jobs %GJOBS%
 if not "%EXE%"=="" set CMD=%CMD% --exe "%EXE%"
 if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\cb_tests.exe" %CHANGED%
 %CMD% %PASS%
-set RC=%ERRORLEVEL%
+set GATE_RC=%ERRORLEVEL%
 if "%APP%"=="1" call :app
-if %APP_RC% NEQ 0 set RC=%APP_RC%
+if %APP_RC% NEQ 0 set GATE_RC=%APP_RC%
 if "%SDK%"=="1" call "%HERE%sdk\samples.cmd"
-if "%SDK%"=="1" if errorlevel 1 set RC=1
-exit /b %RC%
+if "%SDK%"=="1" if errorlevel 1 set GATE_RC=1
+exit /b %GATE_RC%
 
 rem The window (codebreaker.exe app) rendered to a PNG in each state and theme: the file must exist, be a PNG, not be empty, and be the size asked.
 :app
