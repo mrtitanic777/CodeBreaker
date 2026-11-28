@@ -75,6 +75,8 @@ const dotnet::decompiler::typesystem::IField* clr_field(const ir::EntityP& entit
 const dotnet::decompiler::typesystem::IMember* clr_member(const ir::SymP& sym);
 const dotnet::decompiler::typesystem::IParameter* clr_parameter(const ir::SymP& sym);
 
+class LiftMap;
+
 struct LoweringStats {
     std::size_t functions = 0;            // ILFunctions lowered (a method and its lambdas and local functions)
     std::size_t instructions = 0;         // ILAst instructions lowered (each one node)
@@ -94,8 +96,10 @@ public:
     Lowering& operator=(const Lowering&) = delete;
 
     // The function (after any part of the transform pipeline) as an L2 tree: a MethodDecl for a top-level or local function, a Lambda
-    // for a delegate or an expression tree. A Lowering error (std::logic_error) names an ILAst state the L2 cannot hold.
-    ir::Node* function(const dotnet::decompiler::il::ILFunction& function);
+    // for a delegate or an expression tree. A Lowering error (std::logic_error) names an ILAst state the L2 cannot hold. `map`, if
+    // given, gets each node's instruction and each symbol's variable, as a Lifting of the tree would link them to what it makes (a
+    // reader that keeps the ILAst, the C# builders, reads the tree beside it without lifting it).
+    ir::Node* function(const dotnet::decompiler::il::ILFunction& function, LiftMap* map = nullptr);
     const LoweringStats& stats() const;
 
     // For a reader that keeps the tree current while it changes the ILAst (the C# builders, stage 14), in the function lowered last: the
@@ -113,7 +117,7 @@ private:
     std::unique_ptr<State> s_;
 };
 
-// What a Lifting made from what, both ways: each lifted instruction's node (a Labeled for a container's block; the helper nodes a lowering
+// What a Lifting made from what (or a Lowering lowered from what), both ways: each lifted instruction's node (a Labeled for a container's block; the helper nodes a lowering
 // adds, an ExprStmt or the Name a store or an address names, have no instruction of their own) and each variable's symbol. The C#
 // builders read the node of the instruction they translate through it (stage 14), and a rewrite they make on the ILAst is made on the
 // tree through it too. A link to a node or instruction made after the lifting is added with `link`.

@@ -37,6 +37,7 @@ bool is_plain_nop(const il::ILInstruction* inst) {
 struct Lowering::State {
     Arena& arena;
     LoweringStats stats;
+    LiftMap* links = nullptr;   // what was made from what, when asked for (the function lowered last)
     FlatMap<const void*, ir::EntityP> entities;
     FlatMap<const ts_ns::IType*, ir::TypeP> types;
     FlatMap<const void*, ir::SymP> members;        // IMethod / IField / IMember / IParameter
@@ -104,6 +105,7 @@ struct Lowering::State {
         n->stack = static_cast<ir::Stack>(src.result_type());
         ++stats.instructions;
         ++stats.nodes;
+        if (links != nullptr) links->link(n, const_cast<il_ns::ILInstruction*>(&src));   // (the map's instructions are the reader's to change)
         return n;
     }
     template <class K> ir::Node* helper(K kind, ir::TypeP type = {}) {
@@ -384,6 +386,7 @@ ir::SymP Lowering::State::variable(const il_ns::ILVariable* v) {
     auto sym = std::make_shared<ir::Sym>();
     variables.get(v).value = sym;
     fill_variable(*sym, *v);
+    if (links != nullptr) links->link(sym, const_cast<il_ns::ILVariable*>(v));
     return sym;
 }
 
@@ -554,6 +557,7 @@ Node* Lowering::State::container(const il_ns::BlockContainer& c) {
         Node* body = block(*b, cil_lowering::Ctx::Stmt);
         Node* labeled = ir::make(arena, ir::Labeled{.label = label_of(b), .body = body});
         ++stats.nodes;
+        if (links != nullptr) links->link(labeled, const_cast<il_ns::Block*>(b));   // the block is the Labeled, as the lifting links it
         // the Labeled is the block: its range, its stack kind (Void); the Block inside it carries the statements only
         labeled->origin = body->origin;
         labeled->stack = body->stack;
@@ -1195,7 +1199,8 @@ void Lowering::restate(ir::Sym& sym, const dotnet::decompiler::il::ILVariable& v
     sym.generated_name = variable.has_generated_name;
 }
 
-ir::Node* Lowering::function(const dotnet::decompiler::il::ILFunction& function) {
+ir::Node* Lowering::function(const dotnet::decompiler::il::ILFunction& function, LiftMap* map) {
+    s_->links = map;
     s_->functions.clear();
     s_->variables.clear();
     s_->function_members.clear();
